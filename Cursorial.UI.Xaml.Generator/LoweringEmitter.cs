@@ -122,6 +122,7 @@ internal static class LoweringEmitter
             sb.AppendLine();
             sb.AppendLine($"{ci}    private static object? __ConvertXamlValue(global::System.Type targetType, string text)");
             sb.AppendLine($"{ci}        => (global::Cursorial.UI.Xaml.XamlConverters.For(targetType)");
+            sb.AppendLine($"{ci}            ?? global::Cursorial.UI.Xaml.XamlConverters.BclConverterForType(targetType)");
             sb.AppendLine($"{ci}            ?? global::Cursorial.UI.Xaml.XamlConverters.BridgeConverterForType(targetType)) is {{ }} __c");
             sb.AppendLine($"{ci}            ? __c.ConvertFromString(text, new global::Cursorial.UI.Xaml.XamlValueContext(");
             sb.AppendLine($"{ci}                global::System.Globalization.CultureInfo.InvariantCulture, null, targetType, null, 0, 0))");

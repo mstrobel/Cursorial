@@ -46,8 +46,10 @@ public static class XamlConverters
 
     /// <summary>The CR7 bridge rung (W2d) — the loader's LAST conversion fallback, after the ladder and
     /// the BCL rung: a single-parameter route into the type (implicit/explicit operator, ctor, static
-    /// <c>Parse(string)</c>) from a ladder-convertible source. See <see cref="ConversionBridge"/>.</summary>
-    public static ITypeConverter? BridgeConverterForType(Type targetType) => ConversionBridge.For(targetType);
+    /// <c>Parse(string)</c>) from a ladder-convertible source. Unwraps <c>Nullable&lt;T&gt;</c> like the
+    /// ladder (the boxed <c>T</c> assigns to a <c>T?</c> member unchanged). See <see cref="ConversionBridge"/>.</summary>
+    public static ITypeConverter? BridgeConverterForType(Type targetType)
+        => ConversionBridge.For(Nullable.GetUnderlyingType(targetType) ?? targetType);
 
     /// <summary>
     /// Registers (or overrides) the converter for <paramref name="targetType"/> — the C-15 seam S2 and
@@ -879,6 +881,14 @@ internal static class ConversionBridge
             if (t.IsAbstract || t.IsInterface || t == typeof(string) || t == typeof(object))
                 return null;
 
+            // Style is DENIED (audit): its Selector ctor is a viable route, so a text Style attribute
+            // would silently construct an empty, setterless style where the pre-bridge behavior was a
+            // loud rejection — a silent styling no-op. The principled per-type opt-out joins the W2e
+            // route vocabulary; until then the one framework type with a semantically-wrong route is
+            // excluded by name.
+            if (t == typeof(Cursorial.UI.Style))
+                return null;
+
             // Kind 1/2: conversion operators DECLARED ON T producing T. op_Implicit beats op_Explicit;
             // within a kind, more than one ladder-convertible source parameter is ambiguous.
             var implicitRoute = FindOperatorRoute(t, "op_Implicit", out var implicitAmbiguous);
@@ -910,13 +920,13 @@ internal static class ConversionBridge
             if (ctorRoute is not null)
             {
                 var boundCtor = ctorRoute;
-                return new BridgeConverter(ctorSource!, value => boundCtor.Invoke([value]));
+                return new BridgeConverter(ctorRoute.GetParameters()[0].ParameterType, ctorSource!.IsContextFree, value => boundCtor.Invoke([value]));
             }
 
             // Kind 4: static T Parse(string) (the culture-free single-arg form only).
             if (t.GetMethod("Parse", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static,
                             [typeof(string)]) is { } parse && parse.ReturnType == t && !parse.IsGenericMethod)
-                return new BridgeConverter(RawText.Instance, value => parse.Invoke(null, [value])!);
+                return new BridgeConverter(typeof(string), sourceContextFree: true, value => parse.Invoke(null, [value])!);
 
             return null;
         });
@@ -950,16 +960,32 @@ internal static class ConversionBridge
             return null;
 
         var boundRoute = route;
-        return new BridgeConverter(source!, value => boundRoute.Invoke(null, [value])!);
+        return new BridgeConverter(route.GetParameters()[0].ParameterType, source!.IsContextFree, value => boundRoute.Invoke(null, [value])!);
     }
 
-    /// <summary>A resolved bridge: parse the text as S through the ladder, take the route into T.</summary>
-    private sealed class BridgeConverter(ITypeConverter source, Func<object?, object> route) : ITypeConverter
+    /// <summary>
+    /// A resolved bridge: parse the text as S through the ladder, take the route into T. The SOURCE
+    /// converter re-resolves per conversion (audit — a later <see cref="XamlConverters.Register"/> for S
+    /// must win, the same live-ladder rule the Optional rung follows); route exceptions re-surface as
+    /// POSITIONED CUR2401 diagnostics, never a raw TargetInvocationException.
+    /// </summary>
+    private sealed class BridgeConverter(Type sourceType, bool sourceContextFree, Func<object?, object> route) : ITypeConverter
     {
-        public bool IsContextFree => source.IsContextFree;
+        public bool IsContextFree => sourceContextFree;
 
         public object ConvertFromString(string text, in XamlValueContext context)
-            => route(source.ConvertFromString(text, context));
+        {
+            var source = XamlConverters.For(sourceType)
+                         ?? throw XamlConverters.Fail($"No converter for bridge source type '{sourceType.Name}'.", context);
+            try
+            {
+                return route(source.ConvertFromString(text, context));
+            }
+            catch (System.Reflection.TargetInvocationException tie) when (tie.InnerException is { } inner)
+            {
+                throw XamlConverters.Fail($"'{text}' failed the conversion route: {inner.Message}", context, inner);
+            }
+        }
     }
 
     /// <summary>The CR3 ambiguity rule: two viable routes of one kind error LOUDLY at conversion, never a silent pick.</summary>
@@ -972,11 +998,4 @@ internal static class ConversionBridge
                 $"Ambiguous conversion routes into '{t.Name}' ({kind}) — add a converter for the type.", context);
     }
 
-    /// <summary>The Parse-route source: the raw text (S == string, trivially ladder-convertible).</summary>
-    private sealed class RawText : ITypeConverter
-    {
-        public static readonly RawText Instance = new();
-        public bool IsContextFree => true;
-        public object ConvertFromString(string text, in XamlValueContext context) => text;
-    }
 }

@@ -43,6 +43,16 @@ public sealed class AmbiguousWrapped
         public static implicit operator AmbiguousWrapped(int value) => new();
     }
 
+public readonly struct StructWrapped(double value)
+{
+    public double Value { get; } = value;
+}
+
+public sealed class ThrowingParseWrapped
+{
+    public static ThrowingParseWrapped Parse(string text) => throw new FormatException($"bad payload '{text}'");
+}
+
 public sealed class BridgeHost : Control
     {
         public ImplicitWrapped? Implicit { get; set; }
@@ -50,6 +60,8 @@ public sealed class BridgeHost : Control
         public CtorWrapped? Ctor { get; set; }
         public ParseWrapped? Parsed { get; set; }
         public AmbiguousWrapped? Ambiguous { get; set; }
+        public StructWrapped? NullableCtor { get; set; }
+        public ThrowingParseWrapped? Throwing { get; set; }
     }
 
 public sealed class Section24_ConversionBridge : LoaderTestBase
@@ -105,6 +117,26 @@ public sealed class Section24_ConversionBridge : LoaderTestBase
         {
             XamlConverters.Register(typeof(CtorWrapped), new BridgePassthrough()); // restore bridge-like behavior
         }
+    }
+
+    [Fact] // XC7 (audit): Style is DENIED — its Selector ctor would silently construct an empty,
+    // setterless style from a text Style attribute; the pre-bridge loud rejection is preserved
+    public void XC7_StyleDenied_TextAttributeStaysLoud()
+        => Assert.ThrowsAny<Exception>(() => Load("<Border Style=\".card\"/>"));
+
+    [Fact] // XC8 (audit): a THROWING route re-surfaces as a positioned CUR2401 — never a raw
+    // TargetInvocationException from reflection
+    public void XC8_ThrowingRoute_IsPositionedConversionError()
+    {
+        var ex = ThrowsLoad("CUR2401", () => Load("<BridgeHost Throwing=\"nope\"/>"));
+        Assert.Contains("bad payload 'nope'", ex.Message); // the route's own error, positioned
+    }
+
+    [Fact] // XC9 (audit): a Nullable<T>-typed member bridges through T's route (the ladder's unwrap rule)
+    public void XC9_NullableMember_Bridges()
+    {
+        var host = Load<BridgeHost>("<BridgeHost NullableCtor=\"4.5\"/>");
+        Assert.Equal(4.5, host.NullableCtor!.Value.Value);
     }
 
     private sealed class FixedCtorConverter : ITypeConverter

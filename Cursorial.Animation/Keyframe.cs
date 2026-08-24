@@ -13,4 +13,13 @@ namespace Cursorial.Animation;
 /// <param name="Time">The elapsed offset at which <paramref name="Value"/> is reached; non-negative.</param>
 /// <param name="Value">The value at <paramref name="Time"/>.</param>
 /// <param name="Easing">The easing for the segment ending at this keyframe (null ⇒ linear).</param>
-public readonly record struct Keyframe<T>(TimeSpan Time, T Value, Easing? Easing = null);
+public readonly record struct Keyframe<T>(TimeSpan Time, T Value, Easing? Easing = null)
+{
+    /// <summary>
+    /// The markup construction path (W3 — <c>&lt;Keyframe x:TypeArguments="x:Double" Time="0:0:0.1"
+    /// Value="0.5"/&gt;</c>): members arrive via init; the positional ctor remains the code-first form.
+    /// </summary>
+    public Keyframe() : this(TimeSpan.Zero, default!)
+    {
+    }
+}

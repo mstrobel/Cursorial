@@ -106,8 +106,13 @@ public class AnimationTrack<T> : AnimationTrack
     /// <summary>An explicit interpolator (null ⇒ <see cref="Interpolator.For{T}"/>).</summary>
     public IInterpolator<T>? Interpolator { get; set; }
 
-    /// <summary>Keyframes (mutually exclusive with the two-point form and <see cref="Source"/>).</summary>
-    public IList<Keyframe<T>>? Keyframes { get; set; }
+    /// <summary>
+    /// Keyframes (mutually exclusive with the two-point form and <see cref="Source"/>). Default-initialized
+    /// EMPTY (W3 — the XAML collection-fill path reads the existing list and Adds; an empty list still
+    /// means "no keyframes" to <see cref="Seal"/>'s exactly-one-form validation). Settable for the
+    /// code-first collection-expression form (<c>Keyframes = [new(…), …]</c>).
+    /// </summary>
+    public IList<Keyframe<T>> Keyframes { get; set; } = new List<Keyframe<T>>();
 
     /// <summary>A code-built animation escape hatch; <see cref="AnimationTrack.Repeat"/>/<see cref="AnimationTrack.AutoReverse"/> wrap it uniformly.</summary>
     public IAnimation<T>? Source { get; set; }

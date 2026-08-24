@@ -97,4 +97,29 @@ public sealed class Section26_TypeArguments : LoaderTestBase
     [Fact] // XT10: x:TypeArguments on a NON-generic element is the same positioned failure (no definition)
     public void XT10_TypeArgumentsOnNonGeneric_IsPositionedError()
         => ThrowsLoad("CUR2002", () => Load("<Border x:TypeArguments=\"x:Double\"/>"));
+
+    [Fact] // XT11 (the W3 flagship — the sweep critic's largest hole closed): KEYFRAMES are markup-
+    // authorable — <Keyframe x:TypeArguments="x:Double"> closes, its substituted Value converts through
+    // the ladder, the W1 Easing converter serves the segment easing, and the default-initialized
+    // Keyframes list fills in place
+    public void XT11_KeyframeMarkup_FillsTheTrack()
+    {
+        var sb = Load<Storyboard>(
+            "<Storyboard>" +
+              "<DoubleTrack TargetPath=\"Opacity\" Duration=\"0:0:0.4\">" +
+                "<DoubleTrack.Keyframes>" +
+                  "<Keyframe x:TypeArguments=\"x:Double\" Time=\"0:0:0.1\" Value=\"0.25\"/>" +
+                  "<Keyframe x:TypeArguments=\"x:Double\" Time=\"0:0:0.4\" Value=\"1.0\" Easing=\"QuadOut\"/>" +
+                "</DoubleTrack.Keyframes>" +
+              "</DoubleTrack>" +
+            "</Storyboard>");
+
+        var track = Assert.IsType<DoubleTrack>(Assert.Single(sb.Children));
+        Assert.Equal(2, track.Keyframes.Count);
+        Assert.Equal(TimeSpan.FromSeconds(0.1), track.Keyframes[0].Time);
+        Assert.Equal(0.25, track.Keyframes[0].Value);
+        Assert.Null(track.Keyframes[0].Easing);
+        Assert.Equal(1.0, track.Keyframes[1].Value);
+        Assert.Same(Cursorial.Animation.Easings.QuadOut, track.Keyframes[1].Easing);
+    }
 }

@@ -20,6 +20,14 @@ public sealed class GenericHolder<T> : Control
     public List<T> Items { get; } = [];
 }
 
+/// <summary>Constraint-violation fixture (W3 audit): closing with a non-conforming argument must be
+/// the positioned CUR2002, not a runtime <see cref="ArgumentException"/> (reflection lane) or CS0453
+/// in generated code (Roslyn lane).</summary>
+public sealed class ConstrainedHolder<T> : Control where T : struct
+{
+    public T Payload { get; set; }
+}
+
 public sealed class Section26_TypeArguments : LoaderTestBase
 {
     [Fact] // XT1: the flagship — a closed generic element activates with SUBSTITUTED members
@@ -121,5 +129,30 @@ public sealed class Section26_TypeArguments : LoaderTestBase
         Assert.Null(track.Keyframes[0].Easing);
         Assert.Equal(1.0, track.Keyframes[1].Value);
         Assert.Same(Cursorial.Animation.Easings.QuadOut, track.Keyframes[1].Easing);
+    }
+
+    // ── W3 audit rows: the negative space the first pass missed ──────────────────────────────────
+
+    [Fact] // XT12: a constraint violation (where T : struct, closed with a class) is a positioned CUR2002
+    public void XT12_ConstraintViolation_IsPositionedError()
+        => ThrowsLoad("CUR2002", () => Load("<ConstrainedHolder x:TypeArguments=\"x:String\"/>"));
+
+    [Fact] // XT13: an intrinsic used WITH arguments (x:Double(x:String)) never silently drops them
+    public void XT13_IntrinsicWithArguments_IsPositionedError()
+        => ThrowsLoad("CUR2002", () => Load("<GenericHolder x:TypeArguments=\"x:Double(x:String)\"/>"));
+
+    [Fact] // XT14: the nullable suffix demands a non-nullable VALUE type — x:String? is a positioned CUR2002
+    public void XT14_NullableSuffixOnReferenceType_IsPositionedError()
+        => ThrowsLoad("CUR2002", () => Load("<GenericHolder x:TypeArguments=\"x:String?\"/>"));
+
+    [Fact] // XT15: x:TypeArguments on <x:Array> is fenced with a positioned CUR1202 (x:Array closes via
+    // Type=; letting the directive through would silently re-type the array)
+    public void XT15_TypeArgumentsOnXArray_IsPositionedError()
+    {
+        var ex = ThrowsLoad("CUR1202", () => Load(
+            "<StackPanel><StackPanel.Resources>" +
+              "<x:Array x:Key=\"a\" Type=\"x:String\" x:TypeArguments=\"x:Double\"><x:String>a</x:String></x:Array>" +
+            "</StackPanel.Resources></StackPanel>"));
+        Assert.Contains("not supported in this position", ex.Message);
     }
 }

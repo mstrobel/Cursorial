@@ -12,12 +12,13 @@ namespace Cursorial.UI.Xaml;
 public sealed class XamlDesignInfo
 {
     internal XamlDesignInfo(int? designWidth, int? designHeight, XamlType? dataContextType,
-                            XamlDocument? dataContextContent = null)
+                            XamlDocument? dataContextContent = null, string? dataContextStaticPath = null)
     {
         DesignWidth = designWidth;
         DesignHeight = designHeight;
         DataContextType = dataContextType;
         DataContextContent = dataContextContent;
+        DataContextStaticPath = dataContextStaticPath;
     }
 
     /// <summary>The preview surface width in cells (<c>d:DesignWidth</c>), when declared.</summary>
@@ -40,4 +41,12 @@ public sealed class XamlDesignInfo
     /// instance as the preview's DataContext. When both forms are declared, the element form wins.
     /// </summary>
     public XamlDocument?  DataContextContent { get; }
+
+    /// <summary>
+    /// The <c>{x:Static}</c> INSTANCE form (<c>d:DataContext="{x:Static vm:MyViewModel.DesignInstance}"</c>):
+    /// the static member path, unresolved — the frontend never resolves statics. A designer host resolves
+    /// it against its loaded assemblies (the loader's <c>IXamlStaticResolver</c> seam) and assigns the
+    /// resulting instance. Precedence when multiple forms are declared: element form > static path > type.
+    /// </summary>
+    public string? DataContextStaticPath { get; }
 }

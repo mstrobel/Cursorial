@@ -235,4 +235,40 @@ public sealed class Section20_MarkupCompatibility : XamlTestBase
         if (fragment is not null)
             Assert.NotEmpty(fragment.Diagnostics); // the miss lives on the fragment for the designer to surface
     }
+
+    // ── d:DataContext, {x:Static} INSTANCE form: the attribute captures the static member PATH,
+    //    unresolved — the designer host resolves it at materialize time. ──────────────────────────
+
+    [Fact] // {x:Static vm:MyViewModel.DesignInstance} captures the path verbatim, diagnostics-free
+    public void X221_DesignDataContextStatic_PathCaptured()
+    {
+        var doc = ParseRaw(Root($"{Mc} {D} xmlns:vm=\"using:DemoApp\" mc:Ignorable=\"d\" " +
+                                "d:DataContext=\"{x:Static vm:MyViewModel.DesignInstance}\""));
+
+        Assert.Empty(doc.Diagnostics);
+        Assert.Equal("vm:MyViewModel.DesignInstance", doc.DesignInfo?.DataContextStaticPath);
+        Assert.Null(doc.DesignInfo!.DataContextType); // the static form never resolves a type
+    }
+
+    [Fact] // any OTHER extension is a soft warning, never a capture — design data must not break a parse
+    public void X222_DesignDataContextStatic_NonStaticExtension_WarnsAndIgnores()
+    {
+        var doc = ParseRaw(Root($"{Mc} {D} mc:Ignorable=\"d\" d:DataContext=\"{{Binding Foo}}\""),
+                           mode: XamlDiagnosticMode.CollectAll);
+
+        Assert.Null(doc.DesignInfo);
+        Assert.Contains(doc.Diagnostics, d => d.Code == XamlDiagnosticCodes.DesignValueInvalid);
+    }
+
+    [Fact] // the element form wins over the static form too, with the same conflict warning
+    public void X223_DesignDataContextElement_WinsOverStaticForm()
+    {
+        var doc = ParseRaw(Root($"{Mc} {D} xmlns:vm=\"using:DemoApp\" mc:Ignorable=\"d\" " +
+                                "d:DataContext=\"{x:Static vm:MyViewModel.DesignInstance}\"",
+            "<d:StackPanel.DataContext><Button/></d:StackPanel.DataContext>"),
+            mode: XamlDiagnosticMode.CollectAll);
+
+        Assert.NotNull(doc.DesignInfo?.DataContextContent);
+        Assert.Contains(doc.Diagnostics, d => d.Code == XamlDiagnosticCodes.DesignValueInvalid);
+    }
 }

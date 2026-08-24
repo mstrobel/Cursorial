@@ -67,6 +67,13 @@ public sealed class ReflectionXamlMetadata : IXamlTypeMetadataProvider, IXamlSta
         if (name.TypeArguments.Count == 0)
         {
             resolved = _schema.Resolve(name.XmlNamespace, name.Name, out ambiguous);
+
+            // The corelib rescue for ARGUMENT positions too (audit — sys:DateTime as a type argument
+            // resolved in the Roslyn lane but CUR2002'd here): a clr-namespace:/using: URI whose
+            // assembly the schema doesn't hold falls back to the runtime's own resolution.
+            if (resolved is null && ambiguous.Length == 0 &&
+                XamlSchemaContext.TryDecodeClrNamespace(name.XmlNamespace, out var flatClrNs, out _))
+                resolved = Type.GetType(flatClrNs + "." + name.Name);
         }
         else
         {

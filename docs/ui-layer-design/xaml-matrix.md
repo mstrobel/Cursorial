@@ -144,7 +144,7 @@ xmlns-stack resolution (XD5), `xmlns:x` intrinsics, the directive set (XD4/XD15/
 | X25 | `x:Null` as `Foo="{x:Null}"` | parse | folded to the `null` constant `⟦null⟧` at parse | WPF |
 | X26 | `x:Static="Colors.Red"` as `Foo="{x:Static Colors.Red}"` | parse | folded to the resolved field/property value (`FieldInfo`/`PropertyInfo.GetValue` once) — `⟦Colors.Red value⟧` | WPF |
 | X27 | unknown intrinsic `x:Bogus` | parse | `CUR1201` "unknown x: intrinsic `Bogus`" with position (the intrinsics set is closed: Class/Name/Key/Type/Null/Static + the rejected list) | PIN (XD2) |
-| X28 | `x:TypeArguments="..."` | parse | `CUR1202` "`x:TypeArguments` (generic instantiation) is unsupported in v1" with position (recorded out, XD2) | DEV (recorded out) |
+| X28 | `x:TypeArguments="..."` | parse | SUPPORTED since W3 (`xaml-conversion-routes.md` §1 — XAML 2009 generics: pre-scan close, both lanes; rows XT1–XT15/GT1–GT6). `CUR1202` remains only for positions that cannot close (`x:Array`). XD2's v1 recording-out is superseded. | DEV |
 | X29 | `x:Reference`, `x:Array`, `x:FieldModifier`, `x:Shared`, `x:Uid` (one `[Theory]` case each) | parse | each → its own `CUR12xx` naming the unsupported intrinsic + position; none silently ignored (XD2) | DEV (recorded out) |
 | X30 | a missing xmlns prefix `<foo:Bar/>` (prefix `foo` undeclared) | parse | `CUR2003` "undeclared xmlns prefix `foo`" with position | PIN (XD5) |
 | X13b | root with `xmlns`, `xmlns:x`, `xmlns:c="clr-namespace:…"` | parse | the root's declarations are captured into `XamlDocument.Namespaces` (`["c"]` → the clr-namespace URI, `[""]` → the default xmlns) | PIN (XD26) |

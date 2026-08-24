@@ -257,6 +257,21 @@ public sealed class XamlSourceGenerator : IIncrementalGenerator
             return;
         }
 
+        // W3 audit fence: an x:Class document in the DEFAULT lane runtime-loads through the assembly's
+        // EMITTED metadata provider, which cannot close generic types yet (no IXamlGenericTypeProvider,
+        // no closed entries in the ClosedTypeSet — the recorded §1a-class deferral). Without this fence
+        // the build compiled clean and InitializeComponent died at runtime with CUR1202. Fail the build
+        // loudly instead, naming both escapes.
+        if (!hasSyntaxError && !loweringFull && document.RootClassName is { Length: > 0 } &&
+            HasClosedGenericElement(document))
+        {
+            spc.ReportDiagnostic(Diagnostic.Create(LoweringInvalidInput, LocationFor(input, 1, 1),
+                "x:TypeArguments in an x:Class document requires <CursorialXamlLowering>full</CursorialXamlLowering> " +
+                "(closed types emit statically) or the reflection metadata provider — the generated provider " +
+                "cannot close generic types yet."));
+            return;
+        }
+
         // WS-X4.6 — a document with an x:Class and valid syntax gets the typed-field + InitializeComponent
         // partial. (A syntax error leaves the node graph unreliable, so fall back to the marker.)
         if (!hasSyntaxError && CodeBehindEmitter.Emit(document, input.Text, input.Path, input.RelativePath, compilation.AssemblyName) is {} codeBehind)
@@ -274,6 +289,18 @@ public sealed class XamlSourceGenerator : IIncrementalGenerator
             $"// x:Class: {rootClass}; diagnostics: {document.Diagnostics.Count}\n";
 
         spc.AddSource(hint, SourceText.From(src, Encoding.UTF8));
+    }
+
+    /// <summary>True when any resolved element type is a CLOSED generic (an x:TypeArguments element).</summary>
+    private static bool HasClosedGenericElement(Cursorial.UI.Xaml.XamlDocument document)
+    {
+        foreach (var type in document.ResolvedTypes)
+        {
+            if (type?.ClrType is RoslynXamlType { Symbol: INamedTypeSymbol { IsGenericType: true } named } &&
+                !SymbolEqualityComparer.Default.Equals(named, named.ConstructedFrom))
+                return true;
+        }
+        return false;
     }
 
     /// <summary>

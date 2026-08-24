@@ -73,7 +73,10 @@ internal sealed class RoslynXamlMetadata : IXamlTypeMetadataProvider, IXamlGener
         ITypeSymbol? resolved;
 
         // The x: intrinsics (x:Double/x:String/…) — the schema's BuiltInType twin, over special types.
-        if (string.Equals(name.XmlNamespace, XmlnsNamespaces.Intrinsics, StringComparison.Ordinal) &&
+        // Arity 0 REQUIRED (audit): an argument-bearing intrinsic (x:Double(x:Int32)) must fall through
+        // and fail like the reflection lane, never silently discard its arguments.
+        if (name.TypeArguments.Count == 0 &&
+            string.Equals(name.XmlNamespace, XmlnsNamespaces.Intrinsics, StringComparison.Ordinal) &&
             IntrinsicSpecialType(name.Name) is { } special)
         {
             resolved = _compilation.GetSpecialType(special);
@@ -86,9 +89,12 @@ internal sealed class RoslynXamlMetadata : IXamlTypeMetadataProvider, IXamlGener
         else
         {
             // The resolver matches METADATA names, which carry arity — the backtick form is canonical
-            // (GenApp.GenericWidget`1); the exact-name fallback covers a using:-mapped exotic.
-            var definition = _resolver.Resolve(name.XmlNamespace, name.Name + "`" + name.TypeArguments.Count, out var defAmbiguous)
-                             ?? _resolver.Resolve(name.XmlNamespace, name.Name, out defAmbiguous);
+            // (GenApp.GenericWidget`1); the exact-name fallback covers a using:-mapped exotic. The
+            // fallback gets its OWN out variable (audit) so the backtick call's ambiguity candidates
+            // survive when the fallback simply finds nothing.
+            var definition = _resolver.Resolve(name.XmlNamespace, name.Name + "`" + name.TypeArguments.Count, out var defAmbiguous);
+            if (definition is null && defAmbiguous is not { Count: > 0 })
+                definition = _resolver.Resolve(name.XmlNamespace, name.Name, out defAmbiguous);
             ambiguous = defAmbiguous;
 
             if (definition is not { IsGenericType: true } || definition.Arity != name.TypeArguments.Count)
@@ -97,9 +103,24 @@ internal sealed class RoslynXamlMetadata : IXamlTypeMetadataProvider, IXamlGener
             var arguments = new ITypeSymbol[name.TypeArguments.Count];
             for (int i = 0; i < arguments.Length; i++)
             {
-                if (ResolveQualified(name.TypeArguments[i], out ambiguous) is not { } argument)
+                if (ResolveQualified(name.TypeArguments[i], out var argAmbiguous) is not { } argument)
+                {
+                    ambiguous = argAmbiguous is { Count: > 0 } ? argAmbiguous : ambiguous;
                     return null;
+                }
                 arguments[i] = argument;
+            }
+
+            // Constraint validation BEFORE Construct (audit — the reflection lane's MakeGenericType
+            // throws on a violation and reports the positioned CUR2002; Roslyn's Construct validates
+            // nothing, so an x:String against `where T : struct` escaped to a raw CS0453 in generated
+            // code): the same violation must return null here so the parser's diagnostic — whose
+            // message already names the constraint case — fires identically in both lanes.
+            var typeParameters = definition.ConstructedFrom.TypeParameters;
+            for (int i = 0; i < arguments.Length; i++)
+            {
+                if (!SatisfiesConstraints(typeParameters[i], arguments[i]))
+                    return null;
             }
 
             resolved = definition.ConstructedFrom.Construct(arguments);
@@ -110,7 +131,10 @@ internal sealed class RoslynXamlMetadata : IXamlTypeMetadataProvider, IXamlGener
 
         if (name.IsNullable)
         {
-            if (!resolved.IsValueType)
+            // Parity with the reflection guard (audit): '?' demands a NON-NULLABLE value type — without
+            // the second check, Nullable(x:Int32)? closed Nullable<Nullable<int>> and the emitter
+            // rendered the syntactically invalid `int??`.
+            if (!resolved.IsValueType || resolved.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T)
                 return null;
             resolved = _compilation.GetSpecialType(SpecialType.System_Nullable_T).Construct(resolved);
         }
@@ -119,6 +143,34 @@ internal sealed class RoslynXamlMetadata : IXamlTypeMetadataProvider, IXamlGener
             resolved = _compilation.CreateArrayTypeSymbol(resolved);
 
         return resolved;
+    }
+
+    /// <summary>The Roslyn half of the reflection lane's MakeGenericType constraint enforcement.</summary>
+    private bool SatisfiesConstraints(ITypeParameterSymbol parameter, ITypeSymbol argument)
+    {
+        if (parameter.HasValueTypeConstraint &&
+            (!argument.IsValueType || argument.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T))
+            return false;
+
+        if (parameter.HasReferenceTypeConstraint && !argument.IsReferenceType)
+            return false;
+
+        if (parameter.HasUnmanagedTypeConstraint && !argument.IsUnmanagedType)
+            return false;
+
+        if (parameter.HasConstructorConstraint && !argument.IsValueType &&
+            (argument.IsAbstract ||
+             argument is not INamedTypeSymbol ctorable ||
+             !ctorable.InstanceConstructors.Any(static c => c is { DeclaredAccessibility: Accessibility.Public, Parameters.Length: 0 })))
+            return false;
+
+        foreach (var constraintType in parameter.ConstraintTypes)
+        {
+            if (!_compilation.HasImplicitConversion(argument, constraintType))
+                return false;
+        }
+
+        return true;
     }
 
     private static SpecialType? IntrinsicSpecialType(string name) => name switch

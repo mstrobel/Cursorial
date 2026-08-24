@@ -38,6 +38,7 @@ internal sealed class XamlParser
     private int? _designHeight;
     private XamlType? _designDataContextType;
     private XamlDocument? _designDataContextContent;
+    private string? _designDataContextStaticPath;
 
     // The lexical Style.TargetType stack: a Style pushes its resolved target type before its body is
     // walked so an enclosed Setter can resolve Property/Value against it (matrix X64/X66).
@@ -159,7 +160,7 @@ internal sealed class XamlParser
             _rootType,
             _rootClassName,
             _hasDesignInfo
-                ? new XamlDesignInfo(_designWidth, _designHeight, _designDataContextType, _designDataContextContent)
+                ? new XamlDesignInfo(_designWidth, _designHeight, _designDataContextType, _designDataContextContent, _designDataContextStaticPath)
                 : null);
     }
 
@@ -223,7 +224,7 @@ internal sealed class XamlParser
 
         if (fragment is { HasObjects: true })
         {
-            if (_designDataContextType is not null)
+            if (_designDataContextType is not null || _designDataContextStaticPath is not null)
                 _builder.Warning(XamlDiagnosticCodes.DesignValueInvalid,
                                  "Both the d:DataContext attribute and element form are declared; the element form wins.",
                                  line, column);
@@ -291,6 +292,28 @@ internal sealed class XamlParser
 
             case "DataContext":
             {
+                // The {x:Static} INSTANCE form (d:DataContext="{x:Static vm:MyViewModel.DesignInstance}"):
+                // captured as the static member PATH — the frontend cannot resolve statics; the designer
+                // host resolves it at materialize time. Any other extension is a soft warning.
+                if (MarkupExtensionParser.LooksLikeExtension(value))
+                {
+                    var extension = MarkupExtensionParser.Parse(value, _builder.Source, line, valueColumn);
+                    if (extension.Name is "x:Static" or "Static" &&
+                        extension.PositionalArguments.Count == 1 &&
+                        extension.PositionalArguments[0] is { IsNested: false, Text: { Length: > 0 } staticPath })
+                    {
+                        _hasDesignInfo = true;
+                        _designDataContextStaticPath = staticPath;
+                    }
+                    else
+                    {
+                        _builder.Warning(XamlDiagnosticCodes.DesignValueInvalid,
+                                         $"d:DataContext accepts a type name or {{x:Static Member.Path}}; found '{value}'. The attribute is ignored.",
+                                         line, valueColumn);
+                    }
+                    break;
+                }
+
                 // A plain (optionally prefix-qualified) type name, resolved in the live root
                 // scope. A miss is a soft warning: the document must still parse and load
                 // everywhere the design-time type does not exist.
@@ -571,10 +594,12 @@ internal sealed class XamlParser
                 if (string.Equals(attrPrefix, "xml", StringComparison.Ordinal))
                     continue;
 
-                // x:Key / x:Name directives — an array is a valid keyed resource / named element.
+                // x:Key / x:Name directives — an array is a valid keyed resource / named element. The
+                // ARRAY path never runs the x:TypeArguments pre-scan (audit): the directive must stay a
+                // positioned CUR1202 here, not the consumed no-op the element path earned.
                 if (XmlnsNamespaces.IsIntrinsics(attrNs))
                 {
-                    HandleIntrinsicDirective(attrLocal, value, members, attrLineInfo, attrLine, attrColumn, ref hasName, ref hasKey);
+                    HandleIntrinsicDirective(attrLocal, value, members, attrLineInfo, attrLine, attrColumn, ref hasName, ref hasKey, typeArgumentsPreScanned: false);
                     continue;
                 }
 
@@ -694,30 +719,33 @@ internal sealed class XamlParser
         int elementLine,
         int elementColumn)
     {
-        if (!_reader.MoveToFirstAttribute())
+        if (_reader.AttributeCount == 0)
             return;
 
+        // INDEXED attribute iteration throughout (the d:DataContext element-form fix): a ReadSubtree
+        // reader's MoveToFirstAttribute/MoveToNextAttribute enumeration silently truncates after ONE
+        // attribute on its SECOND pass — the exhaust-then-restart pre-scan below turned every fragment
+        // root's member list into "first attribute only" (the designer's <d:DataContext> instance
+        // declarations lost all but their first property). MoveToAttribute(i) is table-based and immune.
         if (isRoot)
         {
             // Pre-scan the root tag for mc:Ignorable so ignorability is order-independent within
             // the tag (a d:-style tool attribute may textually precede the mc:Ignorable that
-            // blesses it). Attribute iteration is restartable, so this costs one extra pass over
-            // the root's attributes only.
-            do
+            // blesses it). Costs one extra pass over the root's attributes only.
+            for (int attrIndex = 0; attrIndex < _reader.AttributeCount; attrIndex++)
             {
+                _reader.MoveToAttribute(attrIndex);
                 if (XmlnsNamespaces.IsMarkupCompatibility(_reader.NamespaceURI) &&
                     string.Equals(_reader.LocalName, "Ignorable", StringComparison.Ordinal))
                 {
                     RegisterIgnorablePrefixes(_reader.Value, _lineInfo.LineNumber, _lineInfo.LinePosition);
                 }
             }
-            while (_reader.MoveToNextAttribute());
-
-            _reader.MoveToFirstAttribute();
         }
 
-        do
+        for (int attrIndex = 0; attrIndex < _reader.AttributeCount; attrIndex++)
         {
+            _reader.MoveToAttribute(attrIndex);
             string attrNs = _reader.NamespaceURI;
             string attrLocal = _reader.LocalName;
             string attrPrefix = _reader.Prefix;
@@ -780,7 +808,7 @@ internal sealed class XamlParser
             // x: intrinsic directives.
             if (XmlnsNamespaces.IsIntrinsics(attrNs))
             {
-                HandleIntrinsicDirective(attrLocal, value, members, attrLineInfo, attrLine, attrColumn, ref hasName, ref hasKey);
+                HandleIntrinsicDirective(attrLocal, value, members, attrLineInfo, attrLine, attrColumn, ref hasName, ref hasKey, typeArgumentsPreScanned: true);
                 continue;
             }
 
@@ -836,7 +864,6 @@ internal sealed class XamlParser
                                   attrColumn,
                                   valueColumn);
         }
-        while (_reader.MoveToNextAttribute());
 
         _reader.MoveToElement();
     }
@@ -849,7 +876,8 @@ internal sealed class XamlParser
         int line,
         int column,
         ref bool hasName,
-        ref bool hasKey)
+        ref bool hasKey,
+        bool typeArgumentsPreScanned)
     {
         switch (local)
         {
@@ -875,7 +903,15 @@ internal sealed class XamlParser
 
             case "TypeArguments":
                 // Consumed by the ParseElement pre-scan (the element resolved CLOSED before attributes
-                // parsed) — nothing to record; failures were reported there, positioned (W3).
+                // parsed) — nothing to record; failures were reported there, positioned (W3). Paths that
+                // never ran the pre-scan (x:Array) keep the CUR1202 rejection (audit).
+                if (!typeArgumentsPreScanned)
+                {
+                    _builder.Error(XamlDiagnosticCodes.UnsupportedTypeArguments,
+                                   "x:TypeArguments is not supported in this position.",
+                                   line,
+                                   column);
+                }
                 break;
 
             case "Reference":
@@ -2544,10 +2580,13 @@ internal sealed class XamlParser
             return XamlTypeResolution.NotFound();
         }
 
-        if (!XamlTypeName.TryParseList(typeArgsText, out var argNames, out var grammarError, out _))
+        if (!XamlTypeName.TryParseList(typeArgsText, out var argNames, out var grammarError, out var grammarOffset))
         {
+            // The grammar's 0-based offset survives into the message (audit — the diagnostic anchors at
+            // the element's '<'; the offset pinpoints the failure inside the attribute value, which the
+            // position-neutral pre-scan cannot address directly).
             _builder.Error(XamlDiagnosticCodes.UnsupportedTypeArguments,
-                           $"Malformed x:TypeArguments '{typeArgsText}': {grammarError}",
+                           $"Malformed x:TypeArguments '{typeArgsText}' (at offset {grammarOffset}): {grammarError}",
                            line,
                            column);
             return XamlTypeResolution.NotFound();

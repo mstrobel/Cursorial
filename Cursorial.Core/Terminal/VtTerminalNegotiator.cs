@@ -342,6 +342,16 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
             if (_applied.MouseButtons)          QueueWrite(VtInputSequences.OptInSequences.DisableMouseButtons);
             // @formatter:on
 
+            // System.Console repair (see the constants' comment in VtInputSequences): the BCL's
+            // one-time terminal init writes smkx (DECCKM + DECKPAM application modes) on the
+            // process's first Console WRITE and never restores it, so the shell inherits
+            // application cursor-key mode and mode-gated terminal keymaps (kitty `send_text
+            // normal`) die until `reset`. Emit the rmkx pair unconditionally — endwin parity;
+            // universal VT100, no family gate. TerminalSession's stdio open forces the BCL init
+            // BEFORE this restore so a post-teardown Console write can't re-emit smkx after us.
+            QueueWrite(VtInputSequences.OptInSequences.DisableApplicationCursorKeys);
+            QueueWrite(VtInputSequences.OptInSequences.DisableApplicationKeypad);
+
             // Unconditional belt-and-braces: clear any Kitty multi-cursor extras the terminal
             // is holding onto. The spec says alt-screen-toggle clears these implicitly, but a
             // timing-dependent Kitty bug leaves ghost cursors after quit-during-resize; this
@@ -364,6 +374,15 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
         }
     }
 
+    /// <summary>
+    /// Whether this negotiator's opt-in round pushed a Kitty keyboard flag entry (and has not yet
+    /// been restored/neutralized). <see cref="TerminalSession.RenegotiateAsync"/> reads this to
+    /// keep the STACK-shaped Kitty state balanced: unlike the idempotent DECSET toggles, the old
+    /// negotiator's push and the new negotiation's push are BOTH live on the active screen's
+    /// stack, so discarding the old restore sequence must be paired with one explicit pop.
+    /// </summary>
+    internal bool AppliedKittyKeyboard => Volatile.Read(ref _restored) == 0 && _applied.KittyKeyboard;
+
     public ReadOnlyMemory<byte> BuildRestoreSequence()
     {
         // Idempotent: once we hand bytes out for synchronous emission, RestoreAsync becomes a
@@ -385,6 +404,8 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
         if (_applied.MouseButtonTracking)   AppendBytes(writer, VtInputSequences.OptInSequences.DisableButtonMotionMouse);
         if (_applied.ExtendedMouseTracking) AppendBytes(writer, VtInputSequences.OptInSequences.DisableSgrMouse);
         if (_applied.MouseButtons)          AppendBytes(writer, VtInputSequences.OptInSequences.DisableMouseButtons);
+        AppendBytes(writer, VtInputSequences.OptInSequences.DisableApplicationCursorKeys); // System.Console smkx repair —
+        AppendBytes(writer, VtInputSequences.OptInSequences.DisableApplicationKeypad);     // see RestoreAsync's comment
         if (_emitKittyExtraCursorClear)     AppendBytes(writer, VtInputSequences.OptInSequences.ClearKittyExtraCursors);
 
         ResetAppliedToReflectRestore();

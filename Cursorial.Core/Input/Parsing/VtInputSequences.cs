@@ -293,6 +293,25 @@ public static class VtInputSequences
         public static ReadOnlySpan<byte> EnableSynchronizedOutput => "\x1b[?2026h"u8;
         public static ReadOnlySpan<byte> DisableSynchronizedOutput => "\x1b[?2026l"u8;
 
+        // ---- Application cursor-key / keypad mode (terminfo rmkx) ----
+        //
+        // Not modes this stack ever ENABLES — the emitter is System.Console: on the Unix
+        // runtime, the process's first actual Console WRITE (Console.Out/Error) or any
+        // cursor/window API (Console.WindowWidth, GetCursorPosition, …) runs the BCL's
+        // one-time terminal init, which writes terminfo smkx (CSI ? 1 h + ESC =) to the tty —
+        // and nothing in the BCL ever writes rmkx back at exit (verified empirically on
+        // .NET 10 / macOS; property reads like IsInputRedirected do NOT trigger it). A leaked
+        // DECCKM is invisible to most apps but silently kills mode-gated terminal keymaps
+        // (kitty `map … send_text normal …`) until the user runs `reset`. Session restore
+        // emits this pair unconditionally — ncurses' endwin does exactly the same on every
+        // exit, so it is the established convention, not a clobber.
+
+        /// <summary><c>CSI ? 1 l</c> — DECRST DECCKM: normal (non-application) cursor keys.</summary>
+        public static ReadOnlySpan<byte> DisableApplicationCursorKeys => "\x1b[?1l"u8;
+
+        /// <summary><c>ESC &gt;</c> — DECKPNM: normal (non-application) keypad.</summary>
+        public static ReadOnlySpan<byte> DisableApplicationKeypad => "\x1b>"u8;
+
         // ---- Kitty keyboard protocol ----
         // Push is dynamic: CSI > <flags> u. Pop is fixed.
 

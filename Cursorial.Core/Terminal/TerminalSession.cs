@@ -212,6 +212,22 @@ public sealed class TerminalSession : IAsyncDisposable
         TerminalSessionOptions? options = null,
         CancellationToken cancellationToken = default)
     {
+        // Force System.Console's one-time terminal initialization NOW — before the transports
+        // save termios state and before negotiation writes its first byte. On the Unix runtime
+        // the process's FIRST Console write (Console.Out/Error) or cursor/window API call runs
+        // that init, which emits terminfo smkx (DECCKM + DECKPAM application modes) to the tty
+        // and never restores it at exit. Left to chance, that first touch can land AFTER our
+        // restore (a post-teardown Console.WriteLine of results is typical), stranding the
+        // shell in application cursor-key mode until `reset`. Pinning it here guarantees the
+        // ordering: BCL init → our termios save + negotiation → our restore, whose rmkx pair
+        // (see VtTerminalNegotiator.RestoreAsync) leaves the terminal clean. WindowWidth is the
+        // cheapest deterministic trigger (property reads like IsInputRedirected do NOT init).
+        if (!OperatingSystem.IsWindows())
+        {
+            try { _ = Console.WindowWidth; }
+            catch { /* not a console — the transport open below reports it properly */ }
+        }
+
         var transports = StdioTransports.Open();
 
         try
@@ -493,6 +509,21 @@ public sealed class TerminalSession : IAsyncDisposable
                 // public Capabilities getter so external observers see a consistent snapshot.
                 var oldNegotiator = Interlocked.Exchange(ref _negotiator, newNegotiator);
                 Volatile.Write(ref _capabilities, newCapabilities);
+
+                // The Kitty keyboard opt-in is STACK-shaped (push/pop), not an idempotent DECSET
+                // toggle: the old negotiator's push and the new negotiation's push are now BOTH
+                // on the active screen's stack, and the neutralization below discards the old
+                // pop with the rest of the old disables. Emit that one pop here — AFTER the new
+                // enables, so key-up/repeat reporting never lapses — or every renegotiation
+                // strands a stack entry that outlives the session (flags stay active at the
+                // shell until `reset`). Read the flag before neutralization zeroes it.
+                if (oldNegotiator is VtTerminalNegotiator { AppliedKittyKeyboard: true })
+                {
+                    var span = _output.Writer.GetSpan(VtInputSequences.OptInSequences.PopKittyKeyboard.Length);
+                    VtInputSequences.OptInSequences.PopKittyKeyboard.CopyTo(span);
+                    _output.Writer.Advance(VtInputSequences.OptInSequences.PopKittyKeyboard.Length);
+                    await _output.Writer.FlushAsync(cancellationToken).ConfigureAwait(false);
+                }
 
                 // Neutralize the old negotiator: capture its disables and discard them. This
                 // marks old._restored=1 and clears old._applied, so its eventual DisposeAsync is

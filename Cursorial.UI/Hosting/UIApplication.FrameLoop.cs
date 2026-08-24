@@ -1367,17 +1367,38 @@ public sealed partial class UIApplication
         }
         catch {}
 
-        // 1b. Tear down the CURRENT root element (punch #39 / lifecycle contract): a root the app
-        //     swapped OUT during the run is the author's to tear down (see the Lifecycle & Teardown
-        //     guide — curio's per-stage roots), but the one still mounted at shutdown is the app's.
-        //     Detach its surface (reversible), then the permanent sweep releases its bindings and
-        //     view-model subscriptions. Best-effort + idempotent like every step here.
+        // 1b. Tear down the CURRENT root element (punch #39 / lifecycle contract, amended): teardown runs
+        //     BEFORE the surface detach — releasing bindings first, so the detach severance cascade
+        //     (DataContext loss → items sources clear → selections clear) cannot write phantom edits into
+        //     view-models (the chooser selection-loss bug; the S2 detach-time quiesce is the engine-level
+        //     backstop for paths that must detach first, e.g. window close). Best-effort + idempotent.
         try
         {
             if (RootElement is {} appRoot)
             {
-                _windowManager?.SetRootSurface(null);
                 appRoot.TearDown();
+                _windowManager?.SetRootSurface(null);
+            }
+        }
+        catch {}
+
+        // 1c. The formerly-mounted-roots backstop: swapping roots mid-run is reversible, and the guide's
+        //     advice stands — tear a root down eagerly when you swap it out for good. But past this point
+        //     every element from this app is permanently unusable (the dispatcher dies with the pump), so
+        //     any still-alive swapped-out root is by definition a leak: its view-model subscriptions pin
+        //     the whole subtree until process exit. Sweep them here, on the UI thread, while teardown is
+        //     still legal. Weak refs — eagerly-torn (idempotent no-op) or collected roots cost nothing.
+        try
+        {
+            if (_formerRoots is {} formers)
+            {
+                foreach (var weak in formers)
+                {
+                    if (weak.TryGetTarget(out var former))
+                        former.TearDown();
+                }
+
+                _formerRoots = null;
             }
         }
         catch {}

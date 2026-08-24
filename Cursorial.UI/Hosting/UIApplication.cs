@@ -392,6 +392,9 @@ public sealed partial class UIApplication : IAsyncDisposable
     /// it detaches the previous root (returning its scenes to the pool) and wires the new one
     /// under a fresh <see cref="LayoutManager"/> + <c>RenderTree</c>.
     /// </summary>
+    /// <summary>Every root swapped OUT during the run, weakly held — the dispose-time backstop sweep's input.</summary>
+    private List<WeakReference<UIElement>>? _formerRoots;
+
     public UIElement? RootElement
     {
         get => _rootElement;
@@ -407,6 +410,14 @@ public sealed partial class UIApplication : IAsyncDisposable
                 _focusManager.OnWindowDeactivated(old); // the single-root deactivation (per-window at W2)
                 _windowManager!.SetRootSurface(null); // detaches the root surface — scenes to the pool AND DetachRoot
                 ReleaseRegistryForRoot(old); // S7: drop the root's subscription registry (design doc §11.6)
+
+                // Track the swapped-out root (weakly) for the dispose-time backstop sweep. The swap stays
+                // REVERSIBLE (nothing is torn here — re-mounting later is legal), and the lifecycle guide's
+                // advice stands: tear a root down eagerly when you swap it out for good. But at app dispose
+                // every element from this app becomes permanently unusable (the dispatcher dies), so any
+                // still-alive formerly-mounted root is by definition a leak — the backstop tears it down
+                // then. Weak: an eagerly-torn or collected root costs nothing.
+                (_formerRoots ??= new List<WeakReference<UIElement>>()).Add(new WeakReference<UIElement>(old));
             }
 
             _rootElement = value;

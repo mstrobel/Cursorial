@@ -428,3 +428,37 @@ Doc §6.1/§6.7. The descriptor is defined now and consumed by the engine; the g
 Each numbered row above becomes **exactly one** xUnit test in `Cursorial.UI.Tests`, named after its row id with a behavior slug (`B090_SetCurrentValue_PreservesTwoWayBinding_WritesBack`), one file per section under `Cursorial.UI.Tests/BindingMatrix/` (`Section01_PathParsing.cs` … `Section16` is the contract, so `Section01`…`Section15`), namespace `Cursorial.Tests.UI.BindingMatrix`. Rows whose Expected cell enumerates a family (e.g. B4 bare/quoted, B11–B13 the recorded-out parse errors, B30 the two event shapes, B43 the anchor conflicts) become a single `[Theory]` with one case per family member, keeping the row↔test bijection at the row level. The fixture types (`Vm`, `PlainVm`, `Widget` with its `StyledProperty`/`DirectProperty` registrations) are registered once via a shared harness class — **dense property ids are process-global, so registrations must be idempotent across test classes** (the layout/style-matrix harness pattern). Host-level rows use `UITestHost` (`RunFrame`/`SendInput`/`ShowRoot`); unit-level rows (path parse, descriptor validation, pipeline math) call the engine directly on the calling UI thread. Cross-thread rows (B94–B96) use a real background thread + the host's dispatcher (or a test `IUIDispatcher` fake with the loop-wake hook). Allocation rows (B70's note, B147, the §6.11.7 0-B claims) follow the repo norm: `GC.GetAllocatedBytesForCurrentThread()` deltas after warm-up, single-threaded `[Fact]`s, not BenchmarkDotNet; the reflection lane's one boxed leaf is exempt where the row says so. DEBUG-only rows (B27, B97, B111, B114) compile their assertion under `#if DEBUG` and assert the absence of the check/throw in Release where practical. Rows marked internal (B16/B18 cache probes, B143 typed-entry-type probe, B103/B104 frame-hosted-entry probes) use `InternalsVisibleTo` surfaces — pinned loosely: the *content* is the contract, member names are implementation freedom.
 
 Rows are not merged, reordered, or "covered implicitly by" other rows: a row without a matching test is a P4 exit-criterion failure (§14 P4: the binding-pipeline oracle matrix green — fallback/null/format permutations, the DataContext-self case, echo suppression incl. animation-handle disposal — plus the `Watch`/`When` close and the teardown-sweep P1-gap close). Rows are staged per the §0 stage map: §§1–9 + §13 (B0) must be green at B0 exit; §10/§11/§14-`Explain` (B1) at B1; §12 + §15-B2 (B2) with the template engine; §15-B3 (B3) with X4. Later-stage rows may be absent (not red) before their stage opens, but every row is binding from now. When the engine cannot honor a row, the resolution is a PR that amends this file (and, where the row carries a `PIN`/`DEV` tag, the BD ledger) **before** the engine change lands — the matrix is the oracle, not the implementation. Oracle tags document provenance and do not alter test behavior.
+
+---
+
+## 17. Departing views — the detach-time reverse-lane quiesce (B190–B194)
+
+**The pinned rule (BD22): a departing view must not write to its source.** The detach walk quiesces every
+expression's reverse lane (target → source write-back AND pending-flush marking, pending LostFocus/Explicit
+edits DISCARDED — cancel semantics) at `OnDetachedFromTreeCore`, BEFORE any inheritance severance can
+cascade — so the DataContext-loss chain (items sources clear → selections clear) never round-trips into a
+view-model as a phantom edit (the curio chooser / dialog-picker selection-loss bug; WPF's most notorious
+unfixed defect). Re-attach re-arms at `OnAttachedToTreeCore` (a rescued/re-hosted view binds two-way
+again). Pre-first-attach behavior is unchanged: the quiesce is set only by the detach walk, never as an
+initial state — bindings on never-attached elements write back as before. The mechanism is
+`BindingExpressionCore.QuiesceReverse/ResumeReverse`, fanned per-element by `BindingRegistry` (a null
+`BindingHostState` probe — free for unbound elements).
+
+Companion (app-model, doc §10.7 amendment): app dispose tears the mounted root down BEFORE detaching its
+surface (1b — bindings released ahead of the severance cascade), and sweeps every still-alive
+formerly-mounted root (1c — a weak list recorded at `RootElement` swap): past dispose the dispatcher dies
+and every element of the app is permanently unusable, so an un-torn swapped-out root is by definition a
+leak. Swapping stays REVERSIBLE (nothing is torn at swap; A→B→A is legal) and the guide's advice stands —
+tear a root down eagerly when swapping it out for good. Window close is the counter-case: its
+detach-first order is load-bearing (off-display before `Closed`; the content-rescue escape hatch), so
+windows rely on the B190-rule quiesce rather than reordering.
+
+| Row | Scenario | Expected |
+|---|---|---|
+| B190 | App dispose with a live chooser (ItemsSource + TwoWay SelectedItem) | The VM's selection SURVIVES dispose; the teardown sweep releases the VM's INPC subscriptions (count 0) |
+| B191 | Window close with the same chooser as content | The selection survives the close's detach cascade; the terminal sweep releases the VM |
+| B192 | Detach → target write → re-attach → target write | The detached write never reaches the source; the re-attached write flows (quiesce/re-arm pair) |
+| B193 | Explicit-trigger TwoWay: pending edit at detach; `UpdateSource()` after detach | The pending edit is discarded; the explicit flush no-ops — never a phantom edit |
+| B194 | Root swapped out un-torn; app dispose | The former root still pins its VM until dispose (swap is reversible); the 1c backstop sweeps it — subscriptions 0, no phantom writes |
+
+Tests: `Cursorial.UI.Tests/BindingMatrix/Section17_DepartingViews.cs` (one test per row, the §16 contract).

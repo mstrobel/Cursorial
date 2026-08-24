@@ -156,6 +156,18 @@ public static class BindingOperations
     }
 
     /// <summary>
+    /// Quiesces the reverse lane (target → source write-back) of every expression on
+    /// <paramref name="target"/>, discarding pending LostFocus/Explicit edits — the detach-walk half of
+    /// "a departing view must not write to its source": without it, the detach severance cascade
+    /// (DataContext loss → items sources clear → selections clear) round-trips into view-models as
+    /// phantom edits (the chooser/dialog selection-loss bug). Re-armed by <see cref="ResumeReverse"/>.
+    /// </summary>
+    internal static void QuiesceReverse(UIObject target) => BindingRegistry.QuiesceReverse(target);
+
+    /// <summary>Re-arms the reverse lane after re-attach (a re-hosted view binds two-way again).</summary>
+    internal static void ResumeReverse(UIObject target) => BindingRegistry.ResumeReverse(target);
+
+    /// <summary>
     /// Retracts only the bindings on <paramref name="target"/> anchored to <paramref name="source"/>.
     /// The teardown for content a host does NOT own — borrowed elements, or a shared
     /// <c>DeferredContent</c> realization — where a blanket <see cref="TearDown"/> would destroy the

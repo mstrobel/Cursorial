@@ -65,6 +65,37 @@ internal sealed class BindingRegistry
         return null;
     }
 
+    /// <summary>
+    /// The detach-walk write-back gate: quiesces the reverse lane of every expression on
+    /// <paramref name="target"/> (and discards pending flushes) so the severance cascade never writes a
+    /// phantom edit into a source — "a departing view must not write" (the chooser/dialog selection-loss
+    /// fix). Cheap for unbound elements (a null <c>BindingHostState</c> probe).
+    /// </summary>
+    public static void QuiesceReverse(UIObject target)
+    {
+        if (target.BindingHostState is not BindingRegistry registry)
+            return;
+
+        foreach (var expression in registry._expressions)
+        {
+            if (expression is BindingExpressionCore core)
+                core.QuiesceReverse();
+        }
+    }
+
+    /// <summary>The attach-walk half: re-arms the reverse lane (a re-hosted view binds two-way again).</summary>
+    public static void ResumeReverse(UIObject target)
+    {
+        if (target.BindingHostState is not BindingRegistry registry)
+            return;
+
+        foreach (var expression in registry._expressions)
+        {
+            if (expression is BindingExpressionCore core)
+                core.ResumeReverse();
+        }
+    }
+
     /// <summary>The teardown-sweep half (design doc §6.5): disposes every still-live tracked expression on <paramref name="target"/>.</summary>
     public static void TearDown(UIObject target)
     {

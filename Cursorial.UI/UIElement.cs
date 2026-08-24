@@ -411,6 +411,10 @@ public abstract partial class UIElement : UIObject
 
     private void OnAttachedToTreeCore(in TreeAttachmentEventArgs e)
     {
+        // Re-arm the reverse binding lane FIRST (before class/instance handlers): an attached view binds
+        // two-way again — the quiesce/resume pair around detach/attach ("a departing view must not write
+        // to its source"; a re-hosted one must). Cheap for unbound elements (a null host-state probe).
+        Data.BindingOperations.ResumeReverse(this);
         OnAttachedToTree(e);
         AttachedToTree?.Invoke(this, e);
     }
@@ -434,6 +438,12 @@ public abstract partial class UIElement : UIObject
     
     private void OnDetachedFromTreeCore(in TreeAttachmentEventArgs e)
     {
+        // Quiesce the reverse binding lane FIRST (before class/instance handlers, and — because the
+        // detach walk is bottom-up — before ANY ancestor's severance can cascade down): the DataContext
+        // loss → items-source clear → selection clear chain must never round-trip into a view-model as
+        // a phantom edit (the chooser/dialog selection-loss bug). Pending LostFocus/Explicit edits are
+        // DISCARDED — a departing view is cancel semantics; commits happen at focus loss while attached.
+        Data.BindingOperations.QuiesceReverse(this);
         OnDetachedFromTree(e);
         DetachedFromTree?.Invoke(this, e);
     }

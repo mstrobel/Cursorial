@@ -33,6 +33,7 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
     private IDisposable? _anchorObserverToken;  // the DataContext observer (default-source rebind)
     private Action<UIElement>? _editCommitHandler;
     private bool _sourceDirty; // a pending LostFocus/Explicit write
+    private bool _reverseQuiesced; // detach-time write-back gate — "a departing view must not write to its source"
     private protected bool _isPushingToTarget;
     private protected bool _isWritingToSource;
     private bool _lostFocusSubscribed;
@@ -830,10 +831,26 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
         FlushSource();
     }
 
+    /// <summary>
+    /// Gates the reverse lane off (target → source writes AND pending-flush marking) and DISCARDS any
+    /// pending LostFocus/Explicit edit — the detach-walk half of "a departing view must not write to its
+    /// source": the severance cascade (DataContext loss → items clear → selection clears) must never
+    /// round-trip into the view-model as a phantom edit. Pending edits are dropped, not flushed —
+    /// closing/discarding a view is cancel semantics; commits belong to focus loss while attached.
+    /// </summary>
+    internal void QuiesceReverse()
+    {
+        _reverseQuiesced = true;
+        _sourceDirty = false;
+    }
+
+    /// <summary>Re-arms the reverse lane (the attach-walk half — a re-hosted view binds two-way again).</summary>
+    internal void ResumeReverse() => _reverseQuiesced = false;
+
     private void OnTargetValueChanged(BindingPriority priority)
     {
-        if (IsDisposed || _isPushingToTarget)
-            return; // BD8 step 1: synchronous self-echo.
+        if (IsDisposed || _isPushingToTarget || _reverseQuiesced)
+            return; // BD8 step 1: synchronous self-echo; quiesced: the element is mid-departure.
 
         // BD8 step 3: animated values never round-trip (the args carry the replaced lane's priority).
         if (priority == BindingPriority.Animation)
@@ -877,6 +894,9 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
 
     private void FlushSource()
     {
+        if (_reverseQuiesced)
+            return; // mid-departure — a racing focus-loss flush must not write either
+
         _sourceDirty = false;
         WriteToSource(force: false);
     }
@@ -885,8 +905,8 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
     {
         _target.VerifyAccess();
 
-        if (IsDisposed)
-            return;
+        if (IsDisposed || _reverseQuiesced)
+            return; // quiesced: an explicit flush on a departing view is equally a phantom edit
 
         _sourceDirty = false;
         WriteToSource(force: true);

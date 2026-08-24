@@ -34,6 +34,7 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
     private Action<UIElement>? _editCommitHandler;
     private bool _sourceDirty; // a pending LostFocus/Explicit write
     private bool _reverseQuiesced; // detach-time write-back gate — "a departing view must not write to its source"
+    private bool _pendingActivationWrite; // an OWTS activation write swallowed by the quiesce — ResumeReverse replays it
     private protected bool _isPushingToTarget;
     private protected bool _isWritingToSource;
     private bool _lostFocusSubscribed;
@@ -66,6 +67,13 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
                        : binding.UpdateSourceTrigger;
 
         _effectiveMode = ResolveEffectiveMode(binding, _targetProperty, context.IsWatchOnly);
+
+        // BORN QUIESCED on a departed element (BD22 audit): the detach walk quiesced the element's existing
+        // expressions; a fresh install must not resurrect write-back on the same departed view (a re-install
+        // during the severance cascade would re-open the exact phantom-write hole the quiesce closed). Never
+        // set pre-first-attach — a never-attached element's installs write back as before; re-attach re-arms.
+        if (_target is UIElement { IsDepartedFromTree: true })
+            _reverseQuiesced = true;
     }
 
     public override BindingBase ParentBinding => _binding;
@@ -397,7 +405,12 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
         // a full value-path teardown/rebuild, and a redundant OneWayToSource pass below would be a spurious
         // source write. A genuinely different ancestor (logical fallback vs visual) has newRoot != _root and
         // still re-wires.
-        if (_anchorKind == AnchorKind.FindAncestor && Status == BindingStatus.Active && ReferenceEquals(newRoot, _root))
+        // The same-root skip covers ElementName too (BD22 audit): during the DETACH walk an ElementName
+        // anchor re-resolves through the LOGICAL tree (which the visual detach leaves intact) to the SAME
+        // root — a redundant re-wire whose OneWayToSource activation pass below would be a spurious source
+        // write from a departing view (and it bypassed the quiesce, which gates only the change paths).
+        if (_anchorKind is AnchorKind.FindAncestor or AnchorKind.ElementName &&
+            Status == BindingStatus.Active && ReferenceEquals(newRoot, _root))
             return;
 
         _root = newRoot;
@@ -405,11 +418,24 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
         WireValueGraph(0);
 
         // OneWayToSource: keep the target observer (it never produces into the target, BD11) and push
-        // target → source at activation.
+        // target → source at activation. The observer wires unconditionally (idempotent — post-resume
+        // writes need it); the activation WRITE gates on the quiesce like every other reverse-lane write
+        // (a genuinely-changed root re-anchoring mid-departure must not write either). A gated write is
+        // DEFERRED, not dropped: a re-host's re-anchor can fire at parenting time, BEFORE the attach
+        // walk's ResumeReverse re-arms the lane, so the resume replays the swallowed activation write —
+        // a re-hosted OWTS view still activation-pushes exactly once.
         if (_effectiveMode == BindingMode.OneWayToSource && !IsDisposed)
         {
             WireTargetObserver();
-            WriteToSource(force: true);
+            if (!_reverseQuiesced)
+            {
+                _pendingActivationWrite = false;
+                WriteToSource(force: true);
+            }
+            else
+            {
+                _pendingActivationWrite = true;
+            }
         }
     }
 
@@ -844,8 +870,22 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
         _sourceDirty = false;
     }
 
-    /// <summary>Re-arms the reverse lane (the attach-walk half — a re-hosted view binds two-way again).</summary>
-    internal void ResumeReverse() => _reverseQuiesced = false;
+    /// <summary>
+    /// Re-arms the reverse lane (the attach-walk half — a re-hosted view binds two-way again) and replays
+    /// an OneWayToSource activation write the quiesce swallowed: a re-host's re-anchor can run at
+    /// parenting time, before this resume, so the deferred write is delivered here (at most once).
+    /// </summary>
+    internal void ResumeReverse()
+    {
+        _reverseQuiesced = false;
+
+        if (_pendingActivationWrite)
+        {
+            _pendingActivationWrite = false;
+            if (_effectiveMode == BindingMode.OneWayToSource && !IsDisposed && Status == BindingStatus.Active)
+                WriteToSource(force: true);
+        }
+    }
 
     private void OnTargetValueChanged(BindingPriority priority)
     {

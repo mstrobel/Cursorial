@@ -1367,17 +1367,19 @@ public sealed partial class UIApplication
         }
         catch {}
 
-        // 1b. Tear down the CURRENT root element (punch #39 / lifecycle contract, amended): teardown runs
-        //     BEFORE the surface detach — releasing bindings first, so the detach severance cascade
-        //     (DataContext loss → items sources clear → selections clear) cannot write phantom edits into
-        //     view-models (the chooser selection-loss bug; the S2 detach-time quiesce is the engine-level
-        //     backstop for paths that must detach first, e.g. window close). Best-effort + idempotent.
+        // 1b. Tear down the CURRENT root element (punch #39 / lifecycle contract): detach the surface
+        //     FIRST (the detach walk's BD22 quiesce shuts the reverse binding lane before any severance
+        //     cascade, so no phantom edits reach view-models — the chooser selection-loss fix lives in the
+        //     engine, not in ordering), then the permanent sweep releases bindings and view-model
+        //     subscriptions. Teardown-before-detach is deliberately NOT used here: a torn-down store
+        //     desyncs from the StyleEngine's frame state and the subsequent detach walk throws PD21 at the
+        //     first styled element (BD22 audit). Best-effort + idempotent like every step here.
         try
         {
             if (RootElement is {} appRoot)
             {
-                appRoot.TearDown();
                 _windowManager?.SetRootSurface(null);
+                appRoot.TearDown();
             }
         }
         catch {}
@@ -1388,20 +1390,21 @@ public sealed partial class UIApplication
         //     any still-alive swapped-out root is by definition a leak: its view-model subscriptions pin
         //     the whole subtree until process exit. Sweep them here, on the UI thread, while teardown is
         //     still legal. Weak refs — eagerly-torn (idempotent no-op) or collected roots cost nothing.
-        try
+        //     Per-root guard (BD22 audit): one root's throwing OnTearDown must not abandon its siblings.
+        if (_formerRoots is {} formers)
         {
-            if (_formerRoots is {} formers)
+            foreach (var weak in formers)
             {
-                foreach (var weak in formers)
+                try
                 {
                     if (weak.TryGetTarget(out var former))
                         former.TearDown();
                 }
-
-                _formerRoots = null;
+                catch {}
             }
+
+            _formerRoots = null;
         }
-        catch {}
 
         // 2. Animation shutdown — handles released, values revert to base (P8 seam).
         try

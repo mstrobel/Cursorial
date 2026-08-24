@@ -431,7 +431,7 @@ Rows are not merged, reordered, or "covered implicitly by" other rows: a row wit
 
 ---
 
-## 17. Departing views — the detach-time reverse-lane quiesce (B190–B194)
+## 17. Departing views — the detach-time reverse-lane quiesce (B190–B199)
 
 **The pinned rule (BD22): a departing view must not write to its source.** The detach walk quiesces every
 expression's reverse lane (target → source write-back AND pending-flush marking, pending LostFocus/Explicit
@@ -444,14 +444,37 @@ initial state — bindings on never-attached elements write back as before. The 
 `BindingExpressionCore.QuiesceReverse/ResumeReverse`, fanned per-element by `BindingRegistry` (a null
 `BindingHostState` probe — free for unbound elements).
 
-Companion (app-model, doc §10.7 amendment): app dispose tears the mounted root down BEFORE detaching its
-surface (1b — bindings released ahead of the severance cascade), and sweeps every still-alive
-formerly-mounted root (1c — a weak list recorded at `RootElement` swap): past dispose the dispatcher dies
-and every element of the app is permanently unusable, so an un-torn swapped-out root is by definition a
-leak. Swapping stays REVERSIBLE (nothing is torn at swap; A→B→A is legal) and the guide's advice stands —
-tear a root down eagerly when swapping it out for good. Window close is the counter-case: its
-detach-first order is load-bearing (off-display before `Closed`; the content-rescue escape hatch), so
-windows rely on the B190-rule quiesce rather than reordering.
+Companion (app-model, doc §10.7 amendment): app dispose DETACHES the mounted root's surface first, then
+tears it down (1b — the same order as window close), and sweeps every still-alive formerly-mounted root
+(1c — a weak list recorded at `RootElement` swap, each root fenced in its own try/catch so one throwing
+sweep can't abandon the rest): past dispose the dispatcher dies and every element of the app is
+permanently unusable, so an un-torn swapped-out root is by definition a leak. A teardown-FIRST order was
+tried and audited out: `ValueStore.TearDown` evicts style frames the `StyleEngine` still tracks, so the
+subsequent detach walk throws PD21 at its first styled element and silently aborts the whole severance —
+the quiesce (which makes detach-first harmless) supersedes the reorder. Swapping stays REVERSIBLE
+(nothing is torn at swap; A→B→A is legal) and the guide's advice stands — tear a root down eagerly when
+swapping it out for good. Window close keeps its load-bearing detach-first order (off-display before
+`Closed`; the content-rescue escape hatch), riding the same quiesce.
+
+The adversarial audit hardened the quiesce with five follow-ups (each mutation-verified): the
+**same-root re-anchor skip** extends from FindAncestor to ElementName (a mid-detach ElementName
+re-anchor resolves the SAME root through the still-intact logical tree — a redundant re-wire whose OWTS
+activation pass was a phantom write); the **OWTS activation write gates on the quiesce and is DEFERRED,
+not dropped** — a re-host's re-anchor can fire at parenting time, BEFORE the attach walk's
+`ResumeReverse` (empirically confirmed), so the resume replays the swallowed activation write exactly
+once; a binding **installed on a departed element is born quiesced** (`UIElement.IsDepartedFromTree`,
+set detach-after-attach, cleared on re-attach — a fresh install must not resurrect write-back the
+departure quiesced; pre-first-attach installs are unchanged); **`UIElementCollection.Clear` batch-
+quiesces every child subtree before the first disown** (the cross-sibling gap: an earlier-severed
+sibling's cascade must not phantom-write through a later, still-unquiesced one); and the **StyleEngine
+tolerates torn elements at detach** (the documented public pattern `element.TearDown()` then
+`parent.Children.Remove(element)` — frame retraction skips when the store already evicted them, PD21).
+
+Design note (pinned, cancel semantics): pending LostFocus/Explicit edits are DISCARDED on every close
+path — including accept-path closes (default-button Enter, command-driven `Close()`) that previously
+auto-committed via the detach-repair focus loss. The working idiom for an accept path is an explicit
+`expression.UpdateSource()` (or a focus move) BEFORE `Close()`; a first-class commit affordance (e.g. a
+`CommitPendingEdits` sweep) is a possible future amendment, not current contract.
 
 | Row | Scenario | Expected |
 |---|---|---|
@@ -460,5 +483,10 @@ windows rely on the B190-rule quiesce rather than reordering.
 | B192 | Detach → target write → re-attach → target write | The detached write never reaches the source; the re-attached write flows (quiesce/re-arm pair) |
 | B193 | Explicit-trigger TwoWay: pending edit at detach; `UpdateSource()` after detach | The pending edit is discarded; the explicit flush no-ops — never a phantom edit |
 | B194 | Root swapped out un-torn; app dispose | The former root still pins its VM until dispose (swap is reversible); the 1c backstop sweeps it — subscriptions 0, no phantom writes |
+| B195 | ElementName-anchored OWTS; source moved on; root swapped out | The mid-detach same-root re-anchor never re-fires the activation write — the source keeps its value (covered in depth: the same-root skip AND the gated-deferred write each suffice) |
+| B196 | OWTS view detached from host A, re-hosted under host B | No write while departed; the re-host activation write lands in B's VM exactly once (the resume replays a pre-resume-swallowed write); A's VM untouched |
+| B197 | Fresh TwoWay + OWTS installs on a DEPARTED element; then re-attach | Both born quiesced (no write-back resurrection, no immediate OWTS activation); re-attach re-arms and replays the deferred activation write |
+| B198 | `Children.Clear()` with a dependent chooser BELOW its provider sibling | The batch pre-pass quiesces every subtree before the first disown — the provider's severance never round-trips through the chooser into the VM |
+| B199 | Public pattern: `element.TearDown()` then `parent.Children.Remove(element)` on styled content | No throw; the detach walk runs to completion (torn-element style-frame retraction is tolerated) |
 
 Tests: `Cursorial.UI.Tests/BindingMatrix/Section17_DepartingViews.cs` (one test per row, the §16 contract).

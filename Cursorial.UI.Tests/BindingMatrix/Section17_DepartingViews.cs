@@ -171,4 +171,137 @@ public class Section17_DepartingViews
         Assert.Equal("beta", vm.Selected);       // swept without phantom writes…
         Assert.Equal(0, vm.SubscriberCount);     // …and the leak is closed
     }
+
+    [Fact] // audit: the mid-detach ElementName re-anchor must not re-fire the OWTS activation write
+    public void B195_ElementNameOwts_DetachReanchor_NoPhantomActivationWrite()
+    {
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(40, 12) });
+        var root = new StackPanel();
+        var a = new BindWidget { Num = 111 };
+        var b = new BindWidget();
+        root.Children.Add(a);
+        root.Children.Add(b);
+
+        var scope = new NameScopeDictionary();
+        scope.Register("editor", b);
+        NameScope.SetNameScope(root, scope);
+
+        host.ShowRoot(root);
+        host.RunUntilIdle();
+
+        BindingOperations.Install(a, BindWidget.NumProperty,
+            new Binding("Num") { ElementName = "editor", Mode = BindingMode.OneWayToSource });
+        Assert.Equal(111, b.Num);                // activation pushed target → named source
+
+        b.Num = 222;                             // the source moves on (OWTS never flows source → target)
+
+        host.ShowRoot(new StackPanel());         // swap the root out — the departing walk re-anchors
+        host.RunUntilIdle();                     // ElementName through the still-intact LOGICAL tree
+
+        Assert.Equal(222, b.Num);                // same-root re-anchor SKIPPED — no phantom 111 write
+    }
+
+    [Fact] // audit: a quiesce-swallowed OWTS activation write is DEFERRED, not dropped — re-host replays it
+    public void B196_OwtsRehost_ActivationWriteReplaysOnReattach()
+    {
+        var vm1 = new ChooserVm();
+        var vm2 = new ChooserVm();
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(40, 12) });
+        var root = new StackPanel();
+        var p1 = new StackPanel { DataContext = vm1 };
+        var p2 = new StackPanel { DataContext = vm2 };
+        root.Children.Add(p1);
+        root.Children.Add(p2);
+
+        var widget = new BindWidget();
+        BindingOperations.Install(widget, BindWidget.TextProperty,
+            new Binding("Selected") { Mode = BindingMode.OneWayToSource });
+        widget.SetValue(BindWidget.TextProperty, "X");
+        p1.Children.Add(widget);
+        host.ShowRoot(root);
+        host.RunUntilIdle();
+        Assert.Equal("X", vm1.Selected);         // activation pushed into the first host's VM
+
+        p1.Children.Remove(widget);              // depart → quiesce
+        host.RunUntilIdle();
+        widget.SetValue(BindWidget.TextProperty, "Y");
+        Assert.Equal("X", vm1.Selected);         // no write while departed
+
+        p2.Children.Add(widget);                 // re-host — the re-anchor may run at parenting time,
+        host.RunUntilIdle();                     // BEFORE the attach walk's resume; the replay covers it
+
+        Assert.Equal("Y", vm2.Selected);         // the re-hosted view activation-pushed into the NEW VM
+        Assert.Equal("X", vm1.Selected);         // …and never wrote back into the old one
+    }
+
+    [Fact] // audit: a binding installed on a DEPARTED element is born quiesced — no write-back resurrection
+    public void B197_InstallWhileDeparted_BornQuiesced_ReattachRearms()
+    {
+        var vm = new ChooserVm { Selected = "seed" };
+        var widget = new BindWidget { DataContext = vm };
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(40, 12) });
+        var root = new StackPanel();
+        root.Children.Add(widget);
+        host.ShowRoot(root);
+        host.RunUntilIdle();
+
+        root.Children.Remove(widget);            // departed (attach → detach)
+        host.RunUntilIdle();
+
+        BindingOperations.Install(widget, BindWidget.TextProperty,
+            new Binding("Selected") { Mode = BindingMode.TwoWay });
+        widget.SetValue(BindWidget.TextProperty, "fresh-while-detached");
+        Assert.Equal("seed", vm.Selected);       // the fresh install inherited the departed quiesce
+
+        BindingOperations.Install(widget, BindWidget.TextProperty,
+            new Binding("Selected") { Mode = BindingMode.OneWayToSource });
+        Assert.Equal("seed", vm.Selected);       // an OWTS install's activation write defers too
+
+        root.Children.Add(widget);               // re-attach → resume replays the deferred activation
+        host.RunUntilIdle();
+        Assert.Equal("fresh-while-detached", vm.Selected);
+    }
+
+    [Fact] // audit: Clear's cross-sibling gap — an earlier-severed sibling must not phantom-write through a later one
+    public void B198_ChildrenClear_CrossSiblingCascade_NoPhantomWrite()
+    {
+        var vm = new ChooserVm { Selected = "beta" };
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(40, 12) });
+        var panel = new StackPanel { DataContext = vm };
+        var chooser = new ListBox();             // index 0 — the DEPENDENT sits below its provider,
+        var provider = new Border();             // index 1 — so Clear's backward loop severs the provider first
+        panel.Children.Add(chooser);
+        panel.Children.Add(provider);
+        BindingOperations.Install(chooser, ItemsControl.ItemsSourceProperty,
+            new Binding("DataContext.Items") { Source = provider });
+        BindingOperations.Install(chooser, SelectingItemsControl.SelectedItemProperty,
+            new Binding("Selected") { Mode = BindingMode.TwoWay });
+
+        host.ShowRoot(panel);
+        host.RunUntilIdle();
+        Assert.Equal("beta", chooser.SelectedItem); // forward sync sanity
+
+        panel.Children.Clear();                  // batch removal: EVERY child is departing —
+        host.RunUntilIdle();                     // the pre-pass quiesces all subtrees before the first disown
+
+        Assert.Equal("beta", vm.Selected);       // the provider's severance never round-tripped through the chooser
+    }
+
+    [Fact] // audit: the documented teardown-then-detach PUBLIC pattern must not throw (PD21 tolerance)
+    public void B199_TearDownThenDetach_PublicPattern_NoThrow()
+    {
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(40, 12) });
+        var root = new StackPanel();
+        var list = new ListBox { ItemsSource = new List<string> { "alpha", "beta" } };
+        root.Children.Add(list);                 // a real styled control (control themes install style frames)
+        host.ShowRoot(root);
+        host.RunUntilIdle();
+
+        list.TearDown();                         // the documented order: permanent-discard sweep first…
+        root.Children.Remove(list);              // …then detach — the walk must tolerate torn elements
+        host.RunUntilIdle();
+
+        Assert.False(list.IsAttachedToTree);     // the detach walk ran to completion
+        Assert.Null(list.VisualParent);
+    }
 }

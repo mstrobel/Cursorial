@@ -195,6 +195,16 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
         if (element.StyleStateInternal is not {} state)
             return;
 
+        // A TORN-DOWN element's store already evicted every frame (ValueStore.TearDown nulls frame.Store
+        // without informing the engine); retracting again throws PD21 ("the frame is not installed").
+        // Detaching after TearDown is the documented public pattern ("detaching the subtree is the
+        // caller's responsibility"), so drop the stale state without touching the dead store (BD22 audit).
+        if (element.IsTornDown)
+        {
+            element.StyleStateInternal = null;
+            return;
+        }
+
         RetractAllFrames(element, state);
         element.StyleStateInternal = null; // permanent drop — reattach rebuilds from scratch (SD15)
         DrainQueue();

@@ -409,11 +409,43 @@ public abstract partial class UIElement : UIObject
 
     // ───────────────────────────── lifecycle walks ─────────────────────────────
 
+    /// <summary>True between a detach-after-attach and the next re-attach — a new binding installed on a
+    /// departed element is BORN QUIESCED (BD22: the departure quiesced its siblings; a fresh install must
+    /// not resurrect write-back on the same departed view). Never set pre-first-attach.</summary>
+    internal bool IsDepartedFromTree { get; private set; }
+
+    /// <summary>
+    /// Quiesces the reverse binding lane of an entire subtree ahead of a BATCH removal (BD22 — the
+    /// cross-sibling gap: every child of a multi-child removal is departing, but the per-subtree detach
+    /// walk only quiesces its own elements; an earlier sibling's severance must not phantom-write through
+    /// a later, still-unquiesced one). Idempotent with the detach walk's own quiesce.
+    /// </summary>
+    internal static void QuiesceSubtreeBindings(UIElement element)
+    {
+        Data.BindingOperations.QuiesceReverse(element);
+
+        if (element._visualChildren is {} children)
+        {
+            for (var i = 0; i < children.Count; i++)
+                QuiesceSubtreeBindings(children[i]);
+        }
+
+        if (element._logicalChildren is {} logical)
+        {
+            for (var i = 0; i < logical.Count; i++)
+            {
+                if (!ReferenceEquals(logical[i]._visualParent, element))
+                    QuiesceSubtreeBindings(logical[i]); // logical-only children (visual ones covered above)
+            }
+        }
+    }
+
     private void OnAttachedToTreeCore(in TreeAttachmentEventArgs e)
     {
         // Re-arm the reverse binding lane FIRST (before class/instance handlers): an attached view binds
         // two-way again — the quiesce/resume pair around detach/attach ("a departing view must not write
         // to its source"; a re-hosted one must). Cheap for unbound elements (a null host-state probe).
+        IsDepartedFromTree = false;
         Data.BindingOperations.ResumeReverse(this);
         OnAttachedToTree(e);
         AttachedToTree?.Invoke(this, e);
@@ -443,6 +475,7 @@ public abstract partial class UIElement : UIObject
         // loss → items-source clear → selection clear chain must never round-trip into a view-model as
         // a phantom edit (the chooser/dialog selection-loss bug). Pending LostFocus/Explicit edits are
         // DISCARDED — a departing view is cancel semantics; commits happen at focus loss while attached.
+        IsDepartedFromTree = true; // new installs on this element are born quiesced until re-attach (BD22)
         Data.BindingOperations.QuiesceReverse(this);
         OnDetachedFromTree(e);
         DetachedFromTree?.Invoke(this, e);
@@ -576,6 +609,11 @@ public abstract partial class UIElement : UIObject
     }
 
     private bool _tornDown; // set once by TearDown() — permanent-detach is one-shot (idempotent + re-entrancy safe)
+
+    /// <summary>Whether <see cref="TearDown"/> has run — the styling detach skips frame retraction on a torn
+    /// store (its frames were already evicted; retracting again throws PD21 — the BD22 audit's
+    /// teardown-then-detach public-pattern fix).</summary>
+    internal bool IsTornDown => _tornDown;
 
     // ───────────────────────────── permanent detach (teardown sweep) ─────────────────────────────
 

@@ -163,6 +163,18 @@ public sealed class UIElementCollection : IList<UIElement>, IReadOnlyList<UIElem
     {
         _owner.VerifyAccess();
 
+        // BATCH-QUIESCE every child subtree BEFORE the first disown (BD22 audit): in a multi-child
+        // removal every child is departing, but the per-subtree detach walk quiesces only ITS elements —
+        // an earlier-disowned sibling's severance could cascade into a later, still-unquiesced sibling
+        // (a chooser whose ItemsSource is Source-anchored on a sibling) and phantom-write its view-model.
+        // Quiescing all departing subtrees up front closes the cross-sibling gap; each subtree's own
+        // detach walk then runs as before (its quiesce calls are idempotent).
+        if (_owner.IsAttachedToTree)
+        {
+            for (var i = _items.Count - 1; i >= 0; i--)
+                UIElement.QuiesceSubtreeBindings(_items[i]);
+        }
+
         // DisownChild detaches tree relationships only — it never touches _items, so this loop is
         // NOT mutating the list it iterates; the single _items.Clear() below empties it. (Backward
         // so detach walks run last-to-first, matching per-item RemoveAt order.)

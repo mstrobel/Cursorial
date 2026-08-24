@@ -1111,6 +1111,20 @@ internal sealed class XamlParser
             return;
         }
 
+        // W2e (the G4 close): a Text value on a member the ROUTE PROBE marked unconvertible fails HERE,
+        // positioned, in both lanes — the identical document previously built silently and load-Fataled.
+        // Unknown routes (un-probed providers, the symbol lane's conservative default) are never judged.
+        if (member.Route.Kind is RouteKind.None or RouteKind.Ambiguous)
+        {
+            _builder.Error(XamlDiagnosticCodes.NoConversionRoute,
+                           member.Route.Kind == RouteKind.Ambiguous
+                               ? $"Ambiguous conversion routes into '{member.ValueType.Name}' for '{member.Name}' — add a converter for the type."
+                               : $"No conversion route from text to '{member.ValueType.Name}' for '{member.Name}' — " +
+                                 "add a converter, a conversion operator/constructor/Parse method, or use a markup extension.",
+                           line,
+                           column);
+        }
+
         // W2 CR5: a dotted UIProperty token ("UIElement.Opacity" / "my:Owner.Prop") captures its owner's
         // namespace NOW, while the reader's xmlns scope is live — end-of-object resolution reads it back
         // (the reader is dead by then). Same stash the Setter path uses: (internedNsId + 1) in the Text

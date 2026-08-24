@@ -112,11 +112,20 @@ public sealed class XamlMember
     /// </summary>
     public XamlMember? ResolvedPropertyMember { get; private init; }
 
+    /// <summary>
+    /// The member's W2e conversion route (design doc <c>xaml-conversion-routes.md</c> CR1): stamped by
+    /// the provider at member build via <see cref="RouteProbe.Compute"/> with its lane's knowledge.
+    /// Defaults to <see cref="RouteKind.Unknown"/> (providers that predate the probe / the symbol lane's
+    /// conservative default) — consumers make NO route-based decisions on Unknown.
+    /// </summary>
+    public ConversionRoute Route { get; init; }
+
     /// <summary>Clones this member with <see cref="ResolvedPropertyMember"/> stamped (the CR5 rewrite).</summary>
     internal XamlMember WithResolvedPropertyMember(XamlMember resolved)
         => new(Name, ValueType, Property, SetClr, Get, Converter, IsEvent, IsAttachable)
            {
                IsDeferredContent = IsDeferredContent,
                ResolvedPropertyMember = resolved,
+               Route = Route,
            };
 }

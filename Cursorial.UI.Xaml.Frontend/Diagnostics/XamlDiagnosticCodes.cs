@@ -85,6 +85,11 @@ public static class XamlDiagnosticCodes
     /// owner-qualify (<c>"UIElement.Opacity"</c>) or move under a <c>TargetType</c>-bearing scope.</summary>
     public const string UIPropertyTokenNoTarget = "CUR2113";
 
+    /// <summary>A text value on a member with NO conversion route (W2e, the G4 close) — the document
+    /// would load-Fatal at runtime; it fails at parse in BOTH lanes instead. Covers the ambiguous-routes
+    /// case too (two viable bridge candidates of one kind — add a converter).</summary>
+    public const string NoConversionRoute = "CUR2402";
+
     /// <summary>A <c>StaticResource</c> key was not found / is a forward reference.</summary>
     public const string ResourceNotFound = "CUR2103";
 

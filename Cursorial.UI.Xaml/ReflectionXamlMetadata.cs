@@ -342,6 +342,20 @@ public sealed class ReflectionXamlMetadata : IXamlTypeMetadataProvider, IXamlSta
 
     // ── Members ────────────────────────────────────────────────────────────────────────────────────
 
+    // The W2e route stamp (xaml-conversion-routes.md CR1): this lane's knowledge — the parse converter,
+    // the pre-bridge runtime chain, and ladder convertibility of bridge sources — fed to the SHARED probe
+    // whose precedence/ambiguity rules live in the frontend (no lane drift possible on the rules).
+    private static readonly IXamlType StringXamlType = new ReflectionXamlType(typeof(string));
+
+    private static ConversionRoute ComputeRoute(Type valueType, ITypeConverter? parseConverter)
+        => RouteProbe.Compute(
+            new ReflectionXamlType(Nullable.GetUnderlyingType(valueType) ?? valueType), // unwrap like every chain link
+            hasParseConverter: parseConverter is not null,
+            hasRuntimeConverter: (XamlConverters.For(valueType) ?? XamlConverters.BclConverterForType(valueType)) is not null,
+            sourceConvertible: static s => s.UnderlyingSystemType is { } st &&
+                                           (XamlConverters.For(st) ?? XamlConverters.BclConverterForType(st)) is not null,
+            stringType: StringXamlType);
+
     [UnconditionalSuppressMessage("Trimming", "IL2070", Justification = "Member resolution over a resolved XAML type; X5 generator supplies trim-clean members.")]
     [UnconditionalSuppressMessage("Trimming", "IL2075", Justification = "Member resolution over a resolved XAML type; X5 generator supplies trim-clean members.")]
     private XamlMember? BuildMember(Type ownerType, string name)
@@ -373,6 +387,7 @@ public sealed class ReflectionXamlMetadata : IXamlTypeMetadataProvider, IXamlSta
                 isAttachable: uiProperty.IsAttached)
             {
                 IsDeferredContent = uiProperty.PropertyType == typeof(ITemplateContent),
+                Route = ComputeRoute(uiProperty.PropertyType, XamlConverters.ForMember(wrapper, uiProperty.PropertyType)),
             };
         }
 
@@ -399,6 +414,7 @@ public sealed class ReflectionXamlMetadata : IXamlTypeMetadataProvider, IXamlSta
                 isAttachable: false)
             {
                 IsDeferredContent = prop.PropertyType == typeof(ITemplateContent),
+                Route = ComputeRoute(prop.PropertyType, XamlConverters.ForMember(prop, prop.PropertyType)),
             };
         }
 
@@ -420,6 +436,7 @@ public sealed class ReflectionXamlMetadata : IXamlTypeMetadataProvider, IXamlSta
                 isAttachable: false)
             {
                 IsDeferredContent = fieldInfo.FieldType == typeof(ITemplateContent),
+                Route = ComputeRoute(fieldInfo.FieldType, XamlConverters.ForMember(null, fieldInfo.FieldType)),
             };
         }
 

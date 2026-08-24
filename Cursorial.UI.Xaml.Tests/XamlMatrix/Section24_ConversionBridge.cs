@@ -53,6 +53,11 @@ public sealed class ThrowingParseWrapped
     public static ThrowingParseWrapped Parse(string text) => throw new FormatException($"bad payload '{text}'");
 }
 
+public sealed class Unconvertible
+{
+    // No single-param ctor, no operators, no Parse — the ROUTE PROBE finds nothing.
+}
+
 public sealed class BridgeHost : Control
     {
         public ImplicitWrapped? Implicit { get; set; }
@@ -62,6 +67,7 @@ public sealed class BridgeHost : Control
         public AmbiguousWrapped? Ambiguous { get; set; }
         public StructWrapped? NullableCtor { get; set; }
         public ThrowingParseWrapped? Throwing { get; set; }
+        public Unconvertible? Dead { get; set; }
     }
 
 public sealed class Section24_ConversionBridge : LoaderTestBase
@@ -94,10 +100,12 @@ public sealed class Section24_ConversionBridge : LoaderTestBase
         Assert.Equal("parsed:hello", host.Parsed!.Raw);
     }
 
-    [Fact] // XC5: two viable routes of ONE kind is a loud positioned error — never a silent pick
+    [Fact] // XC5: two viable routes of ONE kind is a loud positioned error — never a silent pick. W2e
+    // upgraded it from a LOAD-time CUR2401 to a PARSE-time CUR2402 (the route probe judges at parse, so
+    // both lanes reject the document before any instantiation — the G4 shape).
     public void XC5_AmbiguousRoutes_IsPositionedError()
     {
-        var ex = ThrowsLoad("CUR2401", () => Load(
+        var ex = ThrowsLoad("CUR2402", () => Load(
             "<BridgeHost Ambiguous=\"1\"/>"));
 
         Assert.Contains("Ambiguous conversion routes", ex.Message);
@@ -137,6 +145,17 @@ public sealed class Section24_ConversionBridge : LoaderTestBase
     {
         var host = Load<BridgeHost>("<BridgeHost NullableCtor=\"4.5\"/>");
         Assert.Equal(4.5, host.NullableCtor!.Value.Value);
+    }
+
+    [Fact] // XC10 (W2e — the G4 close): a text value on a member with NO route of any kind is a
+    // positioned PARSE error naming the fix — the document previously built silently and died at load
+    public void XC10_NoRoute_IsPositionedParseError()
+    {
+        var ex = ThrowsLoad("CUR2402", () => Load("<BridgeHost Dead=\"whatever\"/>"));
+
+        Assert.Contains("No conversion route", ex.Message);
+        Assert.Contains("Unconvertible", ex.Message);
+        Assert.Contains("markup extension", ex.Message); // the guidance names the escape hatches
     }
 
     private sealed class FixedCtorConverter : ITypeConverter

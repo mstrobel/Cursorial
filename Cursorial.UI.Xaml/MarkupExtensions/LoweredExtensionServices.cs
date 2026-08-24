@@ -105,7 +105,12 @@ public sealed class LoweredExtensionServices :
     {
         if (value is string text && targetType != typeof(string) && targetType != typeof(object))
         {
-            var converter = XamlConverters.For(targetType) ?? XamlConverters.BclConverterForType(targetType);
+            // The full loader fallback chain — ladder, BCL rung, CR7 bridge (audit: this is ConvertText's
+            // runtime twin and must track its chain exactly, or an extension-provided string converts
+            // differently in the lowered lane than the reflective one).
+            var converter = XamlConverters.For(targetType)
+                            ?? XamlConverters.BclConverterForType(targetType)
+                            ?? XamlConverters.BridgeConverterForType(targetType);
             if (converter is not null)
                 return converter.ConvertFromString(text, new XamlValueContext(CultureInfo.InvariantCulture, null, targetType, null, 0, 0));
         }

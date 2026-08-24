@@ -29,8 +29,10 @@ converters, the bridge rung, the transitions API reshape) and sketches W3 (`x:Ty
   never a silent pick. The bridge rungs (ops/ctor/Parse) are LAST so no existing conversion changes
   behavior.
 - **CR4 — generic converters** (the AOT half): a converter type with type arguments MIRRORING the
-  converted type's closes over them — `[TypeConverter(typeof(OptionalConverter<>))]` on `Optional<T>`
-  resolves `OptionalConverter<double>` for `Optional<double>`. The BAKED lane emits the closed
+  converted type's closes over them. For `Optional<T>` the LADDER is the registration (W2c realized —
+  `Cursorial.UI` cannot reference the converter's assembly, so the attribute form is unrealizable there);
+  the open-generic `[TypeConverter(typeof(C<>))]` closing convention for USER types is a W2e
+  route-vocabulary target, not yet implemented in either backend. The BAKED lane emits the closed
   `new OptionalConverter<double>()` — statically-rooted, reflection-free, no DAM scaffolding; the runtime
   reflective lane closes via `MakeGenericType` (licensed — that lane is RUC and trimmed from strict
   publishes; value-type instantiations are exactly what NativeAOT cannot create at runtime). The typed

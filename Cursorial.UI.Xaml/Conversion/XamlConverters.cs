@@ -435,12 +435,16 @@ public static class XamlConverters
     }
 
     [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL2076",
-        Justification = "The W2c generic-converter closing (the ONE MakeGenericType in the ladder): runs only " +
-                        "in the RUC reflective lane — the lowered lane bakes the closed `new OptionalConverter<T>()` " +
-                        "form statically and never calls this.")]
+        Justification = "The W2c generic-converter closing (the ONE MakeGenericType in the ladder). The lowered " +
+                        "lane bakes the closed `new OptionalConverter<T>()` form at member AND Setter positions, " +
+                        "which statically compiles those instantiations; residual __ConvertXamlValue positions " +
+                        "(nested extension args) reach this closing at runtime, where under strict AOT it succeeds " +
+                        "for any instantiation a baked form already rooted and fails with a CLEAR " +
+                        "PlatformNotSupportedException (never silent corruption) for an exotic un-baked one. " +
+                        "The W2e route probe is the structural close (fold/bake decided once at parse).")]
     [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("AOT", "IL3050",
-        Justification = "Value-type generic instantiation via MakeGenericType is exactly what NativeAOT cannot " +
-                        "create — and exactly why the strict-AOT lane routes through the emitted closed form instead.")]
+        Justification = "See IL2076 above — the honest residual: an un-baked value-type instantiation reached " +
+                        "only through a nested-arg __ConvertXamlValue fails loudly under NativeAOT.")]
     private static ITypeConverter? CloseOptionalConverter(Type closedOptional)
     {
         var inner = closedOptional.GetGenericArguments()[0];
@@ -873,12 +877,20 @@ internal static class ConversionBridge
     private static readonly ConcurrentDictionary<Type, ITypeConverter?> Cache = new();
 
     [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL2070",
-        Justification = "The bridge probe reflects over the member type's public surface — the RUC " +
-                        "reflective lane only; the lowered lane emits the typed route statically.")]
+        Justification = "The bridge probe reflects over the member type's public surface. BOTH lanes reach it " +
+                        "at runtime (the lowered __ConvertXamlValue helper chains it deliberately — exact loader " +
+                        "parity); the probed types arrive as typeof-rooted member types, so their public " +
+                        "ctors/statics survive trimming via the rooted metadata. Typed static emission joins the " +
+                        "W2e route probe.")]
     public static ITypeConverter? For(Type targetType)
         => Cache.GetOrAdd(targetType, static t =>
         {
             if (t.IsAbstract || t.IsInterface || t == typeof(string) || t == typeof(object))
+                return null;
+
+            // Arrays are DENIED (audit): the SZArray pseudo-constructor's Int32 parameter is a LENGTH,
+            // never a value conversion — `Tags="3"` silently yielded a 3-element default-filled array.
+            if (t.IsArray)
                 return null;
 
             // Style is DENIED (audit): its Selector ctor is a viable route, so a text Style attribute

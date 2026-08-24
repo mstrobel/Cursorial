@@ -114,19 +114,8 @@ internal static class LoweringEmitter
 
         if (ctx.UsesConverter)
         {
-            // The (hand-written, AOT-clean) converter ladder for typed literals, chained with the CR7
-            // bridge rung (W2d) so the lowered lane resolves the SAME last-fallback routes the loader
-            // does — parity by construction (the bridge probe is reflective, but over typeof-rooted
-            // types; the typed-emission optimization joins the W2e route probe). No other reflection
-            // except the named-color/TypeDescriptor edges in the ladder itself.
             sb.AppendLine();
-            sb.AppendLine($"{ci}    private static object? __ConvertXamlValue(global::System.Type targetType, string text)");
-            sb.AppendLine($"{ci}        => (global::Cursorial.UI.Xaml.XamlConverters.For(targetType)");
-            sb.AppendLine($"{ci}            ?? global::Cursorial.UI.Xaml.XamlConverters.BclConverterForType(targetType)");
-            sb.AppendLine($"{ci}            ?? global::Cursorial.UI.Xaml.XamlConverters.BridgeConverterForType(targetType)) is {{ }} __c");
-            sb.AppendLine($"{ci}            ? __c.ConvertFromString(text, new global::Cursorial.UI.Xaml.XamlValueContext(");
-            sb.AppendLine($"{ci}                global::System.Globalization.CultureInfo.InvariantCulture, null, targetType, null, 0, 0))");
-            sb.AppendLine($"{ci}            : text;");
+            AppendConvertXamlValueHelper(sb, indent: ci + "    ", isLocalFunction: false);
         }
 
         sb.AppendLine($"{ci}}}");
@@ -207,11 +196,7 @@ internal static class LoweringEmitter
         {
             // A method-scoped local function (each builder owns its own) — a shared static would duplicate
             // across the per-file partial fragments (CS0111). Declared after the return (hoisted, legal).
-            sb.AppendLine("            static object? __ConvertXamlValue(global::System.Type targetType, string text)");
-            sb.AppendLine("                => global::Cursorial.UI.Xaml.XamlConverters.For(targetType) is { } __c");
-            sb.AppendLine("                    ? __c.ConvertFromString(text, new global::Cursorial.UI.Xaml.XamlValueContext(");
-            sb.AppendLine("                        global::System.Globalization.CultureInfo.InvariantCulture, null, targetType, null, 0, 0))");
-            sb.AppendLine("                    : text;");
+            AppendConvertXamlValueHelper(sb, indent: "            ", isLocalFunction: true);
         }
 
         sb.AppendLine("        }");
@@ -1553,6 +1538,17 @@ internal static class LoweringEmitter
             return XamlDataTypeScope.ResolveToken(c.Doc, text, c.Resolver) is { } resolved
                 ? $"typeof({Global(resolved, false)})"
                 : null;
+
+        // The compile-time converter bake (audit — the W2c closed-form Optional above all: without this a
+        // Setter's Optional-valued text routed through __ConvertXamlValue to the RUNTIME MakeGenericType
+        // closing, which strict AOT cannot execute for statically-uncompiled value-type instantiations).
+        // Nullable unwraps first so an Optional<T>? slot bakes the same closed form.
+        var bakeType = propValueType is INamedTypeSymbol { Name: "Nullable", Arity: 1 } n &&
+                       n.ContainingNamespace is { Name: "System", ContainingNamespace.IsGlobalNamespace: true }
+                           ? n.TypeArguments[0]
+                           : propValueType;
+        if (AttributedConverterExpr(bakeType, text) is { } attributed)
+            return attributed;
 
         c.UsesConverter = true;
         return $"__ConvertXamlValue(typeof({Global(propValueType, false)}), \"{Escape(text)}\")";
@@ -4600,6 +4596,25 @@ internal static class LoweringEmitter
 
     private static bool AreSameType(ITypeSymbol a, ITypeSymbol b)
         => SymbolEqualityComparer.Default.Equals(a, b);
+
+    /// <summary>
+    /// Emits the ONE <c>__ConvertXamlValue</c> helper body (the audit-mandated single source — the RD-root
+    /// lane silently kept a pre-W2d ladder-only copy when the x:Class copy moved twice): the full runtime
+    /// fallback chain the loader's <c>ConvertText</c> uses — the pure ladder, the BCL rung, the CR7
+    /// bridge — so every lowered lane resolves the identical routes. The bridge probe is reflective, but
+    /// over typeof-rooted types; the typed-emission optimization joins the W2e route probe.
+    /// </summary>
+    private static void AppendConvertXamlValueHelper(StringBuilder sb, string indent, bool isLocalFunction)
+    {
+        var declaration = isLocalFunction ? "static" : "private static";
+        sb.AppendLine($"{indent}{declaration} object? __ConvertXamlValue(global::System.Type targetType, string text)");
+        sb.AppendLine($"{indent}    => (global::Cursorial.UI.Xaml.XamlConverters.For(targetType)");
+        sb.AppendLine($"{indent}        ?? global::Cursorial.UI.Xaml.XamlConverters.BclConverterForType(targetType)");
+        sb.AppendLine($"{indent}        ?? global::Cursorial.UI.Xaml.XamlConverters.BridgeConverterForType(targetType)) is {{ }} __c");
+        sb.AppendLine($"{indent}        ? __c.ConvertFromString(text, new global::Cursorial.UI.Xaml.XamlValueContext(");
+        sb.AppendLine($"{indent}            global::System.Globalization.CultureInfo.InvariantCulture, null, targetType, null, 0, 0))");
+        sb.AppendLine($"{indent}        : text;");
+    }
 
     private static bool AreRelatedTypes(ITypeSymbol a, ITypeSymbol b)
         => AreSameType(a, b) || IsAssignableTo(a, b) || IsAssignableTo(b, a);

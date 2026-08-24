@@ -109,6 +109,42 @@ converters, the bridge rung, the transitions API reshape) and sketches W3 (`x:Ty
   Type-argument INFERENCE is a severable phase 2. Generic `x:Class` deferred. The keyframe markup story
   (`Keyframe<T>` — the sweep's largest hole) is W3's flagship consumer.
 
+## 1a. W2e implementation plan (pinned before code, 2026-08-24)
+
+The probe's home is `XamlType`/`XamlMember` construction time (NOT parse time per se — the route is a
+property of the MEMBER, cached with it): when a metadata provider builds a `XamlMember`, the shared
+frontend computes its `ConversionRoute` once from backend-answered capability queries.
+
+- **`ConversionRoute`** (frontend, a small readonly struct): `Kind` (the CR2 vocabulary) + `SourceType`
+  (`IXamlType?` — the bridge route's S) + `RouteMemberName` (ctor/op/Parse disambiguation for the
+  emitter) + `IsContextFree`. Stored as `XamlMember.Route`.
+- **TSA capability queries** (CR9's remainder): `IXamlType` gains `TypeArguments`
+  (`IReadOnlyList<IXamlType>`), `HasPublicParameterlessConstructor`, and
+  `GetConversionRouteCandidates(kind)` — backend-enumerated single-param routes (reflection walks
+  methods/ctors; Roslyn walks symbols). The PROBE (precedence, one-viable-per-kind, denials) is shared
+  netstandard2.0 code over those answers — it cannot drift between lanes.
+- **Existing systems re-expressed, not rewritten**: the ladder's curated rows become
+  `RegisteredConverter` routes (the provider consults `XamlConverters`-equivalent registries it already
+  owns); `Selector`/`UIProperty` become `Contextual` (CR5's `ResolvedPropertyMember` machinery is
+  unchanged — the route only NAMES the mechanism); the BCL attribute is `AttributedConverter`; the W2d
+  runtime bridge STAYS as the loader's execution of `ImplicitOp/ExplicitOp/Constructor/ParseMethod`
+  routes (its probe is then downgraded to a consistency assert against the recorded route).
+- **The G4 close**: the parser, seeing a Text value on a member whose route is `None` (no mechanism),
+  reports a positioned CUR2402-class "no conversion route to `T`" in BOTH lanes at parse — today that
+  document builds silently and dies at load. The emitter's `__ConvertXamlValue` raw-string fallthrough
+  becomes unreachable for diagnosed members.
+- **Per-type opt-out** replaces the deny-list: `[NoConversionBridge]`-shaped metadata (a
+  `Cursorial.Markup` attribute both backends read) supersedes the hardcoded `Style`/array denials
+  (arrays stay denied structurally — the pseudo-ctor is never a conversion).
+- **The open-generic attribute closing** (CR4's remainder): `[TypeConverter(typeof(C<>))]` on a USER
+  generic type closes with the converted type's arguments — resolvable in both backends via
+  `TypeArguments`; the baked lane emits the closed form (the `OptionalConverter<T>` emission
+  generalized), the reflective lane `MakeGenericType`s.
+- **CR11 folding**: `Route.IsContextFree` drives the parse-time fold uniformly (bridged values fold too
+  — today they never do); the fold executes the ROUTE, not a converter lookup.
+- Sequenced as: routes + queries + `None` diagnostics first (additive), then the special-case
+  re-expressions one at a time, each behind the full gate suite + drift tests, then the audit.
+
 ## 2. Non-goals
 
 - No accept-path change to pending-edit semantics (binding-matrix §17's cancel-semantics note — separate

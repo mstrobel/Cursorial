@@ -1,10 +1,5 @@
 // ReSharper disable CheckNamespace
 
-using System.ComponentModel;
-using System.Diagnostics.CodeAnalysis;
-using System.Globalization;
-using System.Reflection;
-
 namespace Cursorial.UI;
 
 /// <summary>
@@ -12,14 +7,13 @@ namespace Cursorial.UI;
 /// <c>null</c>/<c>default</c> so an animation track can tell "no <c>From</c> given ⇒ snapshot the
 /// property at track start" from "<c>From</c> set to the default value".
 /// </summary>
+/// <remarks>
+/// XAML conversion is the ladder's typed <c>OptionalConverter&lt;T&gt;</c> in <c>Cursorial.UI.Xaml</c>
+/// (W2c CR4 — the lowered lane bakes the closed form statically; the runtime ladder closes it
+/// reflectively in its RUC lane). The former reflective <c>System.ComponentModel</c> converter — and the
+/// trimming annotations its reflection demanded — are retired: this type carries no XAML machinery.
+/// </remarks>
 /// <typeparam name="T">The wrapped value type.</typeparam>
-[TypeConverter(typeof(OptionalConverter))]
-[UnconditionalSuppressMessage("Trimming", "IL2111",
-    Justification = "The DAM-annotated converter ctor is reflection-reached only by the REFLECTIVE " +
-                    "metadata provider (the RUC-annotated runtime-XAML lane); the AOT lane bakes " +
-                    "`new OptionalConverter(typeof(...))` literals that satisfy the annotation statically.")]
-[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties |
-                            DynamicallyAccessedMemberTypes.PublicConstructors)]
 public readonly struct Optional<T>
 {
     /// <summary>Whether a value was explicitly set.</summary>
@@ -46,74 +40,4 @@ public readonly struct Optional<T>
 
     /// <inheritdoc/>
     public override string ToString() => HasValue ? $"Optional({Value})" : "Optional.Unset";
-}
-
-public sealed class OptionalConverter : TypeConverter
-{
-    [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties |
-                                DynamicallyAccessedMemberTypes.PublicConstructors)]
-    private readonly Type _targetType;
-    private readonly Type _innerType;
-    private readonly TypeConverter _innerConverter;
-    private readonly ConstructorInfo? _constructor;
-    private readonly PropertyInfo _hasValue;
-    private readonly PropertyInfo _value;
-
-    /// <param name="targetType">The closed <see cref="Optional{T}"/> instantiation. The DAM
-    /// annotation is the AOT contract: the ctor reflects over the target's properties and ctors, and
-    /// every baked call site (`new OptionalConverter(typeof(Optional&lt;double&gt;))` in lowered
-    /// output) is a `typeof` literal, so ILC's dataflow roots exactly what this ctor resolves —
-    /// without it, trimming strips HasValue/Value and the ctor throws at startup.</param>
-    [UnconditionalSuppressMessage("Trimming", "IL2026",
-        Justification = "TypeDescriptor.GetConverter runs over the INNER type — a primitive/value type " +
-                        "whose intrinsic converter is statically available; an exotic inner type whose " +
-                        "custom converter was trimmed degrades to a failed string parse, never a crash.")]
-    [UnconditionalSuppressMessage("Trimming", "IL2077",
-        Justification = "The inner type is a generic argument of the DAM-annotated target — its members " +
-                        "ride along with the closed instantiation the baked typeof literal roots.")]
-    public OptionalConverter(
-        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties |
-                                    DynamicallyAccessedMemberTypes.PublicConstructors)]
-        Type targetType)
-    {
-        if (targetType.IsGenericType is false || targetType.GetGenericTypeDefinition() != typeof(Optional<>))
-            throw new ArgumentException("Target type must be an Optional<T> instantiation.", nameof(targetType));
-
-        _targetType = targetType;
-        _innerType = targetType.GetGenericArguments()[0];
-        _innerConverter = TypeDescriptor.GetConverter(_innerType);
-        _constructor = _targetType.GetConstructor([_innerType]);
-
-        _hasValue = _targetType.GetProperty(nameof(Optional<>.HasValue)) ??
-                    throw new InvalidOperationException(
-                        $"Could not resolve {nameof(Optional<>)}<{_innerType.Name}>.{nameof(Optional<>.HasValue)}");
-        
-        _value = _targetType.GetProperty(nameof(Optional<>.Value)) ??
-                    throw new InvalidOperationException(
-                        $"Could not resolve {nameof(Optional<>)}<{_innerType.Name}>.{nameof(Optional<>.Value)}");
-    }
-
-    public override bool CanConvertFrom(ITypeDescriptorContext? context, Type sourceType)
-    {
-        return _innerConverter.CanConvertFrom(context, sourceType);
-    }
-
-    public override object ConvertFrom(ITypeDescriptorContext? context, CultureInfo? culture, object value)
-    {
-        var baseValue = _innerType.IsInstanceOfType(value) ? value : _innerConverter.ConvertFrom(context, culture, value);
-        return _constructor!.Invoke([baseValue]);
-    }
-
-    public override bool CanConvertTo(ITypeDescriptorContext? context, [NotNullWhen(true)] Type? destinationType)
-    {
-        return _innerConverter.CanConvertTo(context, destinationType);
-    }
-
-    public override object? ConvertTo(ITypeDescriptorContext? context, CultureInfo? culture, object? value, Type destinationType)
-    {
-        if (_targetType.IsInstanceOfType(value))
-            return _hasValue.GetValue(value) is true ? _value.GetValue(value) : null;
-
-        return GetConvertToException(value, destinationType);
-    }
 }

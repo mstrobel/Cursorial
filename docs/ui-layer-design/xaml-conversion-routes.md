@@ -88,8 +88,11 @@ converters, the bridge rung, the transitions API reshape) and sketches W3 (`x:Ty
   assignability (CR8). Unlocks the sweep's remaining blockers end-to-end (`<DoubleTransition
   Property="Opacity" Duration="0:0:0.1"/>` in both lanes; the child-bearing `Transition.Transitions` fill
   rows land here).
-- **W2c** — generic converters (CR4): `OptionalConverter<T>`, the open-generic attribute-closing rule in
-  both metadata backends, W1's interim rung retired.
+- **W2c** — generic converters (CR4): DONE — the typed `OptionalConverter<T>` (Cursorial.UI.Xaml; the
+  LADDER is its registration — the attribute convention proper joins W2e route vocabulary, since
+  Cursorial.UI cannot reference the converter assembly), the ladder closes it reflectively in the RUC
+  lane, the emitter bakes the closed form, and the reflective OptionalConverter + its DAM scaffolding
+  are retired from Optional<T>.
 - **W2d** — the bridge rung (CR7), loader-first.
 - **W2e** — the route probe itself (CR1/CR2/CR3/CR11): `ConversionRoute` on `XamlMember`, the existing
   special cases (Setter.Property, Selector, the ladder's own dispatch) re-expressed as routes, parse-time

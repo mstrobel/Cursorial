@@ -2778,14 +2778,18 @@ internal static class LoweringEmitter
     /// </summary>
     private static string? AttributedConverterExpr(ITypeSymbol valueType, string text)
     {
-        // A closed Optional<T> routes through the runtime ladder (__ConvertXamlValue), NOT its BCL
-        // [TypeConverter]: the attributed OptionalConverter resolves the INNER conversion via
-        // TypeDescriptor, which cannot see ladder-only inner grammars (Color, brushes, …) — the ladder's
-        // Optional rung converts the inner type through the ladder itself, so both lanes agree. (The W2
-        // generic-converter convention replaces this special case.)
-        if (valueType is INamedTypeSymbol { IsGenericType: true, Name: "Optional" } opt &&
+        // A closed Optional<T> bakes the CLOSED generic converter (W2c CR4): a fully typed
+        // `new OptionalConverter<double>()` — statically rooted, reflection-free under strict AOT — whose
+        // body routes inner conversion through the runtime ladder (both lanes agree; the reflective
+        // MakeGenericType closing exists only in the loader's RUC lane).
+        if (valueType is INamedTypeSymbol { IsGenericType: true, Name: "Optional", TypeArguments.Length: 1 } opt &&
             opt.ContainingNamespace.ToDisplayString() == "Cursorial.UI")
-            return null;
+        {
+            return $"new global::Cursorial.UI.Xaml.OptionalConverter<{Global(opt.TypeArguments[0], false)}>()" +
+                   $".ConvertFromString(\"{Escape(text)}\", " +
+                   "new global::Cursorial.UI.Xaml.XamlValueContext(global::System.Globalization.CultureInfo.InvariantCulture, null, " +
+                   $"typeof({Global(valueType, false)}), null, 0, 0))";
+        }
 
         foreach (var attr in valueType.GetAttributes())
         {

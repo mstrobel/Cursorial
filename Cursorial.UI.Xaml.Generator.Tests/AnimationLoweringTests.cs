@@ -43,7 +43,7 @@ public class AnimationLoweringTests
         var (lowered, compilation) = Lower(xaml, view);
         Assert.DoesNotContain("ERROR X5", lowered);
         Assert.DoesNotContain("TODO X5", lowered);
-        Assert.DoesNotContain("OptionalConverter", lowered); // Optional routes through the ladder, not the baked BCL converter
+        Assert.Contains("OptionalConverter<double>", lowered); // the CLOSED generic converter — statically typed, reflection-free (W2c)
 
         var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(lowered)));
         var root = (StackPanel)Activator.CreateInstance(assembly.GetType("GenApp.Anim1")!)!;

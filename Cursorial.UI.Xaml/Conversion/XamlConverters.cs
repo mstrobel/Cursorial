@@ -102,7 +102,7 @@ public static class XamlConverters
         if (underlying == typeof(Cursorial.Animation.Easing)) return EasingConverter.Instance;
         if (underlying == typeof(RepeatBehavior)) return RepeatBehaviorConverter.Instance;
         if (underlying.IsGenericType && underlying.GetGenericTypeDefinition() == typeof(Optional<>))
-            return OptionalInnerLadderConverter.TryCreate(underlying); // inner type through THIS ladder (§9.10 W1)
+            return CloseOptionalConverter(underlying); // the typed generic converter, closed reflectively (W2c CR4)
         if (underlying == typeof(Themes.GlyphSetCarrier)) return GlyphSetCarrierConverter.Instance;
         if (underlying == typeof(Type)) return null; // x:Type handles this; no plain text converter
         if (typeof(IBrush).IsAssignableFrom(underlying)) return BrushConverter.Instance;
@@ -427,58 +427,20 @@ public static class XamlConverters
         }
     }
 
-    /// <summary>
-    /// A closed <c>Optional&lt;T&gt;</c>: converts the text as the INNER type through this ladder (falling
-    /// back to the BCL rung) and wraps via the <c>Optional&lt;T&gt;(T)</c> ctor. Exists because the
-    /// type-level BCL <c>OptionalConverter</c> resolves inner conversion through <c>TypeDescriptor</c>,
-    /// which cannot see ladder-only inner types (<c>Color</c>, brushes, …) — this row wins by ladder
-    /// precedence so <c>Optional&lt;Color&gt;</c> converts with the same grammar as bare <c>Color</c>.
-    /// Reflective by design (the runtime lane); the W2 generic-converter convention supersedes it.
-    /// </summary>
-    private sealed class OptionalInnerLadderConverter : ITypeConverter
+    [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL2076",
+        Justification = "The W2c generic-converter closing (the ONE MakeGenericType in the ladder): runs only " +
+                        "in the RUC reflective lane — the lowered lane bakes the closed `new OptionalConverter<T>()` " +
+                        "form statically and never calls this.")]
+    [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("AOT", "IL3050",
+        Justification = "Value-type generic instantiation via MakeGenericType is exactly what NativeAOT cannot " +
+                        "create — and exactly why the strict-AOT lane routes through the emitted closed form instead.")]
+    private static ITypeConverter? CloseOptionalConverter(Type closedOptional)
     {
-        private readonly Type _innerType;
-        private readonly bool _isContextFree;
-        private readonly System.Reflection.ConstructorInfo _wrap;
+        var inner = closedOptional.GetGenericArguments()[0];
+        if ((For(inner) ?? BclConverterForType(inner)) is null)
+            return null; // no inner grammar — no rung (the caller reports no converter, as before W1)
 
-        private OptionalInnerLadderConverter(Type innerType, bool isContextFree, System.Reflection.ConstructorInfo wrap)
-        {
-            _innerType = innerType;
-            _isContextFree = isContextFree;
-            _wrap = wrap;
-        }
-
-        // Parse-time folding must stay honest: fold only when the inner converter itself folds. Snapshot
-        // taken at creation (the fold decision rides the cached document anyway); the CONVERSION re-resolves.
-        public bool IsContextFree => _isContextFree;
-
-        [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL2070",
-            Justification = "AOT-safe on BOTH lanes: every closed Optional<T> reaching this rung is rooted by " +
-                            "a typeof(Optional<...>) literal (the emitted __ConvertXamlValue call in lowered " +
-                            "output; live member types in the RUC reflective lane), and Optional<T>'s type-level " +
-                            "[DynamicallyAccessedMembers(PublicProperties|PublicConstructors)] preserves the (T) " +
-                            "ctor through trimming, so GetGenericArguments/GetConstructor/Invoke resolve statically.")]
-        public static ITypeConverter? TryCreate(Type closedOptional)
-        {
-            var inner = closedOptional.GetGenericArguments()[0];
-            var innerConverter = For(inner) ?? BclConverterForType(inner);
-            if (innerConverter is null)
-                return null; // no inner grammar — fall through to the type-level BCL attribute rung unchanged
-
-            return closedOptional.GetConstructor([inner]) is { } wrap
-                       ? new OptionalInnerLadderConverter(inner, innerConverter.IsContextFree, wrap)
-                       : null;
-        }
-
-        // The inner converter is re-resolved PER CONVERSION (a dictionary hit): a later Register() override
-        // for the inner type must win here exactly as it does for a bare inner-typed member — a creation-time
-        // snapshot would freeze the pre-override converter into every cached Optional<T> rung forever.
-        public object ConvertFromString(string text, in XamlValueContext ctx)
-        {
-            var inner = For(_innerType) ?? BclConverterForType(_innerType)
-                        ?? throw Fail($"No converter for Optional inner type '{_innerType.Name}'.", ctx);
-            return _wrap.Invoke([inner.ConvertFromString(text, ctx)]);
-        }
+        return (ITypeConverter)Activator.CreateInstance(typeof(OptionalConverter<>).MakeGenericType(inner))!;
     }
 
     // ── Geometry (matrix XD12) ───────────────────────────────────────────────────────────────────
@@ -859,5 +821,31 @@ public static class XamlConverters
                 throw Fail($"'{text}' is not convertible to {_targetType.Name}: {ex.Message}", ctx, ex);
             }
         }
+    }
+}
+
+/// <summary>
+/// The typed <c>Optional&lt;T&gt;</c> converter (W2c CR4 — the generic-converter shape: the converter's
+/// type argument MIRRORS the converted type's). The LOWERED lane bakes the closed
+/// <c>new OptionalConverter&lt;double&gt;()</c> statically — a fully typed body, reflection-free under
+/// strict AOT; the runtime ladder closes the open generic via <c>MakeGenericType</c> in its RUC lane.
+/// Inner conversion routes through the LADDER, live-resolved per call so a later
+/// <see cref="XamlConverters.Register"/> for the inner type wins — never <c>TypeDescriptor</c> (the
+/// retired reflective <c>OptionalConverter</c>'s ladder-blindness was the W1-sweep
+/// <c>Optional&lt;Color&gt;</c> break).
+/// </summary>
+public sealed class OptionalConverter<T> : ITypeConverter
+{
+    /// <inheritdoc/>
+    public bool IsContextFree
+        => (XamlConverters.For(typeof(T)) ?? XamlConverters.BclConverterForType(typeof(T)))?.IsContextFree ?? false;
+
+    /// <inheritdoc/>
+    public object ConvertFromString(string text, in XamlValueContext context)
+    {
+        var inner = XamlConverters.For(typeof(T)) ?? XamlConverters.BclConverterForType(typeof(T))
+                    ?? throw XamlConverters.Fail($"No converter for Optional inner type '{typeof(T).Name}'.", context);
+
+        return new Cursorial.UI.Optional<T>((T)inner.ConvertFromString(text, context)!);
     }
 }

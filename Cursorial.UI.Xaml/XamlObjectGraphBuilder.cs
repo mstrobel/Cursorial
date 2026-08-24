@@ -795,6 +795,17 @@ internal sealed class XamlObjectGraphBuilder
                 return existing;
             }
 
+            // An ATTACHED collection member whose stored value is null: probe the owner's static
+            // Get{Name}(host) accessor — the WPF get-or-create idiom (Interaction.GetTriggers creates,
+            // associates, and stores the collection on first access), so <i:Interaction.Triggers>
+            // collection content fills a live collection instead of CUR2105-ing on the null slot.
+            if (member.Property is UIProperty { IsAttached: true } attached &&
+                GetOrCreateAttachedCollection(attached, member.Name, instance) is { } created)
+            {
+                BindCollectionAdders(created, out addItem, out addDictionaryItem);
+                return created;
+            }
+
             // A settable collection member typed as a collection: read it back if a getter exists, else
             // it must already be a collection instance — but with neither getter nor setter it's CUR2105.
             throw Fatal(XamlDiagnosticCodes.NoCollectionAccess,
@@ -803,6 +814,26 @@ internal sealed class XamlObjectGraphBuilder
 
         throw Fatal(XamlDiagnosticCodes.NoContentProperty,
             $"Type '{type.ClrType.Name}' has no content collection for implicit items.", line, column);
+    }
+
+    /// <summary>
+    /// The WPF attached-collection idiom: the OWNER type declares <c>public static TCollection Get{Name}(THost)</c>
+    /// whose first access creates, associates, and stores the collection (<c>Interaction.GetTriggers</c>,
+    /// the S8 <c>Transition</c> shape). Returns the accessor's result, or null when the owner declares no
+    /// single-parameter static getter (the caller falls through to CUR2105).
+    /// </summary>
+    [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL2075",
+        Justification = "The static Get{Name} accessor convention in the RequiresUnreferencedCode loader.")]
+    private static object? GetOrCreateAttachedCollection(UIProperty attached, string memberName, object instance)
+    {
+        var getter = attached.OwnerType.GetMethod(
+            "Get" + memberName, System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
+
+        if (getter is null || getter.GetParameters() is not { Length: 1 } parameters ||
+            !parameters[0].ParameterType.IsInstanceOfType(instance))
+            return null;
+
+        return getter.Invoke(null, [instance]);
     }
 
     private static void BindCollectionAdders(object collection, out Action<object, object?>? addItem, out Action<object, object, object?>? addDictionaryItem)

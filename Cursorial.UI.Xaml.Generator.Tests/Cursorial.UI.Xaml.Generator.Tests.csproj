@@ -27,6 +27,7 @@
         <!-- The runtime framework assemblies — so a test Compilation can resolve Cursorial.UI symbols
              (and the dual-run can instantiate the real types). -->
         <ProjectReference Include="..\Cursorial.UI\Cursorial.UI.csproj" />
+        <ProjectReference Include="..\Cursorial.UI.Interactivity\Cursorial.UI.Interactivity.csproj" />
         <ProjectReference Include="..\Cursorial.UI.Xaml\Cursorial.UI.Xaml.csproj" />
         <ProjectReference Include="..\Cursorial.UI.Xaml.Frontend\Cursorial.UI.Xaml.Frontend.csproj" />
         <!-- The headless host — the kitchen-sink drift gate renders whole documents under both

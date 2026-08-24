@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The Blend / Microsoft.Xaml.Behaviors-style interactivity layer (design doc
+    docs/ui-layer-design/interactivity-design.md): attached behaviors, triggers, and actions — the
+    declarative event→action surface. Conditional VALUE-setting stays with the styling engine
+    (ControlTemplate.Styles + Style.When); this module owns events and imperative actions only (§0).
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>Cursorial.UI.Interactivity</RootNamespace>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <IsPackable>true</IsPackable>
+    <PackageId>Cursorial.UI.Interactivity</PackageId>
+    <Version>0.5.0</Version>
+    <Description>The interactivity (behaviors) layer for Cursorial — attached behaviors, event triggers, and actions (InvokeCommand, ChangeProperty, storyboards) for declarative event→action wiring in terminal UIs.</Description>
+    <PackageTags>terminal;tui;behaviors;interactivity;triggers;actions;crossplatform</PackageTags>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Cursorial.UI\Cursorial.UI.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Cursorial.UI.Interactivity.Tests" />
+  </ItemGroup>
+
+</Project>

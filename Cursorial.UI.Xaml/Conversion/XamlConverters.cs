@@ -922,7 +922,9 @@ internal static class ConversionBridge
             {
                 if (ctor.GetParameters() is not [{ ParameterType: { } s }] || s == t || s == typeof(object))
                     continue;
-                if (XamlConverters.For(s) is not { } sourceConverter)
+                // Viability = the pre-bridge chain (For ?? Bcl) — MUST match RouteProbe's judgment, or the
+                // parse-time route disagrees with the load-time execution (W2e alignment).
+                if ((XamlConverters.For(s) ?? XamlConverters.BclConverterForType(s)) is not { } sourceConverter)
                     continue;
                 if (ctorRoute is not null)
                     return new AmbiguousBridge(t, "single-parameter constructors");
@@ -957,7 +959,8 @@ internal static class ConversionBridge
                 continue;
             if (method.GetParameters() is not [{ ParameterType: { } s }] || s == t || s == typeof(object))
                 continue;
-            if (XamlConverters.For(s) is not { } sourceConverter)
+            // Viability = the pre-bridge chain — MUST match RouteProbe's judgment (W2e alignment).
+            if ((XamlConverters.For(s) ?? XamlConverters.BclConverterForType(s)) is not { } sourceConverter)
                 continue;
             if (route is not null)
             {
@@ -988,6 +991,7 @@ internal static class ConversionBridge
         public object ConvertFromString(string text, in XamlValueContext context)
         {
             var source = XamlConverters.For(sourceType)
+                         ?? XamlConverters.BclConverterForType(sourceType) // the same pre-bridge chain as the viability probe
                          ?? throw XamlConverters.Fail($"No converter for bridge source type '{sourceType.Name}'.", context);
             try
             {

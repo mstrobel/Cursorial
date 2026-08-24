@@ -23,7 +23,7 @@ namespace Cursorial.UI.Xaml.Generator;
 /// consumer's compile. The parse must run with <c>FoldConstants = false</c> (there are no runtime values
 /// to fold at generator time).
 /// </remarks>
-internal sealed class RoslynXamlMetadata : IXamlTypeMetadataProvider
+internal sealed class RoslynXamlMetadata : IXamlTypeMetadataProvider, IXamlGenericTypeProvider
 {
     private const string StyleTypeName = "Cursorial.UI.Style";
 
@@ -50,6 +50,102 @@ internal sealed class RoslynXamlMetadata : IXamlTypeMetadataProvider
 
         return XamlTypeResolution.NotFound();
     }
+
+    /// <summary>The W3 generic closing — the reflection twin's symbol half: resolve the definition
+    /// (exact name, then Roslyn's arity-aware match — symbol <c>Name</c> excludes arity, so the resolver
+    /// finds `List`1` by "List"; a name-only hit with the wrong arity is rejected), recursively close the
+    /// arguments (the <c>x:</c> intrinsics via <c>GetSpecialType</c>), apply the Cursorial suffixes, and
+    /// <c>Construct()</c>. The emitter then renders the closed symbol — <c>new T&lt;args&gt;()</c>,
+    /// AOT-clean by construction.</summary>
+    public XamlTypeResolution TryGetClosedType(in QualifiedTypeName name)
+    {
+        var closed = ResolveQualified(in name, out var ambiguous);
+        if (closed is INamedTypeSymbol named)
+            return XamlTypeResolution.Resolved(GetXamlType(named));
+        if (closed is not null)
+            return XamlTypeResolution.Resolved(GetXamlTypeForSymbol(closed)); // array symbols
+        return ambiguous is { Count: > 0 } ? XamlTypeResolution.Ambiguous(ambiguous.ToArray()) : XamlTypeResolution.NotFound();
+    }
+
+    private ITypeSymbol? ResolveQualified(in QualifiedTypeName name, out IReadOnlyList<string>? ambiguous)
+    {
+        ambiguous = null;
+        ITypeSymbol? resolved;
+
+        // The x: intrinsics (x:Double/x:String/…) — the schema's BuiltInType twin, over special types.
+        if (string.Equals(name.XmlNamespace, XmlnsNamespaces.Intrinsics, StringComparison.Ordinal) &&
+            IntrinsicSpecialType(name.Name) is { } special)
+        {
+            resolved = _compilation.GetSpecialType(special);
+        }
+        else if (name.TypeArguments.Count == 0)
+        {
+            resolved = _resolver.Resolve(name.XmlNamespace, name.Name, out var flat);
+            ambiguous = flat;
+        }
+        else
+        {
+            // The resolver matches METADATA names, which carry arity — the backtick form is canonical
+            // (GenApp.GenericWidget`1); the exact-name fallback covers a using:-mapped exotic.
+            var definition = _resolver.Resolve(name.XmlNamespace, name.Name + "`" + name.TypeArguments.Count, out var defAmbiguous)
+                             ?? _resolver.Resolve(name.XmlNamespace, name.Name, out defAmbiguous);
+            ambiguous = defAmbiguous;
+
+            if (definition is not { IsGenericType: true } || definition.Arity != name.TypeArguments.Count)
+                return null;
+
+            var arguments = new ITypeSymbol[name.TypeArguments.Count];
+            for (int i = 0; i < arguments.Length; i++)
+            {
+                if (ResolveQualified(name.TypeArguments[i], out ambiguous) is not { } argument)
+                    return null;
+                arguments[i] = argument;
+            }
+
+            resolved = definition.ConstructedFrom.Construct(arguments);
+        }
+
+        if (resolved is null)
+            return null;
+
+        if (name.IsNullable)
+        {
+            if (!resolved.IsValueType)
+                return null;
+            resolved = _compilation.GetSpecialType(SpecialType.System_Nullable_T).Construct(resolved);
+        }
+
+        if (name.IsArray)
+            resolved = _compilation.CreateArrayTypeSymbol(resolved);
+
+        return resolved;
+    }
+
+    private static SpecialType? IntrinsicSpecialType(string name) => name switch
+    {
+        "String" => SpecialType.System_String,
+        "Object" => SpecialType.System_Object,
+        "Boolean" => SpecialType.System_Boolean,
+        "Char" => SpecialType.System_Char,
+        "Byte" => SpecialType.System_Byte,
+        "Int16" => SpecialType.System_Int16,
+        "Int32" => SpecialType.System_Int32,
+        "Int64" => SpecialType.System_Int64,
+        "Single" => SpecialType.System_Single,
+        "Double" => SpecialType.System_Double,
+        "Decimal" => SpecialType.System_Decimal,
+        _ => null,
+    };
+
+    // An array-symbol XamlType (no members, no activation — used as a type ARGUMENT identity only).
+    private XamlType GetXamlTypeForSymbol(ITypeSymbol symbol)
+        => new(clrType: new RoslynXamlType(symbol),
+               activate: null,
+               contentProperty: null,
+               isCollection: false,
+               requiresInitialize: false,
+               memberResolver: static _ => null,
+               isMarkupExtension: false);
 
     public string[] GetClrNamespaces(string xmlNamespace) => _resolver.CandidateNamespaces(xmlNamespace).ToArray();
 

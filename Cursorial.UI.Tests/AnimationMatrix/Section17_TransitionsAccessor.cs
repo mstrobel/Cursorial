@@ -108,4 +108,31 @@ public sealed class Section17_TransitionsAccessor
         Assert.Same(styled, Transition.GetTransitions(element)); // the style-provided collection WINS —
         Assert.Same(styled, Transition.GetTransitions(element)); // …and repeat reads still don't pin over it
     }
+
+    [Fact] // N160 (W2b CR6): a wrong-typed / unset Property surfaces at ARM as a clear diagnostic naming
+    // the transition, the property, and the expected value type — the one downcast between the base-typed
+    // markup member and the typed pipeline
+    public void WrongTypedProperty_ThrowsClearArmDiagnostic()
+    {
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(40, 10) });
+        var element = new Animatable();
+        var root = new StackPanel();
+        root.Children.Add(element);
+        host.ShowRoot(root);
+        host.RunUntilIdle();
+
+        var wrongTyped = new TransitionCollection
+        {
+            new DoubleTransition { Property = UIElement.VisibilityProperty }, // a StyledProperty<Visibility>, not <double>
+        };
+
+        var ex = Assert.Throws<InvalidOperationException>(() => Transition.SetTransitions(element, wrongTyped));
+        Assert.Contains("DoubleTransition", ex.Message);
+        Assert.Contains("Visibility", ex.Message);
+        Assert.Contains("StyledProperty<Double>", ex.Message);
+
+        var unset = new TransitionCollection { new DoubleTransition() }; // Property never set
+        var ex2 = Assert.Throws<InvalidOperationException>(() => Transition.SetTransitions(element, unset));
+        Assert.Contains("unset", ex2.Message);
+    }
 }

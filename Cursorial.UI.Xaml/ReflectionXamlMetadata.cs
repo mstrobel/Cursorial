@@ -233,7 +233,11 @@ public sealed class ReflectionXamlMetadata : IXamlTypeMetadataProvider, IXamlSta
         // The type IS a dictionary when it is one; the type's CONTENT is a collection when its content
         // property is collection-typed (Panel.Children) — the frontend's IsCollection drives the
         // single-Object-vs-Items decision (CommitContentChildren), so it must reflect the content slot.
+        // A SELF-LIST (an IList element with no content property — TransitionCollection, X73) counts too:
+        // without it a lone child classified Object (memberId -1) and died CUR2104 instead of self-filling
+        // (the W2b finding — multi-child self-lists worked, single-child ones never did).
         bool isSelfDictionary = typeof(ResourceDictionary).IsAssignableFrom(clrType);
+        bool isSelfList = typeof(System.Collections.IList).IsAssignableFrom(clrType);
         bool contentIsCollection = contentProperty is not null && ContentPropertyIsCollection(clrType, contentProperty);
         bool requiresInit = typeof(ISupportInitialize).IsAssignableFrom(clrType);
 
@@ -243,7 +247,7 @@ public sealed class ReflectionXamlMetadata : IXamlTypeMetadataProvider, IXamlSta
             clrType: clrType,
             activate: BuildActivator(clrType),
             contentProperty: contentProperty,
-            isCollection: contentIsCollection || isSelfDictionary,
+            isCollection: contentIsCollection || isSelfDictionary || isSelfList,
             addItem: null,
             addDictionaryItem: isSelfDictionary ? BuildAddDictionaryItem() : null,
             dictionaryKeyType: isSelfDictionary ? typeof(object) : null,

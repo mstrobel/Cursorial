@@ -106,6 +106,10 @@ internal sealed class XamlDocumentBuilder
         return _resolvedTypes.Count - 1;
     }
 
+    /// <summary>The resolved type for <paramref name="typeId"/>, or null (unresolved / out of range).</summary>
+    public XamlType? ResolvedType(int typeId)
+        => typeId >= 0 && typeId < _resolvedTypes.Count ? _resolvedTypes[typeId] : null;
+
     public int AddResolvedMember(XamlMember? member)
     {
         _resolvedMembers.Add(member);
@@ -114,6 +118,10 @@ internal sealed class XamlDocumentBuilder
 
     public string ResolvedMemberName(int memberId)
         => memberId >= 0 && memberId < _resolvedMembers.Count ? _resolvedMembers[memberId]?.Name ?? string.Empty : string.Empty;
+
+    /// <summary>The resolved member for <paramref name="memberId"/>, or null (unresolved / out of range).</summary>
+    public XamlMember? ResolvedMember(int memberId)
+        => memberId >= 0 && memberId < _resolvedMembers.Count ? _resolvedMembers[memberId] : null;
 
     public string GetString(int index) => _strings[index];
 

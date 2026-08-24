@@ -1,6 +1,11 @@
 # XAML conversion routes — the parse-time route probe, generic converters, and the bridge rung
 
-Status: **W2 design (accepted direction, implementation in progress)**. Motivated by the animation
+Status: **W2 design (accepted direction). W2a + W2b IMPLEMENTED** (TSA `FullName`/`IsAssignableFrom`;
+CR5 generalized token resolution — the parser resolves every `UIProperty`-typed member's token and stamps
+`XamlMember.ResolvedPropertyMember`, the loader assigns the identity, the emitter bakes the static
+registration field; CR6/CR10 transitions reshape; CR8 single-child assignability incl. the self-list
+`IsCollection` stamping + emitter self-fill both providers missed. Rows: XamlMatrix Section23 XB1–XB9,
+TransitionsLoweringTests GB1–GB3, AnimationMatrix N160). W2c/W2d/W2e/W3 pending. Motivated by the animation
 XAML-friendliness sweep (2026-08-24; findings recorded in `animation-matrix.md` §17 and the W1 commit) and
 the design conversation pinned alongside it. W1 (converter wiring, content properties, fill accessors,
 lane-parity fences) shipped separately; this document governs W2 (routes, `UIProperty` tokens, generic

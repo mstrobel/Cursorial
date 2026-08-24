@@ -71,8 +71,14 @@ public abstract class Transition
             TransitionManager.OnTransitionsPropertyChanged(element, newValue);
     }
 
-    /// <summary>The animated property (a <see cref="StyledProperty{T}"/> of the transition's <c>T</c>).</summary>
-    public UIProperty Property { get; }
+    /// <summary>
+    /// The animated property — a <see cref="StyledProperty{T}"/> of the transition's <c>T</c>. Base-typed
+    /// <see cref="UIProperty"/> and init-settable so MARKUP can author it (the W2 CR5/CR6 shape: the XAML
+    /// loader assigns the parse-resolved property; the typed subclass validates the downcast ONCE at arm,
+    /// so the per-frame pipeline stays unboxed). The typed constructors remain the code-first fast path
+    /// with compile-time checking.
+    /// </summary>
+    public UIProperty? Property { get; init; }
 
     /// <summary>The fade duration (default 150ms).</summary>
     public TimeSpan Duration { get; init; } = TimeSpan.FromMilliseconds(150);
@@ -82,6 +88,11 @@ public abstract class Transition
 
     /// <summary>The fade easing (default linear).</summary>
     public Easing Easing { get; init; } = Easings.Linear;
+
+    /// <summary>The markup construction path (CR10) — <see cref="Property"/> arrives via init.</summary>
+    private protected Transition()
+    {
+    }
 
     private protected Transition(UIProperty property)
     {
@@ -155,6 +166,10 @@ public abstract class Transition
 /// <typeparam name="T">The animated value type (must have a registered interpolator).</typeparam>
 public abstract class Transition<T> : Transition
 {
+    private protected Transition()
+    {
+    }
+
     private protected Transition(StyledProperty<T> property) : base(property)
     {
     }
@@ -164,14 +179,25 @@ public abstract class Transition<T> : Transition
 
     private protected sealed override IDisposable SubscribeCore(UIElement target, TransitionManager manager)
     {
-        return target.AddObserver((StyledProperty<T>) Property,
+        // The CR6 arm-time validation — the ONE downcast between the base-typed markup member and the
+        // typed pipeline. Past here every cast is safe and the per-frame path never touches Property.
+        if (Property is not StyledProperty<T> typed)
+        {
+            throw new InvalidOperationException(
+                $"{GetType().Name} cannot arm: Property is " +
+                $"{(Property is null ? "unset" : $"'{Property.Name}' (a {Property.GetType().Name})")} — " +
+                $"a StyledProperty<{typeof(T).Name}> is required.");
+        }
+
+        return target.AddObserver(typed,
                                   new Watch(manager, this),
                                   new ObserverOptions { IncludeBaseChanges = true });
     }
 
     private void Ignite(UIElement target, T oldBase, T newBase, bool isAnimated)
     {
-        var property = (StyledProperty<T>)Property;
+        // Only reachable through an armed Watch — SubscribeCore validated the downcast (CR6).
+        var property = (StyledProperty<T>)Property!;
 
         // §9.5: From = isAnimated ? GetValue (the live interpolated value) : oldEffectiveBase. In the un-animated
         // case GetValue already equals the NEW base at delivery (Fork A mutates before notifying), so the old base
@@ -214,16 +240,51 @@ public abstract class Transition<T> : Transition
 }
 
 /// <summary>A <see cref="double"/> transition (e.g. <c>Opacity</c>).</summary>
-public sealed class DoubleTransition(StyledProperty<double> property) : Transition<double>(property);
+public sealed class DoubleTransition : Transition<double>
+{
+    /// <summary>The markup construction path — set <see cref="Transition.Property"/> via init.</summary>
+    public DoubleTransition() {}
+
+    /// <summary>The typed code-first path.</summary>
+    public DoubleTransition(StyledProperty<double> property) : base(property) {}
+}
 
 /// <summary>An <see cref="int"/> transition (e.g. a render offset).</summary>
-public sealed class Int32Transition(StyledProperty<int> property) : Transition<int>(property);
+public sealed class Int32Transition : Transition<int>
+{
+    /// <inheritdoc cref="DoubleTransition()"/>
+    public Int32Transition() {}
+
+    /// <inheritdoc cref="DoubleTransition(StyledProperty{double})"/>
+    public Int32Transition(StyledProperty<int> property) : base(property) {}
+}
 
 /// <summary>A <see cref="Color"/> transition.</summary>
-public sealed class ColorTransition(StyledProperty<Color> property) : Transition<Color>(property);
+public sealed class ColorTransition : Transition<Color>
+{
+    /// <inheritdoc cref="DoubleTransition()"/>
+    public ColorTransition() {}
+
+    /// <inheritdoc cref="DoubleTransition(StyledProperty{double})"/>
+    public ColorTransition(StyledProperty<Color> property) : base(property) {}
+}
 
 /// <summary>An <see cref="IBrush"/> transition (allocates one brush per sample — the documented exception, AD8).</summary>
-public sealed class BrushTransition(StyledProperty<IBrush> property) : Transition<IBrush>(property);
+public sealed class BrushTransition : Transition<IBrush>
+{
+    /// <inheritdoc cref="DoubleTransition()"/>
+    public BrushTransition() {}
+
+    /// <inheritdoc cref="DoubleTransition(StyledProperty{double})"/>
+    public BrushTransition(StyledProperty<IBrush> property) : base(property) {}
+}
 
 /// <summary>A <see cref="Margins"/> transition (signed interpolation, LD19).</summary>
-public sealed class MarginsTransition(StyledProperty<Margins> property) : Transition<Margins>(property);
+public sealed class MarginsTransition : Transition<Margins>
+{
+    /// <inheritdoc cref="DoubleTransition()"/>
+    public MarginsTransition() {}
+
+    /// <inheritdoc cref="DoubleTransition(StyledProperty{double})"/>
+    public MarginsTransition(StyledProperty<Margins> property) : base(property) {}
+}

@@ -81,6 +81,10 @@ public static class XamlDiagnosticCodes
     /// <summary>An <c>{x:Reference Name}</c> named no element registered in the document name scope.</summary>
     public const string ReferenceNotFound = "CUR2112";
 
+    /// <summary>An unqualified <c>UIProperty</c> token with no lexical target type in scope (W2 CR5) —
+    /// owner-qualify (<c>"UIElement.Opacity"</c>) or move under a <c>TargetType</c>-bearing scope.</summary>
+    public const string UIPropertyTokenNoTarget = "CUR2113";
+
     /// <summary>A <c>StaticResource</c> key was not found / is a forward reference.</summary>
     public const string ResourceNotFound = "CUR2103";
 

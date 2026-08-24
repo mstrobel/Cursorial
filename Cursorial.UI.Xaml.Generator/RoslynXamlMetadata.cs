@@ -77,7 +77,8 @@ internal sealed class RoslynXamlMetadata : IXamlTypeMetadataProvider
         var contentProperty = SymbolXamlModel.ResolveContentProperty(symbol);
         var isDictionary = SymbolXamlModel.IsResourceDictionary(symbol);
         var isCollection = contentProperty is not null && SymbolXamlModel.ContentIsCollection(symbol, contentProperty) ||
-                           isDictionary; // mirror ReflectionXamlMetadata + the emitter: a dictionary is a collection
+                           isDictionary || // mirror ReflectionXamlMetadata + the emitter: a dictionary is a collection
+                           SymbolXamlModel.IsCollectionType(symbol); // …and so is a SELF-LIST element (TransitionCollection, X73/W2b)
         var members = new Dictionary<string, XamlMember?>(StringComparer.Ordinal);
 
         return new XamlType(

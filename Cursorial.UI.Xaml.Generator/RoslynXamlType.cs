@@ -22,6 +22,41 @@ internal sealed class RoslynXamlType : IXamlType
     public string Name => Symbol.Name;
 
     /// <inheritdoc/>
+    public string FullName
+    {
+        get
+        {
+            // Match ReflectionXamlType's contract: the DEFINITION's namespace-qualified, arity-suffixed
+            // name with no argument list ("Cursorial.UI.Optional`1"), so cross-backend comparisons agree.
+            var symbol = Symbol is INamedTypeSymbol { IsGenericType: true } named ? named.ConstructedFrom : Symbol;
+            var ns = symbol.ContainingNamespace is { IsGlobalNamespace: false } cns ? cns.ToDisplayString() + "." : string.Empty;
+            var arity = symbol is INamedTypeSymbol { Arity: > 0 } n ? "`" + n.Arity : string.Empty;
+            return ns + symbol.Name + arity;
+        }
+    }
+
+    /// <inheritdoc/>
+    public bool IsAssignableFrom(IXamlType other)
+    {
+        if (other is not RoslynXamlType { Symbol: { } source })
+            return false; // cross-backend: conservative false (the contract's documented fallback)
+
+        for (ITypeSymbol? walk = source; walk is not null; walk = walk.BaseType)
+        {
+            if (SymbolEqualityComparer.Default.Equals(walk, Symbol))
+                return true;
+        }
+
+        foreach (var iface in source.AllInterfaces)
+        {
+            if (SymbolEqualityComparer.Default.Equals(iface, Symbol))
+                return true;
+        }
+
+        return false;
+    }
+
+    /// <inheritdoc/>
     public bool IsCollection => SymbolXamlModel.IsCollectionType(Symbol);
 
     /// <inheritdoc/>

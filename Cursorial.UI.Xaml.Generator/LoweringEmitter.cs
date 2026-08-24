@@ -2203,7 +2203,25 @@ internal static class LoweringEmitter
 
             var xm = member.MemberId >= 0 ? c.Doc.ResolvedMembers[member.MemberId] : null;
             if (xm is null)
+            {
+                // A SELF-LIST object's implicit items (a collection element with no content property —
+                // TransitionCollection; memberId -1): add straight into the instance, the loader's
+                // ResolveCollection self-fill twin (X73/W2b). Everything else with a null member was
+                // already diagnosed at parse; skipping stays correct.
+                if (member.Kind == XamlValueKind.Items && objType is not null && SymbolXamlModel.IsCollectionType(objType))
+                {
+                    int selfChildIndex = member.ValueIndex;
+                    for (int i = 0; i < member.ItemCount; i++)
+                    {
+                        var selfChildVar = c.NextVar();
+                        EmitObject(c, selfChildIndex, selfChildVar, isRoot: false, hasScope, dataType);
+                        c.CurrentObjectType = objType;
+                        c.Line($"{varExpr}.Add({selfChildVar});");
+                        selfChildIndex += c.Doc.Objects[selfChildIndex].SubtreeLength;
+                    }
+                }
                 continue;
+            }
 
             switch (member.Kind)
             {
@@ -2695,6 +2713,18 @@ internal static class LoweringEmitter
     // The object?-typed expression for a Text value (a string literal, or the converter call). Null = unresolved.
     private static string? ScalarConvertExpr(Context c, XamlMember xm, string text)
     {
+        // A parse-resolved UIProperty token (W2 CR5): the shared frontend resolved the name against the
+        // lexical scope; the Roslyn lane's property identity is the OWNER type symbol + the member name,
+        // so the lowered form is the static registration field — no runtime lookup, no conversion, and an
+        // unresolvable token already failed the parse with a positioned CUR2xxx in BOTH lanes.
+        if (xm.ResolvedPropertyMember is { } resolvedToken)
+        {
+            if (resolvedToken.Property is INamedTypeSymbol tokenOwner)
+                return $"{Global(tokenOwner)}.{resolvedToken.Name}Property";
+            c.Error($"UIProperty token '{text}' resolved without a Roslyn owner symbol — cannot emit the registration field");
+            return null;
+        }
+
         if (IsObjectOrString(xm.ValueType))
             return $"\"{Escape(text)}\"";
 

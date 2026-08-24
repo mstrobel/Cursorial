@@ -24,6 +24,24 @@ public interface IXamlType
     string Name { get; }
 
     /// <summary>
+    /// The namespace-qualified name without assembly (<c>Cursorial.UI.UIProperty</c>) — the identity the
+    /// frontend can compare without touching a runtime <see cref="System.Type"/> (the W2 CR5 predicate:
+    /// "is this member <c>UIProperty</c>-typed?"). Backends compute it from their native representation;
+    /// generic instantiations render the DEFINITION's full name (arity-suffixed, no argument list) so the
+    /// comparison stays cheap and stable across backends.
+    /// </summary>
+    string FullName { get; }
+
+    /// <summary>
+    /// Whether a value of <paramref name="other"/> is assignable to this type (the W2 CR8 single-child
+    /// Object-vs-Items decision: a lone property-element child ASSIGNABLE to a collection-typed member is
+    /// an assignment, not an item). Backends answer natively (reflection <c>Type.IsAssignableFrom</c>;
+    /// Roslyn base/interface walk); a CROSS-backend query (one side symbol, one side reflection) answers
+    /// <see langword="false"/> — the conservative fallback keeps the historical Items classification.
+    /// </summary>
+    bool IsAssignableFrom(IXamlType other);
+
+    /// <summary>
     /// True when the type is collection-shaped — an <see cref="System.Collections.IList"/>, an
     /// <see cref="System.Collections.Generic.IList{T}"/>, or a <c>ResourceDictionary</c>. Drives the
     /// parser's single-child Object-vs-Items decision (a lone child of a read-only collection member is

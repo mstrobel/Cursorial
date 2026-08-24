@@ -43,6 +43,12 @@ internal sealed class XamlParser
     // walked so an enclosed Setter can resolve Property/Value against it (matrix X64/X66).
     private readonly Stack<XamlType?> _styleTargetStack = new();
 
+    // The enclosing-object-element type stack (W2 CR5): every object element pushes its resolved type
+    // around its body walk, so a child's end-of-object UIProperty-token resolution can use the NEAREST
+    // ENCLOSING element as the ambient target when no Style TargetType is in scope — the
+    // <Border><Transition.Transitions><DoubleTransition Property="Opacity"> case (Border is the ambient).
+    private readonly Stack<XamlType?> _elementTypeStack = new();
+
     // Fragment mode (a design-data subtree re-parsed through XmlReader.ReadSubtree): the subtree
     // reader SYNTHESIZES in-scope xmlns declarations lazily — a prefix first used on a NESTED
     // element gets its declaration emitted there, which the top-level-only policy (CUR2004) would
@@ -450,13 +456,21 @@ internal sealed class XamlParser
             // does NOT propagate into it (x:Name inside a template body is a part name, not CUR2304).
             bool contentDefers = ContentPropertyDefers(type);
 
-            ParseElementBody(type,
-                             localName,
-                             members,
-                             inDeferred: parentInDeferred || contentDefers,
-                             inResourceDictionary: isResourceDictionary && !contentDefers,
-                             ownerObjectIndex: objectIndex,
-                             isRoot: isRoot);
+            _elementTypeStack.Push(type); // the CR5 ambient: children see THIS element as nearest-enclosing
+            try
+            {
+                ParseElementBody(type,
+                                 localName,
+                                 members,
+                                 inDeferred: parentInDeferred || contentDefers,
+                                 inResourceDictionary: isResourceDictionary && !contentDefers,
+                                 ownerObjectIndex: objectIndex,
+                                 isRoot: isRoot);
+            }
+            finally
+            {
+                _elementTypeStack.Pop();
+            }
         }
 
         if (pushedStyleTarget)
@@ -471,9 +485,14 @@ internal sealed class XamlParser
                            reportColumn);
         }
 
-        // End-of-object: resolve any Setter property against the lexical TargetType (X64/X66).
+        // End-of-object: resolve any Setter property against the lexical TargetType (X64/X66); every
+        // OTHER element resolves its UIProperty-typed token members through the general CR5 pass (Setter
+        // keeps its bespoke path — Value folding included — and its Property rewrite makes the record's
+        // ValueType the TARGET member's type, so the general pass never double-touches a resolved Setter).
         if (string.Equals(localName, "Setter", StringComparison.Ordinal))
             ResolveSetter(members, reportLine, reportColumn);
+        else
+            ResolveUIPropertyTokenMembers(members);
 
         // Commit members to the document's flat array.
         int memberStart = _builder.MemberCount;
@@ -1076,7 +1095,119 @@ internal sealed class XamlParser
             return;
         }
 
-        members.Add(new MemberRecord(memberId, XamlValueKind.Text, _builder.InternString(literal), 0, lineInfo));
+        // W2 CR5: a dotted UIProperty token ("UIElement.Opacity" / "my:Owner.Prop") captures its owner's
+        // namespace NOW, while the reader's xmlns scope is live — end-of-object resolution reads it back
+        // (the reader is dead by then). Same stash the Setter path uses: (internedNsId + 1) in the Text
+        // record's otherwise-unused ItemCount slot; 0 = no capture.
+        int ownerNsToken = 0;
+        if (IsUIPropertyTyped(member) && literal.IndexOf('.') > 0)
+        {
+            int colon = literal.IndexOf(':');
+            int dot = literal.IndexOf('.');
+            string prefix = colon >= 0 && colon < dot ? literal.Substring(0, colon) : string.Empty;
+
+            if (_reader.LookupNamespace(prefix) is { Length: > 0 } ownerNs)
+                ownerNsToken = _builder.InternString(ownerNs) + 1;
+        }
+
+        members.Add(new MemberRecord(memberId, XamlValueKind.Text, _builder.InternString(literal), ownerNsToken, lineInfo));
+    }
+
+    /// <summary>The CR5 predicate: is this member's declared value type the Fork A <c>UIProperty</c>?
+    /// Compared by <see cref="IXamlType.FullName"/> so the frontend never references <c>Cursorial.UI</c>.</summary>
+    private static bool IsUIPropertyTyped(XamlMember member)
+        => string.Equals(member.ValueType.FullName, "Cursorial.UI.UIProperty", StringComparison.Ordinal);
+
+    /// <summary>
+    /// The end-of-object CR5 pass: resolves every <c>UIProperty</c>-typed TEXT member's token against the
+    /// lexical scope and rewrites the record to a member clone carrying the resolution
+    /// (<see cref="XamlMember.ResolvedPropertyMember"/>). A dotted token resolves its owner xmlns-aware
+    /// (the namespace captured at attribute time); an unqualified token resolves against the ambient
+    /// target — the enclosing Style <c>TargetType</c> first, else the nearest enclosing object element —
+    /// and errors CUR2113 (naming the owner-qualified escape) when neither is in scope. Conversion stays
+    /// eager and positioned: an unresolvable token never reaches a runtime setter as a raw string.
+    /// </summary>
+    private void ResolveUIPropertyTokenMembers(List<MemberRecord> members)
+    {
+        for (int i = 0; i < members.Count; i++)
+        {
+            var record = members[i];
+
+            if (record.MemberId < 0 || record.Kind != XamlValueKind.Text)
+                continue;
+
+            var member = _builder.ResolvedMember(record.MemberId);
+
+            if (member is null || member.ResolvedPropertyMember is not null || !IsUIPropertyTyped(member))
+                continue;
+
+            string token = _builder.GetString(record.ValueIndex);
+            int line = LineInfo.Line(record.PackedLineInfo);
+            int column = LineInfo.Column(record.PackedLineInfo);
+
+            XamlMember? resolved;
+
+            if (token.IndexOf('.') > 0)
+            {
+                string? capturedOwnerNs = record.ItemCount > 0 ? _builder.GetString(record.ItemCount - 1) : null;
+                resolved = TryResolveQualifiedSetterMember(token, capturedOwnerNs, targetType: null, line, column);
+            }
+            else
+            {
+                var ambient = _styleTargetStack.Count > 0 ? _styleTargetStack.Peek() : null;
+
+                if (ambient is null)
+                {
+                    // The nearest enclosing object element, looking THROUGH pure collection wrappers
+                    // (a self-list with no content property — TransitionCollection — is a transparent
+                    // container, not a target; a content-bearing type like Storyboard is NOT skipped, so
+                    // a resource-scoped track token stays a deterministic local error, never an
+                    // accidental resolution against an unrelated ancestor).
+                    foreach (var enclosing in _elementTypeStack)
+                    {
+                        if (enclosing is null || enclosing is { ContentProperty: null, IsCollection: true })
+                            continue;
+                        ambient = enclosing;
+                        break;
+                    }
+                }
+
+                if (ambient is null)
+                {
+                    _builder.Error(XamlDiagnosticCodes.UIPropertyTokenNoTarget,
+                                   $"'{token}' has no lexical target type to resolve against — owner-qualify it " +
+                                   $"(e.g. \"UIElement.{token}\") or author it under a TargetType-bearing scope.",
+                                   line,
+                                   column);
+                    continue;
+                }
+
+                resolved = ambient.TryGetMember(token);
+
+                if (resolved is null)
+                {
+                    ReportMemberNotFound(ambient, token, line, column);
+                    continue;
+                }
+            }
+
+            if (resolved?.Property is null)
+            {
+                // Resolved to a CLR-only member — there is no registered UIProperty identity to assign.
+                if (resolved is not null)
+                {
+                    _builder.Error(XamlDiagnosticCodes.MemberNotFound,
+                                   $"'{token}' resolves to a CLR member with no registered UIProperty.",
+                                   line,
+                                   column);
+                }
+
+                continue; // dotted-path failures already reported inside the helper
+            }
+
+            int rewrittenId = _builder.AddResolvedMember(member.WithResolvedPropertyMember(resolved));
+            members[i] = new MemberRecord(rewrittenId, XamlValueKind.Text, record.ValueIndex, 0, record.PackedLineInfo);
+        }
     }
 
     /// <summary>
@@ -2032,7 +2163,8 @@ internal sealed class XamlParser
             {
                 members.Add(new MemberRecord(memberId, XamlValueKind.Deferred, childObjects[0], childObjects.Count, lineInfo));
             }
-            else if (childObjects.Count == 1 && member is not null && !member.ValueType.IsCollection)
+            else if (childObjects.Count == 1 && member is not null &&
+                     (!member.ValueType.IsCollection || SingleChildIsAssignable(member, childObjects[0])))
             {
                 members.Add(new MemberRecord(memberId, XamlValueKind.Object, childObjects[0], 0, lineInfo));
             }
@@ -2052,6 +2184,19 @@ internal sealed class XamlParser
 
     private static bool InResourceDictionary(string memberName)
         => memberName is "Resources" or "MergedDictionaries" or "ThemeDictionaries";
+
+    /// <summary>
+    /// The W2 CR8 single-child assignability rule (WPF parity): a lone property-element child whose type
+    /// is ASSIGNABLE to a collection-typed member is an assignment
+    /// (<c>&lt;Transition.Transitions&gt;&lt;TransitionCollection/&gt;…</c> replaces the collection), not
+    /// an item run. A child assignable only as an ITEM — or unresolved, or cross-backend-unanswerable —
+    /// keeps the historical Items classification (the conservative fallback).
+    /// </summary>
+    private bool SingleChildIsAssignable(XamlMember member, int childObjectIndex)
+    {
+        var childType = _builder.ResolvedType(_builder.GetObject(childObjectIndex).TypeId);
+        return childType is not null && member.ValueType.IsAssignableFrom(childType.ClrType);
+    }
 
     // ── Setter resolution (X64/X66) ──────────────────────────────────────────────────────────────
 

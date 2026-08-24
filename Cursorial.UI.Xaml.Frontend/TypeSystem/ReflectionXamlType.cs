@@ -28,6 +28,25 @@ public sealed class ReflectionXamlType : IXamlType
     public string Name => UnderlyingSystemType.Name;
 
     /// <inheritdoc/>
+    public string FullName
+    {
+        get
+        {
+            // A generic instantiation reports its DEFINITION's full name (arity-suffixed, no argument
+            // list) — Type.FullName on a closed generic embeds assembly-qualified arguments, which the
+            // cross-backend comparison contract excludes.
+            var type = UnderlyingSystemType.IsConstructedGenericType
+                           ? UnderlyingSystemType.GetGenericTypeDefinition()
+                           : UnderlyingSystemType;
+            return type.FullName ?? type.Name;
+        }
+    }
+
+    /// <inheritdoc/>
+    public bool IsAssignableFrom(IXamlType other)
+        => other.UnderlyingSystemType is { } source && UnderlyingSystemType.IsAssignableFrom(source);
+
+    /// <inheritdoc/>
     public bool IsCollection => _isCollection ??= ComputeIsCollection(UnderlyingSystemType);
 
     // Mirrors the parser's historical IsCollectionMember predicate verbatim (string/object are never

@@ -100,4 +100,23 @@ public sealed class XamlMember
     /// stamps this flag when it builds the member. Independent of the value's runtime type.
     /// </summary>
     public bool IsDeferredContent { get; init; }
+
+    /// <summary>
+    /// The parse-resolved TARGET of a <c>UIProperty</c>-typed member's token VALUE (W2 CR5): for
+    /// <c>&lt;DoubleTransition Property="Opacity"&gt;</c> the parser resolves <c>"Opacity"</c> against the
+    /// lexical scope and stamps the resolved member here (its <see cref="Property"/> carries the property
+    /// identity — the opaque <c>UIProperty</c> in the reflection lane, the owner symbol in the Roslyn
+    /// lane; its <see cref="Name"/> the property name). ORTHOGONAL to <see cref="Property"/>, which names
+    /// the backing property OF this member and drives XD4 assignment routing — this slot is the resolved
+    /// VALUE the assignment delivers. Null everywhere except the parser's CR5 rewrite.
+    /// </summary>
+    public XamlMember? ResolvedPropertyMember { get; private init; }
+
+    /// <summary>Clones this member with <see cref="ResolvedPropertyMember"/> stamped (the CR5 rewrite).</summary>
+    internal XamlMember WithResolvedPropertyMember(XamlMember resolved)
+        => new(Name, ValueType, Property, SetClr, Get, Converter, IsEvent, IsAttachable)
+           {
+               IsDeferredContent = IsDeferredContent,
+               ResolvedPropertyMember = resolved,
+           };
 }

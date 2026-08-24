@@ -1020,6 +1020,12 @@ internal sealed class XamlObjectGraphBuilder
 
     private object? ConvertText(XamlMember member, string text, object instance, int line, int column)
     {
+        // A parse-resolved UIProperty token (W2 CR5): the parser resolved the name against the lexical
+        // scope and stamped the target member — its Property IS the value (the opaque UIProperty). No
+        // conversion; the raw-string-to-CLR-setter ArgumentException this replaces was the P2a finding.
+        if (member.ResolvedPropertyMember is { Property: { } resolvedProperty })
+            return resolvedProperty;
+
         // A string-typed slot keeps the raw text (the access-key fold runs in Assign).
         var memberType = member.SystemType();
         if (memberType == typeof(string) || memberType == typeof(object))

@@ -358,7 +358,17 @@ Tests: `Cursorial.UI.Tests/AnimationMatrix/Section17_TransitionsAccessor.cs`. Th
 `Cursorial.UI.Xaml.Tests/XamlMatrix/Section22_AnimationMarkup.cs` (XA1–XA14: Storyboard/BeginStoryboard/
 StopStoryboard content properties, the §9.10 Easing/RepeatBehavior converter wiring, Optional&lt;T&gt;
 inner-through-the-ladder conversion, the `Cursorial.Animation` xmlns seed, the composed style-edge
-document) and `Cursorial.UI.Xaml.Generator.Tests/AnimationLoweringTests.cs` (GA1–GA5: lane parity + the
-parameterless-ctor/abstract CURG3002 fence). Transition LEAVES remain markup-unconstructible until the W2
-API reshape (parameterless ctors + settable `Property` + the contextual UIProperty converter) — the
-child-bearing `<Transition.Transitions>` fill row lands there.
+document) and `Cursorial.UI.Xaml.Generator.Tests/AnimationLoweringTests.cs` (GA1–GA6: lane parity + the
+parameterless-ctor/abstract CURG3002 fence).
+
+**W2b (design doc `xaml-conversion-routes.md`): transitions are markup-shaped.** The leaves gained
+parameterless ctors with an init-settable base-typed `Property : UIProperty?`; `Transition<T>` validates
+the downcast ONCE at arm (N160 — a clear diagnostic naming the transition, the property, and the expected
+value type; the per-frame pipeline stays unboxed). `Property` tokens resolve AT PARSE (CR5): unqualified
+against the enclosing Style `TargetType` first, else the nearest enclosing object element (looking
+through pure collection wrappers); dotted (`"UIElement.Opacity"`) xmlns-aware — the only form valid in
+target-less resource positions. The child-bearing `<Transition.Transitions>` fill, the lone-assignable-
+child collection ASSIGNMENT (CR8), the Style-setter form, and the live end-to-end run are pinned in
+`Cursorial.UI.Xaml.Tests/XamlMatrix/Section23_TransitionsMarkup.cs` (XB1–XB9) and
+`Cursorial.UI.Xaml.Generator.Tests/TransitionsLoweringTests.cs` (GB1–GB3 — the lowered lane bakes the
+static registration field; an unresolvable token fails BOTH lanes at parse with the same position).

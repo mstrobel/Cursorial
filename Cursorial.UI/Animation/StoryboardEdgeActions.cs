@@ -1,3 +1,5 @@
+using Cursorial.Markup;
+
 // ReSharper disable CheckNamespace
 namespace Cursorial.UI;
 
@@ -16,6 +18,7 @@ namespace Cursorial.UI;
 /// <see cref="Style.Enter"/> and <see cref="Style.Exit"/>; begin-and-let-<see cref="FillBehavior"/>-hold adds it
 /// to <see cref="Style.Enter"/> only.
 /// </remarks>
+[ContentProperty("Storyboard")]
 public sealed class BeginStoryboard : IStyleEdgeAction
 {
     /// <summary>The storyboard to begin (null ⇒ the action is a no-op).</summary>
@@ -54,6 +57,7 @@ public sealed class BeginStoryboard : IStyleEdgeAction
 /// storyboard on the element, across igniters. Edge-symmetric (stop is its own inverse): place it in
 /// <see cref="Style.Enter"/> to stop on the activate edge, or <see cref="Style.Exit"/> to stop on deactivate.
 /// </summary>
+[ContentProperty("Storyboard")]
 public sealed class StopStoryboard : IStyleEdgeAction
 {
     /// <summary>The storyboard whose instances to stop (null ⇒ a no-op).</summary>

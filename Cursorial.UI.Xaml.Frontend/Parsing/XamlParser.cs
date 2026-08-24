@@ -1891,8 +1891,11 @@ internal sealed class XamlParser
                                   LineInfo.Pack(_lineInfo.LineNumber, _lineInfo.LinePosition));
         }
 
-        // X5: a property set as both attribute and property element.
-        if (sawPropertyElement)
+        // X5: a property set twice — attribute + property element, or attribute + IMPLICIT content (the
+        // content children commit one member record under the resolved [ContentProperty] name, so a
+        // single-valued content property duplicated by an attribute collides by name here; pre-W1 the
+        // implicit form was unreachable for such types and the duplication silently last-wins-overwrote).
+        if (sawPropertyElement || sawContentChild)
             DetectDuplicateAssignments(members);
     }
 
@@ -2228,7 +2231,7 @@ internal sealed class XamlParser
             if (!seen.Add(name))
             {
                 _builder.Error(XamlDiagnosticCodes.DuplicatePropertyAssignment,
-                               $"Property '{name}' was set both as an attribute and as a property element.",
+                               $"Property '{name}' was set more than once (attribute, property element, or implicit content).",
                                LineInfo.Line(m.PackedLineInfo), LineInfo.Column(m.PackedLineInfo));
             }
         }

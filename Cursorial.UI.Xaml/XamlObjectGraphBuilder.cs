@@ -817,17 +817,22 @@ internal sealed class XamlObjectGraphBuilder
     }
 
     /// <summary>
-    /// The WPF attached-collection idiom: the OWNER type declares <c>public static TCollection Get{Name}(THost)</c>
-    /// whose first access creates, associates, and stores the collection (<c>Interaction.GetTriggers</c>,
-    /// the S8 <c>Transition</c> shape). Returns the accessor's result, or null when the owner declares no
-    /// single-parameter static getter (the caller falls through to CUR2105).
+    /// The attached-collection fill accessor: the OWNER type declares either
+    /// <c>public static TCollection GetOrCreate{Name}(THost)</c> (preferred — the explicit fill hook for a
+    /// STYLE-SETTABLE attached collection whose plain <c>Get{Name}</c> must stay a pure read, the W1
+    /// <c>Transition.GetOrCreateTransitions</c> shape) or a get-or-create <c>Get{Name}</c>
+    /// (<c>Interaction.GetTriggers</c> — the WPF idiom for collections with no style story). Probed in that
+    /// order. Returns the accessor's result, or null when the owner declares neither (the caller falls
+    /// through to CUR2105).
     /// </summary>
     [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL2075",
-        Justification = "The static Get{Name} accessor convention in the RequiresUnreferencedCode loader.")]
+        Justification = "The static GetOrCreate{Name}/Get{Name} accessor convention in the RequiresUnreferencedCode loader.")]
     private static object? GetOrCreateAttachedCollection(UIProperty attached, string memberName, object instance)
     {
         var getter = attached.OwnerType.GetMethod(
-            "Get" + memberName, System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
+                         "GetOrCreate" + memberName, System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static)
+                     ?? attached.OwnerType.GetMethod(
+                         "Get" + memberName, System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
 
         if (getter is null || getter.GetParameters() is not { Length: 1 } parameters ||
             !parameters[0].ParameterType.IsInstanceOfType(instance))

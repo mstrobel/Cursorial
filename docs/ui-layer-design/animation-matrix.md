@@ -323,3 +323,42 @@ an already-arranged element goes live at once (its initial application is in the
 (N150/N152/N154 — the delayed-handoff non-ignition, Popup/Window per-element go-live, and BrushTransition
 per-sample allocation — are covered structurally by N38, the per-element latch, and AD8 respectively; added as
 end-to-end rows when the windowing/XAML transition demos land.)
+
+## 17. The split `Transition` accessors + construction-time fill (the W1 XAML sweep + audit) — N155–N159
+
+**Pinned amendment (W1): the seal happens at the ATTACHED arm, not any arm.** §9.5's contract always read
+"seals on arm (when attached and non-null)"; the code sealed on every arm, including a detached one — which
+made construction-time fill impossible (the XAML loader's attached-collection fill receives the collection
+ALREADY attached, then populates it). A collection set on a detached element now stays mutable until the
+attach edge re-arms it (seal + subscribe there); after its first attached arm it is sealed for good (`Seal`
+is one-way; re-attach re-arms the same sealed collection, N149 unchanged — a LIVE replace still seals
+immediately).
+
+**Pinned amendment (W1 audit): the accessors SPLIT.** The W1 get-or-create `GetTransitions` was audited out
+on two confirmed defects: on an attached element the synchronous arm sealed the freshly-created collection
+before the accessor returned (born-sealed, `Add` throws, the element left pinned with a sealed empty
+LocalValue), and a mere READ pinned a LocalValue that permanently masked a style-provided collection — the
+BuiltIn Window theme's inactive-fade concretely. `GetTransitions` is therefore a PURE read of the effective
+value (`TransitionCollection?` — style/theme collections stay reachable, reads never write), and
+**`GetOrCreateTransitions`** is the construction-time fill hook: the loader's attached-collection fill
+probes `GetOrCreate{Name}` BEFORE the get-or-create `Get{Name}` idiom (the generator's `EmitChildAssign`
+mirrors the probe order), so a style-settable attached collection can keep its pure getter while remaining
+XAML-fillable. Runtime changes on an attached element REPLACE via `SetTransitions` (N149). The framework's
+own attach edge reads the property RAW so a mere attach never allocates.
+
+| Row | Scenario | Expected |
+|---|---|---|
+| N155 | `GetOrCreateTransitions` on a pristine element; repeat calls | Creates + ATTACHES an empty collection (LocalValue via `SetTransitions` — the changed callback arms); same instance on every subsequent read of either accessor |
+| N156 | Both accessors after an explicit `SetTransitions(mine)` | Return `mine` — neither replaces an existing collection |
+| N157 | Element attaches to a live tree with no transitions set | The property stays null — the attach edge reads raw; get-or-create on the per-element attach walk would allocate + arm on EVERY element |
+| N158 | `GetOrCreateTransitions` on a DETACHED element: `Add` → attach → `Add` → style flip | The detached fill window accepts the `Add`; the attach edge seals (`IsSealed`, further mutation throws) and subscribes; the filled transition runs (ignites from the old base) |
+| N159 | `GetTransitions` reads on a pristine attached element; a style later provides a collection | Null, and NOTHING written (`ReadLocalValue` unset) — the style-provided collection becomes and stays the effective value through any number of reads |
+
+Tests: `Cursorial.UI.Tests/AnimationMatrix/Section17_TransitionsAccessor.cs`. The XAML-side rows are
+`Cursorial.UI.Xaml.Tests/XamlMatrix/Section22_AnimationMarkup.cs` (XA1–XA14: Storyboard/BeginStoryboard/
+StopStoryboard content properties, the §9.10 Easing/RepeatBehavior converter wiring, Optional&lt;T&gt;
+inner-through-the-ladder conversion, the `Cursorial.Animation` xmlns seed, the composed style-edge
+document) and `Cursorial.UI.Xaml.Generator.Tests/AnimationLoweringTests.cs` (GA1–GA5: lane parity + the
+parameterless-ctor/abstract CURG3002 fence). Transition LEAVES remain markup-unconstructible until the W2
+API reshape (parameterless ctors + settable `Property` + the contextual UIProperty converter) — the
+child-bearing `<Transition.Transitions>` fill row lands there.

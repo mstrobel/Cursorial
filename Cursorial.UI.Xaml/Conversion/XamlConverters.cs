@@ -99,6 +99,10 @@ public static class XamlConverters
         if (underlying == typeof(Pen)) return PenConverter.Instance;
         if (underlying == typeof(Selector)) return SelectorConverter.Instance;
         if (underlying == typeof(Cursorial.UI.Data.PropertyPath)) return new Cursorial.UI.Data.PropertyPathConverter();
+        if (underlying == typeof(Cursorial.Animation.Easing)) return EasingConverter.Instance;
+        if (underlying == typeof(RepeatBehavior)) return RepeatBehaviorConverter.Instance;
+        if (underlying.IsGenericType && underlying.GetGenericTypeDefinition() == typeof(Optional<>))
+            return OptionalInnerLadderConverter.TryCreate(underlying); // inner type through THIS ladder (§9.10 W1)
         if (underlying == typeof(Themes.GlyphSetCarrier)) return GlyphSetCarrierConverter.Instance;
         if (underlying == typeof(Type)) return null; // x:Type handles this; no plain text converter
         if (typeof(IBrush).IsAssignableFrom(underlying)) return BrushConverter.Instance;
@@ -388,6 +392,93 @@ public static class XamlConverters
         public bool IsContextFree => false;
 
         public object ConvertFromString(string text, in XamlValueContext ctx) => text;
+    }
+
+    // ── Animation (design doc §9.10 — the Fork C converter wiring) ──────────────────────────────
+
+    // An easing: a catalog name ("QuadInOut", case-insensitive) or the cubic-bezier(x1,y1,x2,y2)
+    // functional form, both via Easings.TryParse (the parse half was authored with this row in mind).
+    private sealed class EasingConverter : ITypeConverter
+    {
+        public static readonly EasingConverter Instance = new();
+        public bool IsContextFree => true;
+
+        public object ConvertFromString(string text, in XamlValueContext ctx)
+        {
+            if (Cursorial.Animation.Easings.TryParse(text, out var easing))
+                return easing;
+            throw Fail($"'{text}' is not a recognized easing — expected a catalog name (e.g. 'QuadInOut') " +
+                       "or 'cubic-bezier(x1,y1,x2,y2)'.", ctx);
+        }
+    }
+
+    // A repeat behavior: "Forever", "Nx", or a bare iteration count "N" via RepeatBehavior.TryParse
+    // (doc-labeled "Fork C converter; §9.10" at the parse half).
+    private sealed class RepeatBehaviorConverter : ITypeConverter
+    {
+        public static readonly RepeatBehaviorConverter Instance = new();
+        public bool IsContextFree => true;
+
+        public object ConvertFromString(string text, in XamlValueContext ctx)
+        {
+            if (RepeatBehavior.TryParse(text, out var value))
+                return value;
+            throw Fail($"'{text}' is not a valid RepeatBehavior — expected 'Forever', 'Nx', or an iteration count.", ctx);
+        }
+    }
+
+    /// <summary>
+    /// A closed <c>Optional&lt;T&gt;</c>: converts the text as the INNER type through this ladder (falling
+    /// back to the BCL rung) and wraps via the <c>Optional&lt;T&gt;(T)</c> ctor. Exists because the
+    /// type-level BCL <c>OptionalConverter</c> resolves inner conversion through <c>TypeDescriptor</c>,
+    /// which cannot see ladder-only inner types (<c>Color</c>, brushes, …) — this row wins by ladder
+    /// precedence so <c>Optional&lt;Color&gt;</c> converts with the same grammar as bare <c>Color</c>.
+    /// Reflective by design (the runtime lane); the W2 generic-converter convention supersedes it.
+    /// </summary>
+    private sealed class OptionalInnerLadderConverter : ITypeConverter
+    {
+        private readonly Type _innerType;
+        private readonly bool _isContextFree;
+        private readonly System.Reflection.ConstructorInfo _wrap;
+
+        private OptionalInnerLadderConverter(Type innerType, bool isContextFree, System.Reflection.ConstructorInfo wrap)
+        {
+            _innerType = innerType;
+            _isContextFree = isContextFree;
+            _wrap = wrap;
+        }
+
+        // Parse-time folding must stay honest: fold only when the inner converter itself folds. Snapshot
+        // taken at creation (the fold decision rides the cached document anyway); the CONVERSION re-resolves.
+        public bool IsContextFree => _isContextFree;
+
+        [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL2070",
+            Justification = "AOT-safe on BOTH lanes: every closed Optional<T> reaching this rung is rooted by " +
+                            "a typeof(Optional<...>) literal (the emitted __ConvertXamlValue call in lowered " +
+                            "output; live member types in the RUC reflective lane), and Optional<T>'s type-level " +
+                            "[DynamicallyAccessedMembers(PublicProperties|PublicConstructors)] preserves the (T) " +
+                            "ctor through trimming, so GetGenericArguments/GetConstructor/Invoke resolve statically.")]
+        public static ITypeConverter? TryCreate(Type closedOptional)
+        {
+            var inner = closedOptional.GetGenericArguments()[0];
+            var innerConverter = For(inner) ?? BclConverterForType(inner);
+            if (innerConverter is null)
+                return null; // no inner grammar — fall through to the type-level BCL attribute rung unchanged
+
+            return closedOptional.GetConstructor([inner]) is { } wrap
+                       ? new OptionalInnerLadderConverter(inner, innerConverter.IsContextFree, wrap)
+                       : null;
+        }
+
+        // The inner converter is re-resolved PER CONVERSION (a dictionary hit): a later Register() override
+        // for the inner type must win here exactly as it does for a bare inner-typed member — a creation-time
+        // snapshot would freeze the pre-override converter into every cached Optional<T> rung forever.
+        public object ConvertFromString(string text, in XamlValueContext ctx)
+        {
+            var inner = For(_innerType) ?? BclConverterForType(_innerType)
+                        ?? throw Fail($"No converter for Optional inner type '{_innerType.Name}'.", ctx);
+            return _wrap.Invoke([inner.ConvertFromString(text, ctx)]);
+        }
     }
 
     // ── Geometry (matrix XD12) ───────────────────────────────────────────────────────────────────

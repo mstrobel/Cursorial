@@ -33,7 +33,9 @@ internal sealed class TransitionManager
     /// <summary>Attach edge (from <c>OnStylingAttached</c>): subscribe a collection that was set while detached.</summary>
     internal static void OnElementAttached(UIElement element)
     {
-        if (Transition.GetTransitions(element) is { } collection)
+        // Raw read — the public GetTransitions accessor is get-or-create for XAML collection fill, and an
+        // attach edge that runs on EVERY element must never allocate a collection as a side effect.
+        if (element.GetValue(Transition.TransitionsProperty) is { } collection)
             (element.Transitions ??= new TransitionManager(element)).Arm(collection);
     }
 
@@ -66,13 +68,17 @@ internal sealed class TransitionManager
     {
         DisposeSubscriptions();
         _armed = collection;
-        collection.Seal();
 
         // Subscribe only when attached; a collection set on a detached element re-arms at attach (OnElementAttached).
         // _live/_everArranged are NOT reset here — a mid-run replace on an already-live element stays live (N149);
         // only detach re-parks (Disarm).
+        // The SEAL also waits for the attached arm — the documented "seals on arm (when attached)" contract:
+        // a collection set on a DETACHED element stays mutable so construction-time fill (the XAML loader's
+        // attached-collection get-or-create path, N155) can populate it; the attach edge re-arms and seals.
         if (!_owner.IsAttachedToTree)
             return;
+
+        collection.Seal();
 
         foreach (var transition in collection)
             _subscriptions.Add(transition.Subscribe(_owner, this));

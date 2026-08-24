@@ -1,4 +1,6 @@
-using System.Collections.ObjectModel; 
+using System.Collections.ObjectModel;
+
+using Cursorial.Markup;
 
 // ReSharper disable ParameterOnlyUsedForPreconditionCheck.Local
 // ReSharper disable CheckNamespace
@@ -12,6 +14,7 @@ namespace Cursorial.UI;
 /// referencing <c>Style</c> seals) — element-independent validation runs then, and <see cref="Children"/>
 /// mutation afterwards throws.
 /// </summary>
+[ContentProperty("Children")]
 public sealed class Storyboard
 {
     private readonly TrackCollection _children;

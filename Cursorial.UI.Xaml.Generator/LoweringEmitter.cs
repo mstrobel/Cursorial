@@ -2116,6 +2116,22 @@ internal static class LoweringEmitter
             }
             var initializer = initMembers is { Entries.Count: > 0 } ? $" {{ {string.Join(", ", initMembers.Entries)} }}" : "()";
             c.CurrentLineInfo = obj.PackedLineInfo; // re-assert (a property-element child build in the scan moved it)
+
+            // Lane-parity fence (invariant #3): the reflective loader Fatals (CUR3001) on an abstract or
+            // parameterless-ctor-less element type — the lowered build must FAIL equally, not emit a
+            // `new T()` that dies in C# (CS7036) with no positioned diagnostic. Null placeholder keeps
+            // the emitted body compiling so the CURG3002 is the one error the author sees.
+            if (objType is INamedTypeSymbol fenced &&
+                (fenced.IsAbstract ||
+                 (!fenced.IsValueType && !fenced.InstanceConstructors.Any(
+                     static k => k is { DeclaredAccessibility: Accessibility.Public, Parameters.Length: 0 }))))
+            {
+                c.Error($"type '{fenced.Name}' is {(fenced.IsAbstract ? "abstract" : "missing a public parameterless constructor")} " +
+                        "— not element-instantiable (the runtime loader throws CUR3001 on the identical document)");
+                c.Line($"{Global(objType)}? {varExpr} = null; // placeholder — the CURG3002 above fails the build");
+                return;
+            }
+
             c.Line($"var {varExpr} = new {Global(objType)}{initializer};");
             if (bracketInit)
                 c.Line($"((global::System.ComponentModel.ISupportInitialize){varExpr}).BeginInit();");
@@ -2716,6 +2732,15 @@ internal static class LoweringEmitter
     /// </summary>
     private static string? AttributedConverterExpr(ITypeSymbol valueType, string text)
     {
+        // A closed Optional<T> routes through the runtime ladder (__ConvertXamlValue), NOT its BCL
+        // [TypeConverter]: the attributed OptionalConverter resolves the INNER conversion via
+        // TypeDescriptor, which cannot see ladder-only inner grammars (Color, brushes, …) — the ladder's
+        // Optional rung converts the inner type through the ladder itself, so both lanes agree. (The W2
+        // generic-converter convention replaces this special case.)
+        if (valueType is INamedTypeSymbol { IsGenericType: true, Name: "Optional" } opt &&
+            opt.ContainingNamespace.ToDisplayString() == "Cursorial.UI")
+            return null;
+
         foreach (var attr in valueType.GetAttributes())
         {
             var attrName = attr.AttributeClass?.ToDisplayString();
@@ -2773,14 +2798,19 @@ internal static class LoweringEmitter
     {
         // The collection ACCESS: an ATTACHED member (IsAttachable — NOT xm.Property, which carries the
         // registered-field owner for EVERY UIProperty-backed member, instance wrappers included) fills via the
-        // owner's static Get{Name}(host) accessor — the get-or-create idiom (Interaction.GetTriggers; the
-        // loader's ResolveCollection twin), since the host has no instance property to dot. A plain member dots
-        // the instance. The `?? throw` guard: a get-only-null accessor (a Transition.GetTransitions-shaped
-        // owner) must fail LOUDLY at build-time-adjacent runtime with the member named — the loader errors
-        // CUR2105 on the identical document; a bare null deref would be an unpositioned NRE.
+        // owner's static fill accessor, preferring GetOrCreate{Name} (the explicit fill hook of a
+        // style-settable collection whose Get{Name} is a pure read — the W1 Transition shape; the loader's
+        // ResolveCollection probes the same order) over the get-or-create Get{Name} idiom
+        // (Interaction.GetTriggers), since the host has no instance property to dot. A plain member dots
+        // the instance. The `?? throw` guard on the Get{Name} form: a get-only-null accessor must fail
+        // LOUDLY at build-time-adjacent runtime with the member named — the loader errors CUR2105 on the
+        // identical document; a bare null deref would be an unpositioned NRE.
         var collectionAccess = xm.IsAttachable && xm.Property is INamedTypeSymbol attachedOwner
-            ? $"({Global(attachedOwner)}.Get{xm.Name}({varExpr}) ?? throw new global::System.InvalidOperationException(" +
-              $"\"The attached collection '{xm.Name}' accessor returned null — Get{xm.Name} must be get-or-create for XAML collection fill.\"))"
+            ? attachedOwner.GetMembers("GetOrCreate" + xm.Name).OfType<IMethodSymbol>().Any(
+                  static m => m is { IsStatic: true, DeclaredAccessibility: Accessibility.Public, Parameters.Length: 1 })
+                ? $"{Global(attachedOwner)}.GetOrCreate{xm.Name}({varExpr})"
+                : $"({Global(attachedOwner)}.Get{xm.Name}({varExpr}) ?? throw new global::System.InvalidOperationException(" +
+                  $"\"The attached collection '{xm.Name}' accessor returned null — Get{xm.Name} must be get-or-create for XAML collection fill.\"))"
             : $"{varExpr}.{xm.Name}";
 
         if (!single)
@@ -3082,6 +3112,17 @@ internal static class LoweringEmitter
             // Input the LOADER hard-rejects (ResolveExtensionType Fatal: TypeNotFound) — error-level, so the
             // lowered build fails the way the loader does instead of warn-and-skipping an invalid document.
             c.Error($"custom markup extension '{node.Name}' does not resolve to a MarkupExtension type (the runtime loader rejects it)");
+            return null;
+        }
+
+        // Lane-parity ctor fence (the element-instantiation fence's markup-extension twin): the loader Fatals
+        // (NoParameterlessConstructor) on an abstract or parameterless-ctor-less extension — the lowered build
+        // must FAIL equally, not emit a `new ExtType()` that dies as an unpositioned CS7036/CS0144.
+        if (extType.IsAbstract || !extType.InstanceConstructors.Any(
+                static k => k is { DeclaredAccessibility: Accessibility.Public, Parameters.Length: 0 }))
+        {
+            c.Error($"custom markup extension '{node.Name}' is {(extType.IsAbstract ? "abstract" : "missing a public parameterless constructor")} " +
+                    "— not instantiable (the runtime loader throws the identical activation Fatal)");
             return null;
         }
 

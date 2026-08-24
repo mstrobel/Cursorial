@@ -24,11 +24,38 @@ public abstract class Transition
         UIProperty.RegisterAttached<Transition, UIElement, TransitionCollection?>(
             "Transitions", changed: OnTransitionsChanged);
 
-    /// <summary>Gets the transitions attached to <paramref name="element"/>.</summary>
+    /// <summary>
+    /// Gets the transitions attached to <paramref name="element"/> — a PURE read of the effective value
+    /// (possibly style/theme-provided, possibly null). Never allocates or writes: a get-or-create here
+    /// would pin a LocalValue that permanently masks a style-provided collection (the BuiltIn Window
+    /// theme's inactive-fade is exactly such a setter) and, on an attached element, would hand back a
+    /// born-sealed empty collection. Use <see cref="GetOrCreateTransitions"/> for construction-time fill.
+    /// </summary>
     public static TransitionCollection? GetTransitions(UIElement element)
     {
         ArgumentNullException.ThrowIfNull(element);
         return element.GetValue(TransitionsProperty);
+    }
+
+    /// <summary>
+    /// The construction-time fill accessor (the XAML loader's <c>GetOrCreate{Name}</c> attached-collection
+    /// convention): returns the element's own transitions, creating and attaching an empty collection on
+    /// first access. Intended for a DETACHED element under construction — the created collection stays
+    /// mutable until the attach edge arms it (seal + subscribe; animation-matrix §17). On an attached
+    /// element the synchronous arm seals immediately, so runtime changes should REPLACE via
+    /// <see cref="SetTransitions"/> (the N149 replace-to-change contract). The write is a LocalValue pin:
+    /// authoring transitions on the element deliberately outranks a style-provided collection.
+    /// </summary>
+    public static TransitionCollection GetOrCreateTransitions(UIElement element)
+    {
+        ArgumentNullException.ThrowIfNull(element);
+
+        if (element.GetValue(TransitionsProperty) is { } existing)
+            return existing;
+
+        var collection = new TransitionCollection();
+        element.SetValue(TransitionsProperty, collection); // the changed callback arms the manager
+        return collection;
     }
 
     /// <summary>Sets the transitions attached to <paramref name="element"/> (arms/re-arms the per-element manager).</summary>

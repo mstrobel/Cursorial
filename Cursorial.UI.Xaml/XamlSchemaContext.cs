@@ -73,6 +73,7 @@ public sealed class XamlSchemaContext
             typeof(Color).Assembly,                         // Cursorial.Media (Output), Cursorial.Text (Text)
             typeof(IBrush).Assembly,                        // Cursorial.Rendering (Rendering.Media)
             typeof(Drawing.Media.Pen).Assembly,             // Cursorial.Drawing (Drawing.Media)
+            typeof(Animation.Easing).Assembly,              // Cursorial.Animation ({x:Static Easings.QuadInOut})
             typeof(MarkupExtension).Assembly                // Cursorial.UI.Xaml — only its Markup namespace ({Icon …})
         ];
 

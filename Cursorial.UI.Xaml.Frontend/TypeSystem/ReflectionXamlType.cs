@@ -46,6 +46,52 @@ public sealed class ReflectionXamlType : IXamlType
     public bool IsAssignableFrom(IXamlType other)
         => other.UnderlyingSystemType is { } source && UnderlyingSystemType.IsAssignableFrom(source);
 
+    private IReadOnlyList<ConversionRouteCandidate>? _routeCandidates;
+
+    /// <inheritdoc/>
+    public IReadOnlyList<ConversionRouteCandidate> GetConversionRouteCandidates()
+        => _routeCandidates ??= ComputeRouteCandidates(UnderlyingSystemType);
+
+    private static IReadOnlyList<ConversionRouteCandidate> ComputeRouteCandidates(Type t)
+    {
+        // Mirrors ConversionBridge's structural exclusions (the shared RouteProbe applies the semantic
+        // rules — precedence, viability, denials — over these raw candidates).
+        if (t.IsAbstract || t.IsInterface || t.IsArray || t == typeof(string) || t == typeof(object))
+            return Array.Empty<ConversionRouteCandidate>();
+
+        var candidates = new List<ConversionRouteCandidate>();
+
+        foreach (var method in t.GetMethods(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static))
+        {
+            if (method.IsGenericMethod)
+                continue;
+
+            var parameters = method.GetParameters();
+
+            if (method.Name is "op_Implicit" or "op_Explicit" && method.ReturnType == t &&
+                parameters.Length == 1 && parameters[0].ParameterType is { } opSource && opSource != t && opSource != typeof(object))
+            {
+                candidates.Add(new ConversionRouteCandidate(
+                    method.Name == "op_Implicit" ? RouteKind.ImplicitOp : RouteKind.ExplicitOp,
+                    new ReflectionXamlType(opSource)));
+            }
+            else if (method.Name == "Parse" && method.ReturnType == t &&
+                     parameters.Length == 1 && parameters[0].ParameterType == typeof(string))
+            {
+                candidates.Add(new ConversionRouteCandidate(RouteKind.ParseMethod, new ReflectionXamlType(typeof(string))));
+            }
+        }
+
+        foreach (var ctor in t.GetConstructors())
+        {
+            var ctorParameters = ctor.GetParameters();
+            if (ctorParameters.Length == 1 && ctorParameters[0].ParameterType is { } ctorSource && ctorSource != t && ctorSource != typeof(object))
+                candidates.Add(new ConversionRouteCandidate(RouteKind.Constructor, new ReflectionXamlType(ctorSource)));
+        }
+
+        return candidates;
+    }
+
     /// <inheritdoc/>
     public bool IsCollection => _isCollection ??= ComputeIsCollection(UnderlyingSystemType);
 

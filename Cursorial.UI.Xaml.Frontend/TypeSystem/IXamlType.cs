@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 // ReSharper disable CheckNamespace
 
@@ -40,6 +41,16 @@ public interface IXamlType
     /// <see langword="false"/> — the conservative fallback keeps the historical Items classification.
     /// </summary>
     bool IsAssignableFrom(IXamlType other);
+
+    /// <summary>
+    /// The W2e route-probe capability query (CR9): every single-parameter bridge-route candidate declared
+    /// ON this type — implicit/explicit conversion operators producing it, public single-parameter
+    /// constructors, and <c>static T Parse(string)</c> — with each candidate's source parameter type.
+    /// Backends enumerate natively; the shared <see cref="RouteProbe"/> applies the CR3 precedence and
+    /// one-viable-per-kind rule so the DECISION cannot drift between lanes. Abstract types, interfaces,
+    /// arrays, string, and object return an empty list.
+    /// </summary>
+    IReadOnlyList<ConversionRouteCandidate> GetConversionRouteCandidates();
 
     /// <summary>
     /// True when the type is collection-shaped — an <see cref="System.Collections.IList"/>, an

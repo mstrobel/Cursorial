@@ -70,4 +70,55 @@ internal sealed class RoslynXamlType : IXamlType
 
     /// <inheritdoc/>
     public Type? UnderlyingSystemType => null;
+
+    private System.Collections.Generic.IReadOnlyList<ConversionRouteCandidate>? _routeCandidates;
+
+    /// <inheritdoc/>
+    public System.Collections.Generic.IReadOnlyList<ConversionRouteCandidate> GetConversionRouteCandidates()
+        => _routeCandidates ??= ComputeRouteCandidates(Symbol);
+
+    private static System.Collections.Generic.IReadOnlyList<ConversionRouteCandidate> ComputeRouteCandidates(ITypeSymbol t)
+    {
+        // The reflection twin's structural exclusions, over symbols.
+        if (t.IsAbstract || t.TypeKind is TypeKind.Interface or TypeKind.Array ||
+            t.SpecialType is SpecialType.System_String or SpecialType.System_Object ||
+            t is not INamedTypeSymbol named)
+            return Array.Empty<ConversionRouteCandidate>();
+
+        var candidates = new System.Collections.Generic.List<ConversionRouteCandidate>();
+
+        foreach (var member in named.GetMembers())
+        {
+            if (member is IMethodSymbol { IsStatic: true, DeclaredAccessibility: Accessibility.Public, IsGenericMethod: false } method)
+            {
+                if (method.Name is "op_Implicit" or "op_Explicit" &&
+                    SymbolEqualityComparer.Default.Equals(method.ReturnType, t) &&
+                    method.Parameters.Length == 1 &&
+                    method.Parameters[0].Type is { SpecialType: not SpecialType.System_Object } opSource &&
+                    !SymbolEqualityComparer.Default.Equals(opSource, t))
+                {
+                    candidates.Add(new ConversionRouteCandidate(
+                        method.Name == "op_Implicit" ? RouteKind.ImplicitOp : RouteKind.ExplicitOp,
+                        new RoslynXamlType(opSource)));
+                }
+                else if (method.Name == "Parse" &&
+                         SymbolEqualityComparer.Default.Equals(method.ReturnType, t) &&
+                         method.Parameters.Length == 1 &&
+                         method.Parameters[0].Type.SpecialType == SpecialType.System_String)
+                {
+                    candidates.Add(new ConversionRouteCandidate(RouteKind.ParseMethod, new RoslynXamlType(method.Parameters[0].Type)));
+                }
+            }
+        }
+
+        foreach (var ctor in named.InstanceConstructors)
+        {
+            if (ctor is { DeclaredAccessibility: Accessibility.Public, Parameters.Length: 1 } &&
+                ctor.Parameters[0].Type is { SpecialType: not SpecialType.System_Object } ctorSource &&
+                !SymbolEqualityComparer.Default.Equals(ctorSource, t))
+                candidates.Add(new ConversionRouteCandidate(RouteKind.Constructor, new RoslynXamlType(ctorSource)));
+        }
+
+        return candidates;
+    }
 }

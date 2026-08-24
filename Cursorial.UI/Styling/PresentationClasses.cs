@@ -17,4 +17,8 @@ public static class PresentationClasses
 
     /// <summary>Stamped while frames present to the full (alternate) screen.</summary>
     public const string FullScreen = "app-fullscreen";
+
+    /// <summary>The enumerable form for tooling/selector-completion (the
+    /// <see cref="CapabilityClasses.Names"/> twin).</summary>
+    public static IReadOnlyList<string> Names { get; } = [Inline, FullScreen];
 }

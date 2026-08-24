@@ -191,6 +191,10 @@ public static class Easings
         ["BounceIn"] = BounceIn, ["BounceOut"] = BounceOut, ["BounceInOut"] = BounceInOut,
     };
 
+    /// <summary>The catalog names <see cref="TryParse"/> accepts (canonical casing) — the tooling/
+    /// completion seam; the functional <c>cubic-bezier(x1,y1,x2,y2)</c> form is additional.</summary>
+    public static IReadOnlyCollection<string> Names => ByName.Keys;
+
     /// <summary>
     /// Parses a catalog name (case-insensitive, e.g. <c>"CubicOut"</c>/<c>"ElasticInOut"</c>) or a
     /// <c>cubic-bezier(x1,y1,x2,y2)</c> functional form (design doc §9.10/§9.11). Returns false on an

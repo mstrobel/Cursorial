@@ -27,11 +27,20 @@ internal sealed class RoslynXamlType : IXamlType
         get
         {
             // Match ReflectionXamlType's contract: the DEFINITION's namespace-qualified, arity-suffixed
-            // name with no argument list ("Cursorial.UI.Optional`1"), so cross-backend comparisons agree.
+            // name with no argument list ("Cursorial.UI.Optional`1"), NESTED types '+'-joined
+            // ("Ns.Outer+Inner" — System.Type.FullName parity; without the containing-type walk a nested
+            // type named UIProperty would collide with the CR5 sentinel in this lane only).
             var symbol = Symbol is INamedTypeSymbol { IsGenericType: true } named ? named.ConstructedFrom : Symbol;
+
+            static string AritySuffixed(ITypeSymbol s)
+                => s is INamedTypeSymbol { Arity: > 0 } n ? s.Name + "`" + n.Arity : s.Name;
+
+            var name = AritySuffixed(symbol);
+            for (var container = symbol.ContainingType; container is not null; container = container.ContainingType)
+                name = AritySuffixed(container) + "+" + name;
+
             var ns = symbol.ContainingNamespace is { IsGlobalNamespace: false } cns ? cns.ToDisplayString() + "." : string.Empty;
-            var arity = symbol is INamedTypeSymbol { Arity: > 0 } n ? "`" + n.Arity : string.Empty;
-            return ns + symbol.Name + arity;
+            return ns + name;
         }
     }
 

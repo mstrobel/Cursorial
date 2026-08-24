@@ -58,10 +58,27 @@ public abstract class Transition
         return collection;
     }
 
-    /// <summary>Sets the transitions attached to <paramref name="element"/> (arms/re-arms the per-element manager).</summary>
+    /// <summary>
+    /// Sets the transitions attached to <paramref name="element"/> (arms/re-arms the per-element manager).
+    /// Validates EVERY transition before writing (all-or-nothing, the W2b-audit half-applied-arm finding):
+    /// a wrong-typed/unset <see cref="Property"/> throws here, BEFORE the store mutates — the element's
+    /// prior transitions stay intact. Framework-driven arms (style application, the attach edge) instead
+    /// SKIP an invalid transition with an <see cref="AnimationDiagnostics.Warning"/> — a markup typo must
+    /// not abort a style transaction or an attach walk.
+    /// </summary>
     public static void SetTransitions(UIElement element, TransitionCollection? value)
     {
         ArgumentNullException.ThrowIfNull(element);
+
+        if (value is not null)
+        {
+            foreach (var transition in value)
+            {
+                if (transition.ValidateForArm() is { } error)
+                    throw new InvalidOperationException(error);
+            }
+        }
+
         element.SetValue(TransitionsProperty, value);
     }
 
@@ -99,6 +116,14 @@ public abstract class Transition
         ArgumentNullException.ThrowIfNull(property);
         Property = property;
     }
+
+    /// <summary>
+    /// Validates this transition's configuration for arming — null when armable, else the diagnostic
+    /// message (the CR6 check: the typed subclass demands a matching <c>StyledProperty&lt;T&gt;</c>).
+    /// Consulted by <see cref="SetTransitions"/> (throws, pre-write) and the manager's arm (skips with an
+    /// <see cref="AnimationDiagnostics.Warning"/> — framework walks never throw on an authored typo).
+    /// </summary>
+    internal abstract string? ValidateForArm();
 
     /// <summary>Subscribes the winning-base channel for this transition's property on <paramref name="target"/>.</summary>
     internal IDisposable Subscribe(UIElement target, TransitionManager manager)
@@ -177,17 +202,22 @@ public abstract class Transition<T> : Transition
     /// <summary>The interpolator for the fade (default: the process-global registry's, AD12).</summary>
     protected virtual IInterpolator<T> Interpolator => Cursorial.Animation.Interpolator.For<T>();
 
+    /// <inheritdoc/>
+    internal sealed override string? ValidateForArm()
+        => Property is StyledProperty<T>
+               ? null
+               : $"{GetType().Name} cannot arm: Property is " +
+                 $"{(Property is null ? "unset" : $"'{Property.Name}' (value type {Property.PropertyType.Name})")} — " +
+                 $"a StyledProperty<{typeof(T).Name}> is required.";
+
     private protected sealed override IDisposable SubscribeCore(UIElement target, TransitionManager manager)
     {
         // The CR6 arm-time validation — the ONE downcast between the base-typed markup member and the
         // typed pipeline. Past here every cast is safe and the per-frame path never touches Property.
+        // Normally unreachable: SetTransitions throws pre-write and the manager's arm skips invalid
+        // entries, so this is the backstop for a direct internal subscribe.
         if (Property is not StyledProperty<T> typed)
-        {
-            throw new InvalidOperationException(
-                $"{GetType().Name} cannot arm: Property is " +
-                $"{(Property is null ? "unset" : $"'{Property.Name}' (a {Property.GetType().Name})")} — " +
-                $"a StyledProperty<{typeof(T).Name}> is required.");
-        }
+            throw new InvalidOperationException(ValidateForArm());
 
         return target.AddObserver(typed,
                                   new Watch(manager, this),

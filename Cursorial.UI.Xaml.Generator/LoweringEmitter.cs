@@ -2210,9 +2210,25 @@ internal static class LoweringEmitter
                 // already diagnosed at parse; skipping stays correct.
                 if (member.Kind == XamlValueKind.Items && objType is not null && SymbolXamlModel.IsCollectionType(objType))
                 {
+                    // The self-list ITEM-TYPE fence (audit): an unassignable child (a nested
+                    // TransitionCollection inside a TransitionCollection) must be a positioned CURG3002,
+                    // not a raw CS1503 in generated code — the loader rejects the same add at fill.
+                    var itemType = SelfListItemType(objType);
+
                     int selfChildIndex = member.ValueIndex;
                     for (int i = 0; i < member.ItemCount; i++)
                     {
+                        var selfChildType = TypeSymbolOf(c.Doc, c.Doc.Objects[selfChildIndex].TypeId);
+                        if (itemType is not null && selfChildType is not null &&
+                            !IsAssignableTo(itemType, selfChildType))
+                        {
+                            c.CurrentLineInfo = c.Doc.Objects[selfChildIndex].PackedLineInfo;
+                            c.Error($"'{selfChildType.Name}' is not assignable to the '{objType.Name}' item type '{itemType.Name}' " +
+                                    "(the runtime loader rejects the identical add)");
+                            selfChildIndex += c.Doc.Objects[selfChildIndex].SubtreeLength;
+                            continue;
+                        }
+
                         var selfChildVar = c.NextVar();
                         EmitObject(c, selfChildIndex, selfChildVar, isRoot: false, hasScope, dataType);
                         c.CurrentObjectType = objType;
@@ -4578,6 +4594,20 @@ internal static class LoweringEmitter
 
     private static bool AreRelatedTypes(ITypeSymbol a, ITypeSymbol b)
         => AreSameType(a, b) || IsAssignableTo(a, b) || IsAssignableTo(b, a);
+
+    /// <summary>The item type of a self-list element (its <c>ICollection&lt;T&gt;</c>/<c>IList&lt;T&gt;</c>
+    /// argument, walking base types + interfaces), or null when undeterminable.</summary>
+    private static ITypeSymbol? SelfListItemType(ITypeSymbol collectionType)
+    {
+        foreach (var iface in collectionType.AllInterfaces)
+        {
+            if (iface is { Arity: 1 } n &&
+                n.ConstructedFrom.ToDisplayString() is "System.Collections.Generic.IList<T>" or "System.Collections.Generic.ICollection<T>")
+                return n.TypeArguments[0];
+        }
+
+        return null;
+    }
 
     private static bool IsAssignableTo(ITypeSymbol target, ITypeSymbol from)
     {

@@ -135,4 +135,77 @@ public sealed class Section17_TransitionsAccessor
         var ex2 = Assert.Throws<InvalidOperationException>(() => Transition.SetTransitions(element, unset));
         Assert.Contains("unset", ex2.Message);
     }
+
+    [Fact] // N161 (audit): SetTransitions is ALL-OR-NOTHING — the throw happens BEFORE the store writes,
+    // so the element's prior transitions stay intact and armed (no half-applied seal/subscriptions)
+    public void SetTransitions_InvalidEntry_PriorStateIntact()
+    {
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(40, 10) });
+        var element = new Animatable();
+        var root = new StackPanel();
+        root.Children.Add(element);
+        host.ShowRoot(root);
+        host.RunUntilIdle();
+
+        var good = new TransitionCollection { new DoubleTransition(Animatable.VProperty) { Duration = Anim.Ms(100) } };
+        Transition.SetTransitions(element, good);
+
+        var bad = new TransitionCollection
+        {
+            new DoubleTransition(Animatable.VProperty) { Duration = Anim.Ms(50) },
+            new DoubleTransition { Property = UIElement.VisibilityProperty }, // invalid — throws pre-write
+        };
+        Assert.Throws<InvalidOperationException>(() => Transition.SetTransitions(element, bad));
+
+        Assert.Same(good, element.GetValue(Transition.TransitionsProperty)); // the store never mutated
+        Assert.False(bad.IsSealed);                                          // the rejected collection untouched
+
+        host.Application.Styles.Add(new Style(".hi").Set(Animatable.VProperty, 10.0));
+        element.Classes.Add("hi");
+        Assert.Equal(0.0, element.V); // the PRIOR arm still runs — subscriptions were never disturbed
+    }
+
+    [Fact] // N162 (audit): a FRAMEWORK-driven arm (style application / the attach edge) never throws on
+    // an authored typo — the invalid transition is skipped with an AnimationDiagnostics warning and the
+    // valid siblings arm (a bad markup transition must not abort a style transaction or an attach walk)
+    public void FrameworkArm_InvalidEntry_SkipsWithWarning_SiblingsArm()
+    {
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(40, 10) });
+        var element = new Animatable();
+        var root = new StackPanel();
+        root.Children.Add(element);
+        host.ShowRoot(root);
+        host.RunUntilIdle();
+
+        var warnings = new List<string>();
+        Action<string> capture = warnings.Add;
+        AnimationDiagnostics.Warning += capture;
+        try
+        {
+            // The style lane bypasses SetTransitions (the setter writes the store directly) — the arm
+            // runs inside the style transaction and must skip, not throw.
+            var mixed = new TransitionCollection
+            {
+                new DoubleTransition { Property = UIElement.VisibilityProperty }, // invalid — skipped
+                new DoubleTransition(Animatable.VProperty) { Duration = Anim.Ms(100) }, // valid — arms
+            };
+            host.Application.Styles.Add(new Style(".mix").Set(Transition.TransitionsProperty, mixed));
+            element.Classes.Add("mix");
+            host.RunUntilIdle(); // no throw — the transaction completed
+
+            Assert.Contains(warnings, w => w.Contains("DoubleTransition") && w.Contains("Visibility"));
+            Assert.Same(mixed, element.GetValue(Transition.TransitionsProperty)); // the style value applied
+
+            host.Application.Styles.Add(new Style(".hi").Set(Animatable.VProperty, 10.0));
+            element.Classes.Add("hi");
+            Assert.Equal(0.0, element.V); // the VALID sibling armed and ignites
+            host.AdvanceTime(Anim.Ms(200));
+            host.RunUntilIdle();
+            Assert.Equal(10.0, element.V);
+        }
+        finally
+        {
+            AnimationDiagnostics.Warning -= capture;
+        }
+    }
 }

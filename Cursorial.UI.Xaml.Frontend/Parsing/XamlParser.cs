@@ -43,11 +43,18 @@ internal sealed class XamlParser
     // walked so an enclosed Setter can resolve Property/Value against it (matrix X64/X66).
     private readonly Stack<XamlType?> _styleTargetStack = new();
 
-    // The enclosing-object-element type stack (W2 CR5): every object element pushes its resolved type
-    // around its body walk, so a child's end-of-object UIProperty-token resolution can use the NEAREST
-    // ENCLOSING element as the ambient target when no Style TargetType is in scope — the
+    // The enclosing-object-element AMBIENT stack (W2 CR5, barrier semantics from the W2b audit): every
+    // object element pushes its resolved type around its body walk, so a child's end-of-object
+    // UIProperty-token resolution can use the NEAREST ENCLOSING element as the ambient target — the
     // <Border><Transition.Transitions><DoubleTransition Property="Opacity"> case (Border is the ambient).
-    private readonly Stack<XamlType?> _elementTypeStack = new();
+    // BARRIER frames stop the walk where the lexical tree stops being the runtime tree: a deferred
+    // template boundary (the body attaches to a templated parent, not the document ancestors), a
+    // resource-dictionary boundary (an entry attaches wherever it is consumed — resolution against the
+    // RD HOST would make a shared resource parse host-dependently), and Style (a selector-only style has
+    // no lexical target; its TargetType rides _styleTargetStack, the walk's FALLBACK).
+    private readonly record struct AmbientFrame(XamlType? Type, bool IsBarrier);
+
+    private readonly Stack<AmbientFrame> _elementTypeStack = new();
 
     // Fragment mode (a design-data subtree re-parsed through XmlReader.ReadSubtree): the subtree
     // reader SYNTHESIZES in-scope xmlns declarations lazily — a prefix first used on a NESTED
@@ -456,7 +463,14 @@ internal sealed class XamlParser
             // does NOT propagate into it (x:Name inside a template body is a part name, not CUR2304).
             bool contentDefers = ContentPropertyDefers(type);
 
-            _elementTypeStack.Push(type); // the CR5 ambient: children see THIS element as nearest-enclosing
+            // The CR5 ambient: children see THIS element as nearest-enclosing. A DEFERRED body (a
+            // template) pushes a BARRIER instead — the body's runtime ancestors are the templated
+            // parent's, not the document's (the W2b-audit template-shadow finding) — and shadows the
+            // style-target FALLBACK with the template's OWN TargetType (or null), so a Style's
+            // TargetType never leaks into its template's parts.
+            _elementTypeStack.Push(contentDefers ? new AmbientFrame(null, IsBarrier: true) : new AmbientFrame(type, IsBarrier: false));
+            if (contentDefers)
+                _styleTargetStack.Push(ResolveStyleTargetType(members));
             try
             {
                 ParseElementBody(type,
@@ -470,6 +484,8 @@ internal sealed class XamlParser
             finally
             {
                 _elementTypeStack.Pop();
+                if (contentDefers)
+                    _styleTargetStack.Pop();
             }
         }
 
@@ -1154,23 +1170,41 @@ internal sealed class XamlParser
             }
             else
             {
-                var ambient = _styleTargetStack.Count > 0 ? _styleTargetStack.Peek() : null;
+                // The ambient walk (audit-hardened precedence: ELEMENT stack first — the nearest part
+                // wins inside a template — with the style/template TargetType as the FALLBACK):
+                //   barrier frame        → stop (deferred template / implicit-RD boundary)
+                //   Style                → stop (a selector-only style has no lexical target; a
+                //                          TargetType-bearing one serves the fallback)
+                //   ResourceDictionary   → stop (an entry parses host-independently — explicit form)
+                //   Setter               → transparent (its enclosing Style decides)
+                //   pure collection wrapper (no content property, IsCollection) → transparent
+                //   unresolved (null)    → transparent (already diagnosed)
+                //   anything else        → the ambient (a content-bearing Storyboard stops the walk with
+                //                          a deterministic local error rather than an accidental
+                //                          resolution against an unrelated ancestor).
+                XamlType? ambient = null;
 
-                if (ambient is null)
+                foreach (var frame in _elementTypeStack)
                 {
-                    // The nearest enclosing object element, looking THROUGH pure collection wrappers
-                    // (a self-list with no content property — TransitionCollection — is a transparent
-                    // container, not a target; a content-bearing type like Storyboard is NOT skipped, so
-                    // a resource-scoped track token stays a deterministic local error, never an
-                    // accidental resolution against an unrelated ancestor).
-                    foreach (var enclosing in _elementTypeStack)
-                    {
-                        if (enclosing is null || enclosing is { ContentProperty: null, IsCollection: true })
-                            continue;
-                        ambient = enclosing;
+                    if (frame.IsBarrier)
                         break;
-                    }
+
+                    var enclosing = frame.Type;
+                    if (enclosing is null || enclosing is { ContentProperty: null, IsCollection: true })
+                        continue;
+
+                    string enclosingFullName = enclosing.ClrType.FullName;
+                    if (string.Equals(enclosingFullName, "Cursorial.UI.Setter", StringComparison.Ordinal))
+                        continue;
+                    if (string.Equals(enclosingFullName, "Cursorial.UI.Style", StringComparison.Ordinal) ||
+                        string.Equals(enclosingFullName, "Cursorial.UI.ResourceDictionary", StringComparison.Ordinal))
+                        break;
+
+                    ambient = enclosing;
+                    break;
                 }
+
+                ambient ??= _styleTargetStack.Count > 0 ? _styleTargetStack.Peek() : null;
 
                 if (ambient is null)
                 {
@@ -2132,9 +2166,16 @@ internal sealed class XamlParser
             return;
         }
 
-        // Parse the property-element's children/text as the member value.
+        // Parse the property-element's children/text as the member value. An implicit-resource-dictionary
+        // member (<X.Resources>) is an AMBIENT BARRIER (the W2b-audit RD finding): a keyed entry parses
+        // host-independently, so the CR5 walk must not see the RD host through this boundary.
         var childObjects = new List<int>();
         var textBuffer = new StringBuilder();
+        bool pushedRdBarrier = InResourceDictionary(memberName);
+        if (pushedRdBarrier)
+            _elementTypeStack.Push(new AmbientFrame(null, IsBarrier: true));
+        try
+        {
 
         while (_reader.Read())
         {
@@ -2151,6 +2192,13 @@ internal sealed class XamlParser
             {
                 break;
             }
+        }
+
+        }
+        finally
+        {
+            if (pushedRdBarrier)
+                _elementTypeStack.Pop();
         }
 
         if (childObjects.Count > 0)

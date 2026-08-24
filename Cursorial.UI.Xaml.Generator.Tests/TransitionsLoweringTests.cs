@@ -73,6 +73,31 @@ public class TransitionsLoweringTests
         Assert.Same(UIElement.OpacityProperty, Assert.IsType<DoubleTransition>(Assert.Single(fades)).Property);
     }
 
+    [Fact] // GB4 (audit): a nested self-list (TransitionCollection inside TransitionCollection) is a
+    // positioned CURG3002-grade error — not a raw CS1503 in generated code
+    public void Lowered_NestedSelfList_IsError()
+    {
+        var xaml =
+            $"<StackPanel {Ns} x:Class=\"GenApp.Trans4\"><StackPanel.Resources>" +
+              "<TransitionCollection x:Key=\"outer\"><TransitionCollection/></TransitionCollection>" +
+            "</StackPanel.Resources></StackPanel>";
+        var view = "namespace GenApp { public partial class Trans4 : Cursorial.UI.Controls.StackPanel { public Trans4() => InitializeComponent(); } }";
+
+        var compilation = GeneratorHarness.ReferencedCompilation("TransLowHost")
+            .AddSyntaxTrees(CSharpSyntaxTree.ParseText(view));
+        var document = Cursorial.UI.Xaml.XamlFrontend.Parse(xaml, new Cursorial.UI.Xaml.XamlParseOptions
+        {
+            MetadataProvider = new Cursorial.UI.Xaml.Generator.RoslynXamlMetadata(compilation),
+            DiagnosticMode = Cursorial.UI.Xaml.XamlDiagnosticMode.CollectAll,
+            FoldConstants = false,
+        });
+        var result = Cursorial.UI.Xaml.Generator.LoweringEmitter.Emit(
+            document, "MyView.xaml", "MyView.xaml", new Cursorial.UI.Xaml.Generator.XamlSymbolResolver(compilation))
+            ?? throw new InvalidOperationException("no lowering emitted");
+
+        Assert.Contains(result.Errors, e => e.Message.Contains("not assignable"));
+    }
+
     [Fact] // GB3: an unresolvable token is a PARSE-band diagnostic — the identical document fails both
     // lanes at the same position (the G4 blindness class, closed for this member family)
     public void Lowered_UnresolvableToken_IsParseDiagnostic()

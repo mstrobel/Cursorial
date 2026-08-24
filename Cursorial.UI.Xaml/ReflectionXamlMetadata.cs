@@ -229,6 +229,24 @@ public sealed class ReflectionXamlMetadata : IXamlTypeMetadataProvider, IXamlSta
             RuntimeHelpers.RunClassConstructor(t.TypeHandle);
 
         var contentProperty = ContentPropertyTable.For(clrType);
+        static bool IsSelfListType(Type t)
+        {
+            // Mirror the frontend's ReflectionXamlType.ComputeIsCollection / the Roslyn twin's
+            // ImplementsIList: non-generic IList OR any constructed IList<T> (Styles and
+            // UIElementCollection implement ONLY the generic interface — the W2b-audit parity finding:
+            // the narrower check made a single-child <Styles> die CUR2104 in this lane while the
+            // generated lane lowered it fine).
+            if (typeof(System.Collections.IList).IsAssignableFrom(t))
+                return true;
+            if (t.IsGenericType && t.GetGenericTypeDefinition() == typeof(IList<>))
+                return true;
+            foreach (var iface in t.GetInterfaces())
+            {
+                if (iface.IsGenericType && iface.GetGenericTypeDefinition() == typeof(IList<>))
+                    return true;
+            }
+            return false;
+        }
 
         // The type IS a dictionary when it is one; the type's CONTENT is a collection when its content
         // property is collection-typed (Panel.Children) — the frontend's IsCollection drives the
@@ -237,7 +255,7 @@ public sealed class ReflectionXamlMetadata : IXamlTypeMetadataProvider, IXamlSta
         // without it a lone child classified Object (memberId -1) and died CUR2104 instead of self-filling
         // (the W2b finding — multi-child self-lists worked, single-child ones never did).
         bool isSelfDictionary = typeof(ResourceDictionary).IsAssignableFrom(clrType);
-        bool isSelfList = typeof(System.Collections.IList).IsAssignableFrom(clrType);
+        bool isSelfList = IsSelfListType(clrType);
         bool contentIsCollection = contentProperty is not null && ContentPropertyIsCollection(clrType, contentProperty);
         bool requiresInit = typeof(ISupportInitialize).IsAssignableFrom(clrType);
 

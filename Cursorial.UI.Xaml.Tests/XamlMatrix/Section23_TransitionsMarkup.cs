@@ -152,4 +152,73 @@ public sealed class Section23_TransitionsMarkup : LoaderTestBase
         host.RunUntilIdle();
         Assert.Equal(0.25, border.Opacity);     // settled at the styled base
     }
+
+    // ── Audit rows (XB10–XB13) ───────────────────────────────────────────────────────────────────
+
+    [Fact] // XB10 (audit): a Style's TargetType must NOT leak into its template's parts — the deferred
+    // boundary shadows the style-target fallback and the nearest PART is the ambient
+    public void XB10_TemplateBody_PartWins_NotStyleTargetType()
+    {
+        var style = Load<Style>(
+            "<Style TargetType=\"Button\">" +
+              "<Setter Property=\"Template\">" +
+                "<ControlTemplate>" +
+                  "<ProgressBar>" +
+                    "<Transition.Transitions>" +
+                      "<DoubleTransition Property=\"IndeterminatePhase\" Duration=\"0:0:0.1\"/>" +
+                    "</Transition.Transitions>" +
+                  "</ProgressBar>" +
+                "</ControlTemplate>" +
+              "</Setter>" +
+            "</Style>");
+
+        // Pre-fix this threw CUR2102 "No member 'IndeterminatePhase' on 'Button'". The deferred slice
+        // builds per instantiation — instantiate it and assert the token bound the PART's property.
+        var template = Assert.IsType<Cursorial.UI.Controls.ControlTemplate>(Assert.Single(style.Setters).Value);
+        var part = Assert.IsType<Cursorial.UI.Controls.ProgressBar>(
+            template.Content!.Build(new Cursorial.UI.Controls.TemplateBuildContext(new Button(), new NameScopeDictionary())));
+        var transition = Assert.IsType<DoubleTransition>(
+            Assert.Single(part.GetValue(Transition.TransitionsProperty)!));
+        Assert.Same(Cursorial.UI.Controls.ProgressBar.IndeterminatePhaseProperty, transition.Property);
+    }
+
+    [Fact] // XB11 (audit): a SELECTOR-only style's setter value has no lexical target — the designed
+    // CUR2113 guidance (owner-qualify), never "No member on Setter"
+    public void XB11_SelectorOnlyStyle_UnqualifiedToken_IsCUR2113()
+    {
+        var ex = ThrowsLoad("CUR2113", () => Load(
+            "<Style Selector=\"Border.card\">" +
+              "<Setter Property=\"Transition.Transitions\">" +
+                "<TransitionCollection><DoubleTransition Property=\"Opacity\"/></TransitionCollection>" +
+              "</Setter>" +
+            "</Style>"));
+
+        Assert.Contains("UIElement.Opacity", ex.Message); // the guidance names the fix
+    }
+
+    [Fact] // XB12 (audit): the resource-dictionary boundary is OPAQUE to the ambient walk — a keyed
+    // entry parses host-independently (resolution against the RD host would make a shared resource's
+    // meaning depend on where the dictionary happens to sit)
+    public void XB12_ResourceEntry_UnqualifiedToken_IsCUR2113()
+        => ThrowsLoad("CUR2113", () => Load(
+            "<StackPanel>" +
+              "<StackPanel.Resources>" +
+                "<TransitionCollection x:Key=\"fades\"><DoubleTransition Property=\"Opacity\"/></TransitionCollection>" +
+              "</StackPanel.Resources>" +
+            "</StackPanel>"));
+
+    [Fact] // XB13 (audit): a single-child IList<T>-only self-list (Styles implements ONLY the generic
+    // interface) loads — the reflection provider's isSelfList now mirrors the Roslyn twin
+    public void XB13_GenericOnlySelfList_SingleChild_Loads()
+    {
+        var panel = Load<StackPanel>(
+            "<StackPanel>" +
+              "<StackPanel.Resources>" +
+                "<Styles x:Key=\"set\"><Style TargetType=\"Border\"/></Styles>" +
+              "</StackPanel.Resources>" +
+            "</StackPanel>");
+
+        var set = Assert.IsType<Styles>(panel.Resources!["set"]);
+        Assert.Single(set);
+    }
 }

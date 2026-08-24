@@ -81,7 +81,19 @@ internal sealed class TransitionManager
         collection.Seal();
 
         foreach (var transition in collection)
+        {
+            // Framework-driven arms (style application, the attach edge) must never throw on an authored
+            // typo — a wrong-typed transition would abort the style transaction / the attach walk
+            // half-done (the W2b-audit findings). Skip it with a diagnostic; the imperative
+            // SetTransitions path already threw pre-write for the same defect.
+            if (transition.ValidateForArm() is { } error)
+            {
+                AnimationDiagnostics.RaiseWarning(error);
+                continue;
+            }
+
             _subscriptions.Add(transition.Subscribe(_owner, this));
+        }
 
         // Arming on an element that has already had a real (non-collapsed) arrange — runtime SetTransitions on a
         // settled element — goes live now: its initial application is in the past (the manager never observed it),

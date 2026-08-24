@@ -22,7 +22,7 @@ namespace Cursorial.UI.Xaml;
 /// </summary>
 [RequiresUnreferencedCode("Resolves XAML types, members, converters, and x:Static fields by reflection.")]
 [RequiresDynamicCode("Compiles activation/setter thunks; AOT falls back to Activator/MethodInfo.Invoke.")]
-public sealed class ReflectionXamlMetadata : IXamlTypeMetadataProvider, IXamlStaticResolver, IXamlAttachablePropertyProvider, IXamlOwnMemberProvider
+public sealed class ReflectionXamlMetadata : IXamlTypeMetadataProvider, IXamlStaticResolver, IXamlAttachablePropertyProvider, IXamlOwnMemberProvider, IXamlGenericTypeProvider
 {
     /// <summary>The process-wide default instance over <see cref="XamlSchemaContext.Default"/>.</summary>
     public static ReflectionXamlMetadata Instance { get; } = new(XamlSchemaContext.Default);
@@ -43,6 +43,81 @@ public sealed class ReflectionXamlMetadata : IXamlTypeMetadataProvider, IXamlSta
         if (ambiguous.Length > 0)
             return XamlTypeResolution.Ambiguous(ambiguous);
         return XamlTypeResolution.NotFound();
+    }
+
+    /// <inheritdoc/>
+    [UnconditionalSuppressMessage("Trimming", "IL2055", Justification = "The W3 generic closing — the RUC reflective lane; the strict-AOT lane uses the generator's Construct()ed emission.")]
+    [UnconditionalSuppressMessage("AOT", "IL3050", Justification = "MakeGenericType in the RUC lane only; the lowered lane emits closed forms statically.")]
+    public XamlTypeResolution TryGetClosedType(in QualifiedTypeName name)
+    {
+        var closed = ResolveQualified(in name, out var ambiguous);
+        if (closed is not null)
+            return XamlTypeResolution.Resolved(GetXamlType(closed));
+        return ambiguous.Length > 0 ? XamlTypeResolution.Ambiguous(ambiguous) : XamlTypeResolution.NotFound();
+    }
+
+    [UnconditionalSuppressMessage("Trimming", "IL2055", Justification = "The W3 generic closing — the RUC reflective lane.")]
+    [UnconditionalSuppressMessage("AOT", "IL3050", Justification = "The RUC lane only.")]
+    private Type? ResolveQualified(in QualifiedTypeName name, out string[] ambiguous)
+    {
+        ambiguous = [];
+
+        Type? resolved;
+
+        if (name.TypeArguments.Count == 0)
+        {
+            resolved = _schema.Resolve(name.XmlNamespace, name.Name, out ambiguous);
+        }
+        else
+        {
+            // The definition: the exact name first (a using:-mapped exotic), then the CLR backtick-arity
+            // form (System.Xaml's resolution rule — the element/argument name is written WITHOUT arity).
+            var definition = _schema.Resolve(name.XmlNamespace, name.Name, out ambiguous) is { IsGenericTypeDefinition: true } exact &&
+                             exact.GetGenericArguments().Length == name.TypeArguments.Count
+                                 ? exact
+                                 : _schema.Resolve(name.XmlNamespace, name.Name + "`" + name.TypeArguments.Count, out ambiguous);
+
+            // A clr-namespace:/using: URI whose assembly the schema doesn't hold (scg:List over CoreLib —
+            // THE canonical 2009 example) falls back to the runtime's own resolution.
+            if (definition is null && XamlSchemaContext.TryDecodeClrNamespace(name.XmlNamespace, out var clrNs, out _))
+                definition = Type.GetType(clrNs + "." + name.Name + "`" + name.TypeArguments.Count);
+
+            if (definition is null || !definition.IsGenericTypeDefinition)
+                return null;
+
+            var arguments = new Type[name.TypeArguments.Count];
+            for (int i = 0; i < arguments.Length; i++)
+            {
+                if (ResolveQualified(name.TypeArguments[i], out ambiguous) is not { } argument)
+                    return null;
+                arguments[i] = argument;
+            }
+
+            try
+            {
+                resolved = definition.MakeGenericType(arguments);
+            }
+            catch (ArgumentException)
+            {
+                return null; // constraint violation — the caller reports the positioned diagnostic
+            }
+        }
+
+        if (resolved is null)
+            return null;
+
+        // The Cursorial suffix extensions, innermost-first: `x:Double?[]` is double?[].
+        if (name.IsNullable)
+        {
+            if (!resolved.IsValueType || Nullable.GetUnderlyingType(resolved) is not null)
+                return null; // '?' demands a non-nullable value type
+            resolved = typeof(Nullable<>).MakeGenericType(resolved);
+        }
+
+        if (name.IsArray)
+            resolved = resolved.MakeArrayType();
+
+        return resolved;
     }
 
     /// <inheritdoc/>

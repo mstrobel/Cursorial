@@ -397,8 +397,14 @@ internal sealed class XamlParser
                     parentInDeferred, lineInfo, reportLine, reportColumn);
         }
 
-        // Resolve the element type.
-        var resolution = ResolveType(ns, localName, reportLine, reportColumn);
+        // Resolve the element type. W3: an x:TypeArguments attribute is PEEKED here — position-neutral
+        // via GetAttribute — because resolution precedes attribute parsing: the element resolves CLOSED
+        // (<AnimationTrack x:TypeArguments="x:Double"> is AnimationTrack<double> from the first touch;
+        // members substitute, activation constructs the closed type). The in-attributes directive case
+        // is then a consumed no-op.
+        var resolution = _reader.GetAttribute("TypeArguments", XmlnsNamespaces.Intrinsics) is { } typeArgsText
+                             ? ResolveClosedElementType(ns, localName, typeArgsText, reportLine, reportColumn)
+                             : ResolveType(ns, localName, reportLine, reportColumn);
         int typeId;
         XamlType? type = null;
 
@@ -868,11 +874,8 @@ internal sealed class XamlParser
                 break;
 
             case "TypeArguments":
-                _builder.Error(XamlDiagnosticCodes.UnsupportedTypeArguments,
-                               "x:TypeArguments (generic instantiation) is unsupported in v1.",
-                               line,
-                               column);
-
+                // Consumed by the ParseElement pre-scan (the element resolved CLOSED before attributes
+                // parsed) — nothing to record; failures were reported there, positioned (W3).
                 break;
 
             case "Reference":
@@ -2520,6 +2523,95 @@ internal sealed class XamlParser
             ReportMemberNotFound(ownerResolution.Type!, memberName, line, column); // names the OWNER, not the TargetType
 
         return member;
+    }
+
+    /// <summary>
+    /// W3: resolves an <c>x:TypeArguments</c>-bearing element to its CLOSED type. The parser owns
+    /// prefix→xmlns binding (the live reader scope); the provider owns everything type-system through
+    /// <see cref="IXamlGenericTypeProvider.TryGetClosedType"/> (definition arity lookup, argument
+    /// closure, intrinsics, the Cursorial array/nullable suffixes). Every failure is a positioned
+    /// diagnostic; the returned resolution is NotFound after reporting so the caller's null-type path
+    /// runs without double-reporting.
+    /// </summary>
+    private XamlTypeResolution ResolveClosedElementType(string ns, string localName, string typeArgsText, int line, int column)
+    {
+        if (_options.MetadataProvider is not IXamlGenericTypeProvider genericProvider)
+        {
+            _builder.Error(XamlDiagnosticCodes.UnsupportedTypeArguments,
+                           "x:TypeArguments requires a metadata provider with generic-instantiation support.",
+                           line,
+                           column);
+            return XamlTypeResolution.NotFound();
+        }
+
+        if (!XamlTypeName.TryParseList(typeArgsText, out var argNames, out var grammarError, out _))
+        {
+            _builder.Error(XamlDiagnosticCodes.UnsupportedTypeArguments,
+                           $"Malformed x:TypeArguments '{typeArgsText}': {grammarError}",
+                           line,
+                           column);
+            return XamlTypeResolution.NotFound();
+        }
+
+        var arguments = new QualifiedTypeName[argNames.Count];
+        for (int i = 0; i < arguments.Length; i++)
+        {
+            if (QualifyTypeName(argNames[i], line, column) is not { } qualified)
+                return XamlTypeResolution.NotFound(); // unbound prefix — reported inside
+            arguments[i] = qualified;
+        }
+
+        var closedName = new QualifiedTypeName(ns, localName, arguments, isArray: false, isNullable: false);
+        var resolution = genericProvider.TryGetClosedType(in closedName);
+
+        if (resolution.IsResolved)
+            return resolution;
+
+        if (resolution.IsAmbiguous)
+        {
+            _builder.Error(XamlDiagnosticCodes.AmbiguousType,
+                           $"Ambiguous type '{localName}': {string.Join(", ", resolution.AmbiguousCandidates!)}.",
+                           line,
+                           column);
+            return resolution;
+        }
+
+        _builder.Error(XamlDiagnosticCodes.TypeNotFound,
+                       $"Cannot close '{localName}' with x:TypeArguments \"{typeArgsText}\" — the generic definition, " +
+                       "an argument, or a constraint failed to resolve.",
+                       line,
+                       column);
+        return XamlTypeResolution.NotFound();
+    }
+
+    /// <summary>Binds a parsed type name's prefixes (recursively) against the live reader scope.</summary>
+    private QualifiedTypeName? QualifyTypeName(XamlTypeName name, int line, int column)
+    {
+        var argNs = name.Prefix is null
+                        ? _reader.LookupNamespace(string.Empty) is { Length: > 0 } defaultNs ? defaultNs : XmlnsNamespaces.CursorialUi
+                        : _reader.LookupNamespace(name.Prefix);
+
+        if (argNs is null or { Length: 0 })
+        {
+            _builder.Error(XamlDiagnosticCodes.UndeclaredPrefix,
+                           $"Unbound xmlns prefix '{name.Prefix}' in x:TypeArguments.",
+                           line,
+                           column);
+            return null;
+        }
+
+        var nested = name.TypeArguments.Count == 0
+                         ? Array.Empty<QualifiedTypeName>()
+                         : new QualifiedTypeName[name.TypeArguments.Count];
+
+        for (int i = 0; i < name.TypeArguments.Count; i++)
+        {
+            if (QualifyTypeName(name.TypeArguments[i], line, column) is not { } qualified)
+                return null;
+            ((QualifiedTypeName[])nested)[i] = qualified;
+        }
+
+        return new QualifiedTypeName(argNs, name.Name, nested, name.IsArray, name.IsNullable);
     }
 
     private XamlTypeResolution ResolveType(string ns, string localName, int line, int column)

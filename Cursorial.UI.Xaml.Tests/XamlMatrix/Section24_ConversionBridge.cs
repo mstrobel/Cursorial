@@ -127,10 +127,46 @@ public sealed class Section24_ConversionBridge : LoaderTestBase
         }
     }
 
-    [Fact] // XC7 (audit): Style is DENIED — its Selector ctor would silently construct an empty,
-    // setterless style from a text Style attribute; the pre-bridge loud rejection is preserved
-    public void XC7_StyleDenied_TextAttributeStaysLoud()
-        => Assert.ThrowsAny<Exception>(() => Load("<Border Style=\".card\"/>"));
+    [Fact] // XC7 (audit ×2): Style is DENIED in the probe AND the bridge — its Selector ctor would
+    // silently construct an empty setterless style from a text attribute. The W2e probe upgraded the
+    // failure from an unpositioned load-time ArgumentException to a positioned parse-time CUR2402 — the
+    // exact member class (Style/Theme) a bare selector-string typo lands on.
+    public void XC7_StyleDenied_IsPositionedParseError()
+    {
+        var ex = ThrowsLoad("CUR2402", () => Load("<Border Style=\".card\"/>"));
+        Assert.Contains("Style", ex.Message);
+    }
+
+    [Fact] // XC11 (audit — the §1a consistency assert): the RECORDED route and the EXECUTING bridge must
+    // agree for every framework member value type — a probe-says-route/bridge-denies split (the Style
+    // finding) or the inverse would silently reopen the G4 hole.
+    public void XC11_RecordedRoutes_AgreeWithBridgeExecution()
+    {
+        var uiNs = "https://cursorial.dev/ui";
+        string[] elements = ["Border", "Button", "TextBlock", "ListBox", "Window", "ProgressBar"];
+        string[] members = ["Style", "Theme", "Background", "Opacity", "Visibility"];
+
+        foreach (var element in elements)
+        {
+            var resolution = ReflectionXamlMetadata.Instance.TryGetType(uiNs, element);
+            Assert.True(resolution.IsResolved);
+
+            foreach (var memberName in members)
+            {
+                var member = resolution.Type!.TryGetMember(memberName);
+                if (member is null)
+                    continue;
+
+                var kind = member.Route.Kind;
+                if (kind is not (RouteKind.ImplicitOp or RouteKind.ExplicitOp or RouteKind.Constructor or RouteKind.ParseMethod))
+                    continue; // only bridge-kind routes assert against the bridge
+
+                var clr = member.ValueType.UnderlyingSystemType!;
+                Assert.True(XamlConverters.BridgeConverterForType(clr) is not null,
+                            $"{element}.{memberName}: recorded route {kind} but ConversionBridge denies '{clr.Name}'");
+            }
+        }
+    }
 
     [Fact] // XC8 (audit): a THROWING route re-surfaces as a positioned CUR2401 — never a raw
     // TargetInvocationException from reflection

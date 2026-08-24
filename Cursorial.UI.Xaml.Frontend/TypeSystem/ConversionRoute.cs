@@ -117,6 +117,15 @@ public static class RouteProbe
         if (sourceConvertible is null)
             return ConversionRoute.Unknown;
 
+        // The W2d DENIALS, applied ONCE for both lanes (audit — the bridge executor's denial must be the
+        // probe's denial, or the recorded route lies): Style's Selector ctor would silently construct an
+        // empty setterless style from a text attribute, so its route is None — the parser's positioned
+        // CUR2402 covers every Style/Theme/ItemContainerStyle/BasedOn member, the exact slots a bare
+        // selector-string typo lands on. (Arrays are excluded structurally by the candidates queries; the
+        // principled per-type opt-out is §1a's [NoConversionBridge] follow-up.)
+        if (fullName is "Cursorial.UI.Style")
+            return new ConversionRoute(RouteKind.None);
+
         // The CR7 bridge kinds in CR3 order; within a kind exactly one viable candidate, else Ambiguous.
         var candidates = valueType.GetConversionRouteCandidates();
 

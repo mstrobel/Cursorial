@@ -1112,8 +1112,9 @@ internal sealed class XamlParser
         }
 
         // W2e (the G4 close): a Text value on a member the ROUTE PROBE marked unconvertible fails HERE,
-        // positioned, in both lanes — the identical document previously built silently and load-Fataled.
-        // Unknown routes (un-probed providers, the symbol lane's conservative default) are never judged.
+        // positioned, in whichever lane stamped a route — TODAY THE REFLECTION LANE ONLY (the symbol lane
+        // and the emitted provider stay RouteKind.Unknown until their converter set is queryable metadata;
+        // the deferral is recorded in xaml-conversion-routes.md §1a). Unknown routes are never judged.
         if (member.Route.Kind is RouteKind.None or RouteKind.Ambiguous)
         {
             _builder.Error(XamlDiagnosticCodes.NoConversionRoute,
@@ -2374,6 +2375,21 @@ internal sealed class XamlParser
             {
                 int constIndex = _builder.AddConstant(folded);
                 members[i] = new MemberRecord(members[i].MemberId, XamlValueKind.Folded, constIndex, 0, members[i].PackedLineInfo);
+                break;
+            }
+
+            // W2e (audit): the TARGET member's route judges an unfolded text Value exactly as
+            // AddValueMember judges a direct attribute — a Setter Value="oops" on a route-less property
+            // (Template, a Style-typed slot) previously loaded clean and stayed a silent raw string.
+            if (targetMember.Route.Kind is RouteKind.None or RouteKind.Ambiguous)
+            {
+                _builder.Error(XamlDiagnosticCodes.NoConversionRoute,
+                               targetMember.Route.Kind == RouteKind.Ambiguous
+                                   ? $"Ambiguous conversion routes into '{targetMember.ValueType.Name}' for Setter '{targetMember.Name}' — add a converter for the type."
+                                   : $"No conversion route from text to '{targetMember.ValueType.Name}' for Setter '{targetMember.Name}' — " +
+                                     "use a markup extension or a property-element value.",
+                               line,
+                               column);
             }
 
             break;

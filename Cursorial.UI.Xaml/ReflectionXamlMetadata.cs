@@ -270,7 +270,22 @@ public sealed class ReflectionXamlMetadata : IXamlTypeMetadataProvider, IXamlSta
             addDictionaryItem: isSelfDictionary ? BuildAddDictionaryItem() : null,
             dictionaryKeyType: isSelfDictionary ? typeof(object) : null,
             requiresInitialize: requiresInit,
-            memberResolver: name => members.GetOrAdd(name, n => BuildMember(clrType, n)),
+            memberResolver: name =>
+            {
+                if (members.TryGetValue(name, out var cached))
+                    return cached;
+
+                var built = BuildMember(clrType, name);
+
+                // A None/Ambiguous route is NOT memoized (audit): the route snapshots the live converter
+                // registry, and a permanent cache would turn a later XamlConverters.Register into a
+                // frozen CUR2402 — the failing answer stays re-computable so registration heals it. The
+                // cost sits entirely on the error path (and null members re-resolve for did-you-mean).
+                if (built is null || built.Route.Kind is RouteKind.None or RouteKind.Ambiguous)
+                    return built;
+
+                return members.GetOrAdd(name, built);
+            },
             isMarkupExtension: typeof(MarkupExtension).IsAssignableFrom(clrType));
     }
 
@@ -373,6 +388,7 @@ public sealed class ReflectionXamlMetadata : IXamlTypeMetadataProvider, IXamlSta
             // A member-level [TypeConverter] on the CLR wrapper property (if any) wins over the property type's
             // (ForMember precedence). An attached property has no instance wrapper → null member → type-level.
             var wrapper = ownerType.GetProperty(name, BindingFlags.Public | BindingFlags.Instance);
+            var uiConverter = XamlConverters.ForMember(wrapper, uiProperty.PropertyType); // hoisted (audit: once, not twice)
             return new XamlMember(
                 name,
                 uiProperty.PropertyType,
@@ -382,12 +398,12 @@ public sealed class ReflectionXamlMetadata : IXamlTypeMetadataProvider, IXamlSta
                 // the same member through its CLR wrapper (x.Items.Add). Scalar UIProperties keep no getter (they are
                 // assigned via SetValue), so only collection members are affected (#7).
                 get: IsCollectionType(uiProperty.PropertyType) ? instance => (instance as UIObject)?.GetValue(uiProperty) : null,
-                converter: XamlConverters.ForMember(wrapper, uiProperty.PropertyType),
+                converter: uiConverter,
                 isEvent: false,
                 isAttachable: uiProperty.IsAttached)
             {
                 IsDeferredContent = uiProperty.PropertyType == typeof(ITemplateContent),
-                Route = ComputeRoute(uiProperty.PropertyType, XamlConverters.ForMember(wrapper, uiProperty.PropertyType)),
+                Route = ComputeRoute(uiProperty.PropertyType, uiConverter),
             };
         }
 
@@ -402,6 +418,7 @@ public sealed class ReflectionXamlMetadata : IXamlTypeMetadataProvider, IXamlSta
         {
             Action<object, object?>? setClr = prop.CanWrite ? prop.SetValue : null;
             Func<object, object?>? get = prop.CanRead ? prop.GetValue : null;
+            var propConverter = XamlConverters.ForMember(prop, prop.PropertyType); // hoisted (audit)
 
             return new XamlMember(
                 name,
@@ -409,12 +426,12 @@ public sealed class ReflectionXamlMetadata : IXamlTypeMetadataProvider, IXamlSta
                 property: null,
                 setClr: setClr,
                 get: get,
-                converter: XamlConverters.ForMember(prop, prop.PropertyType), // member [TypeConverter] wins over the type's
+                converter: propConverter, // member [TypeConverter] wins over the type's
                 isEvent: false,
                 isAttachable: false)
             {
                 IsDeferredContent = prop.PropertyType == typeof(ITemplateContent),
-                Route = ComputeRoute(prop.PropertyType, XamlConverters.ForMember(prop, prop.PropertyType)),
+                Route = ComputeRoute(prop.PropertyType, propConverter),
             };
         }
 
@@ -425,18 +442,19 @@ public sealed class ReflectionXamlMetadata : IXamlTypeMetadataProvider, IXamlSta
         var fieldInfo = ownerType.GetField(name, BindingFlags.Public | BindingFlags.Instance);
         if (fieldInfo is { IsInitOnly: false, IsLiteral: false })
         {
+            var fieldConverter = XamlConverters.ForMember(null, fieldInfo.FieldType); // hoisted (audit)
             return new XamlMember(
                 name,
                 fieldInfo.FieldType,
                 property: null,
                 setClr: fieldInfo.SetValue,
                 get: fieldInfo.GetValue,
-                converter: XamlConverters.ForMember(null, fieldInfo.FieldType), // type-level [TypeConverter] (fields rarely carry one)
+                converter: fieldConverter, // type-level [TypeConverter] (fields rarely carry one)
                 isEvent: false,
                 isAttachable: false)
             {
                 IsDeferredContent = fieldInfo.FieldType == typeof(ITemplateContent),
-                Route = ComputeRoute(fieldInfo.FieldType, XamlConverters.ForMember(null, fieldInfo.FieldType)),
+                Route = ComputeRoute(fieldInfo.FieldType, fieldConverter),
             };
         }
 

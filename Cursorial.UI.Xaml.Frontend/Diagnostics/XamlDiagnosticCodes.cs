@@ -86,8 +86,9 @@ public static class XamlDiagnosticCodes
     public const string UIPropertyTokenNoTarget = "CUR2113";
 
     /// <summary>A text value on a member with NO conversion route (W2e, the G4 close) — the document
-    /// would load-Fatal at runtime; it fails at parse in BOTH lanes instead. Covers the ambiguous-routes
-    /// case too (two viable bridge candidates of one kind — add a converter).</summary>
+    /// would load-Fatal at runtime; it fails at parse instead, in whichever lane stamped a route (the
+    /// reflection lane today; the symbol-lane stamp is a recorded §1a deferral). Covers the
+    /// ambiguous-routes case too (two viable bridge candidates of one kind — add a converter).</summary>
     public const string NoConversionRoute = "CUR2402";
 
     /// <summary>A <c>StaticResource</c> key was not found / is a forward reference.</summary>

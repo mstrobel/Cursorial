@@ -286,11 +286,32 @@ public sealed class XamlSchemaContext
         {
             foreach (var type in SafeGetExportedTypes(asm))
             {
-                if (type.Namespace is { } ns && clrNamespaces.Contains(ns) && !type.IsGenericTypeDefinition)
+                if (type.Namespace is { } ns && clrNamespaces.Contains(ns) && !type.IsGenericTypeDefinition &&
+                    IsAuthorableTypeName(type.Name))
                     names.Add(type.Name);
             }
         }
         return names.ToArray();
+    }
+
+    /// <summary>
+    /// True when <paramref name="name"/> can actually be WRITTEN as a XAML element name.
+    /// Compiler-synthesized unspeakables (<c>&lt;G&gt;$…</c>, <c>&lt;M&gt;$…</c>, display
+    /// classes) are exported types, but their names are illegal in XML — a known-name sweep
+    /// offering them (completion, did-you-mean) is pure noise.
+    /// </summary>
+    private static bool IsAuthorableTypeName(string name)
+    {
+        if (name.Length == 0 || !(char.IsLetter(name[0]) || name[0] == '_'))
+            return false;
+
+        foreach (var c in name)
+        {
+            if (!char.IsLetterOrDigit(c) && c != '_')
+                return false;
+        }
+
+        return true;
     }
 
     // ── Resolution mechanics ─────────────────────────────────────────────────────────────────────

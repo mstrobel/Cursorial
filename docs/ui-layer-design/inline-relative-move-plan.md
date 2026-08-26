@@ -177,18 +177,15 @@ terminal.
      model. Relative mode skips DECSC/DECRC and brackets with an explicit relative move to the anchor
      and back, keeping the tracked cursor truthful. (Overlay-protocol *images* still anchor in pixel
      space and can strand on a clear — same class as the mouse, re-anchored in phase 3.)
-   - **← NEXT — Visible caret.** For a 1-row caret the visible cursor IS the hardware cursor at the
-     caret cell — but phase 1 parks that cursor at bottom-left for the next frame's climb. The physical
-     cursor can't be at the caret (visibility) AND bottom-left (climb) at once. **Resolution (Approach
-     C):** end the frame at the caret (drop the frame-end park); the renderer tracks the true end
-     position across frames; and `PrepareInlineRegion` — the only thing that moves the cursor between
-     frames (the make-room scroll) — tells the renderer via a new `MarkInlineCursorMoved(row,col)` when
-     it does, so the frame-start delta origin stays truthful without the bottom-left assertion.
-     Requires reworking phase 1's park + updating its renderer tests (the "parks at bottom" test
-     becomes "ends at the caret"); the renderer tests must set the start position (simulating the host
-     contract) since they drive `Render` without the frame loop. The **glyph-height beam** (Kitty extra
-     cursors, `Rows>1`) is screen-fixed/absolute regardless — it re-anchors on focus-in like the mouse
-     (phase 3), not a relative-move problem.
+   - **✅ DONE — Visible caret (Approach C).** For a 1-row caret the visible cursor IS the hardware
+     cursor at the caret cell; phase 1's bottom-left park overrode it. The fix ends the frame AT the
+     caret (dropped the frame-start assertion + the frame-end park): the renderer tracks the true end
+     position across frames, and `PrepareInlineRegion` reports its make-room scroll via the new public
+     `MarkInlineCursorMoved(row,col)`. `WriteInlineExit` and the phase-3 poll now anchor from the caret
+     row (`_buffer.CursorRow`) — the poll's formula is now identical to the resize re-anchor. Renderer
+     tests stand in for the host's `MarkInlineCursorMoved` (they drive `Render` directly) and assert
+     ends-at-caret (no park-to-bottom, caret shown). The **glyph-height beam** (Kitty extra cursors,
+     `Rows>1`) is screen-absolute regardless — it re-anchors on the poll like the mouse.
 3. **✅ DONE — Desync heal via a fixed-interval DSR-CPR poll.** Relative-inline only. The cursor is
    parked at a known region row at every frame boundary, so a periodic `CSI 6 n` (every ~1.5 s)
    re-derives `origin = reported − parkedRow`. It heals the absolute-anchored mouse origin AND detects
@@ -200,12 +197,15 @@ terminal.
    bounded by `InlinePollWakeDelay` so an idle loop wakes at the poll cadence, not frame pace. Tests:
    fires on the interval, re-anchors+repaints on an origin change, absolute inline never polls. (The
    event-driven focus-in + freshness-TTL alternative is unused — the poll is simpler and more complete.)
-   **⚠ Phase-2b interaction:** the poll anchors from the parked row = `height−1` (phase 1's bottom-left
-   park). When 2b ends the frame at the caret instead, the poll's `parkedRow` must become
-   `_buffer.CursorRow` — unifying it with the resize re-anchor formula, which already uses that.
-4. **Re-validate** growth/scroll/resize under the relative model; update `inline-presentation.md`
-   (the origin protocol section becomes "origin for mouse only"). Extend the terminal-matrix note
-   (4b) to Windows Terminal, the one unconfirmed clear behavior.
+   **Phase-2b interaction (resolved):** the poll now anchors from `_buffer.CursorRow` (the caret the
+   frame ends at), identical to the resize re-anchor.
+4. **✅ MOSTLY DONE — Re-validate + docs.** Growth-past-bottom re-validated under relative
+   (`RelativeMoves_GrowthPastBottom_ScrollsThenRepaintsRelatively`: the host make-room stays absolute —
+   `CUP` to the *physical* bottom + LFs, always valid — while only the render goes relative).
+   `inline-presentation.md` gained a "Relative-move mode" section (`RowOffset` is mouse-only; the poll
+   heals it). **REMAINING (manual):** confirm Windows Terminal's clear behavior — the one unconfirmed
+   cell in the §4b matrix — needs a hands-on terminal, like the access-key gate; and a real-terminal
+   pass of the whole opt-in on kitty/Ghostty/WezTerm/Apple Terminal before flipping the default.
 
 ## 6. Test strategy
 

@@ -428,6 +428,27 @@ public sealed class InlinePresentationTests
         Assert.DoesNotContain("\x1b[6n", Frame(host));
     }
 
+    // ── Phase 4: growth/scroll re-validation under the relative model ─────────────────────────────
+
+    [Fact]
+    public void RelativeMoves_GrowthPastBottom_ScrollsThenRepaintsRelatively()
+    {
+        var host = CreateInlineRelative();
+        host.ShowRoot(new Probe(10, 3) { FillGlyph = "X" });
+        host.RunFrame();
+        ReplyCursorPosition(host, row: 12); // shell prompt on the last row → a 3-row region needs 2 more
+        host.RunFrame();
+
+        var frame = Frame(host);
+        // The host make-room stays absolute — CUP to the physical bottom (always valid) + line feeds; only
+        // the RENDER goes relative. So it scrolls with LFs and climbs relatively, and never emits the
+        // absolute repaint the absolute path would (CSI 10;1H at the moved origin 9).
+        Assert.Contains("\x1b[12;1H\n\n", frame);   // make room: CUP bottom + 2 × LF
+        Assert.DoesNotContain("\x1b[10;1H", frame);  // NOT the absolute repaint at the moved origin
+        Assert.Matches("\\[[0-9]+A", frame);          // the render climbs relatively from the scrolled bottom
+        Assert.Contains("XXXXXXXXXX", frame);
+    }
+
     [Fact]
     public void ProductionInline_QueriesCursor_NeverTakesTheScreen()
     {

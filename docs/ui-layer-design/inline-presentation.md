@@ -84,6 +84,29 @@ close, show cursor, SGR reset, OSC 112, autowrap — is unchanged):
   images / sized text survive in the retained frame.
 - An application whose origin never resolved rendered nothing and emits neither.
 
+## Relative-move mode (`UseInline(relativeMoves: true)`, experimental)
+
+The absolute-origin model above desyncs when the region is moved by something the framework can't
+observe — a manual clear (kitty `cmd+K`), a program printing above it, a terminal-side reflow: the
+next frame's absolute `CUP` repaints at the stale rows. The opt-in relative mode (see
+`inline-relative-move-plan.md`) makes the region **float** instead:
+
+- **Rendering** (`FrameRendererOptions.RelativeInline`) emits every cursor move as a `CUU`/`CUD` row
+  delta from the tracked cursor + a column-absolute `CHA`, never `CUP(row + RowOffset)`. A relative
+  row *count* is invariant under the absolute shift a clear causes, so the region survives it on
+  retaining terminals. The frame **ends at the caret** (the visible 1-row hardware caret is correct);
+  the host reports its one inter-frame cursor move — the make-room scroll — via
+  `FrameRenderer.MarkInlineCursorMoved`. The exit and fragment bracketing go relative too.
+- **`RowOffset` becomes mouse-only.** The renderer no longer uses it to position; it is kept solely
+  to translate screen-absolute mouse (and glyph-height caret beam) coordinates into the region.
+- **Desync heal:** a ~1.5 s DSR-CPR **poll** re-derives `origin = reported − caret row` from the
+  parked cursor; a changed origin refreshes the mouse origin *and* forces a `Reset()` repaint (which
+  also recovers terminals that *clear* the region rather than move it, leaving the diff's front buffer
+  stale). This closes the clear-*while-focused* gap an event-driven heal would leave.
+
+Residual (accepted): mouse/caret-beam coordinates are stale between an unobserved clear and the next
+poll; overlay-protocol images anchor in pixel space and can strand on a clear.
+
 ## Known limitations (v1)
 
 - **Resize rewrap** can leave artifacts above the region (the terminal moves main-buffer content

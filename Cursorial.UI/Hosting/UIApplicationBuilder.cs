@@ -138,7 +138,12 @@ public sealed class UIApplicationBuilder
     /// <param name="maxHeight">Optional cap on the region height in rows (≥ 1); the terminal
     /// height always caps regardless. <see langword="null"/> = terminal height only.</param>
     /// <param name="exitBehavior">The initial <see cref="UIApplication.InlineExitBehavior"/>.</param>
-    public UIApplicationBuilder UseInline(int? maxHeight = null, InlineExitBehavior exitBehavior = InlineExitBehavior.Clear)
+    /// <param name="relativeMoves"><b>Experimental (phased).</b> Render the region with RELATIVE cursor
+    /// moves (a floating region) instead of an absolute origin, so it survives an unobserved terminal
+    /// clear on retaining terminals. Exit / fragments / visible caret still use the absolute path until
+    /// later phases land, so this is off by default. See the inline-relative-move plan.</param>
+    public UIApplicationBuilder UseInline(int? maxHeight = null, InlineExitBehavior exitBehavior = InlineExitBehavior.Clear,
+                                          bool relativeMoves = false)
     {
         if (maxHeight is < 1)
             throw new ArgumentOutOfRangeException(nameof(maxHeight), maxHeight, "The inline region height cap must be at least one row.");
@@ -147,6 +152,7 @@ public sealed class UIApplicationBuilder
         _options.Model = ApplicationModel.Inline;
         _options.InlineMaxHeight = maxHeight;
         _options.InlineExitBehavior = exitBehavior;
+        _options.InlineRelativeMoves = relativeMoves;
         return this;
     }
 
@@ -233,6 +239,12 @@ internal sealed class UIApplicationOptions
     public ApplicationModel Model = ApplicationModel.FullScreen;
     public int? InlineMaxHeight;
     public InlineExitBehavior InlineExitBehavior = InlineExitBehavior.Clear;
+
+    /// <summary>Opt-in: render the inline region with RELATIVE cursor moves (a floating region) instead
+    /// of an absolute origin, so it survives an unobserved terminal clear on retaining terminals. Phased
+    /// (see the inline-relative-move plan): exit / fragments / visible caret still ride the absolute path
+    /// until later phases, so this stays off by default.</summary>
+    public bool InlineRelativeMoves;
     public bool OrderedDither;
     public bool ExitOnUnhandledCtrlC = true;
     public bool TranslateNumpadKeys = false;

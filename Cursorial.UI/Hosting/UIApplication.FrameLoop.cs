@@ -193,7 +193,8 @@ public sealed partial class UIApplication
         _buffer = new CellBuffer(bufferSize.Columns, bufferSize.Rows, _capabilities) { CursorVisible = false };
         _renderer = new FrameRenderer(_capabilities.Output,
                                       new FrameRendererOptions(OrderedDither: _options.OrderedDither,
-                                                               Inline: _options.Inline));
+                                                               Inline: _options.Inline,
+                                                               RelativeInline: _options.InlineRelativeMoves));
 
         // UI-mode entry: alt screen when supported and requested, else clear-screen fallback;
         // cursor hiding is left to the buffer (CursorVisible = false ⇒ DECRST 25 on frame 0).
@@ -930,7 +931,8 @@ public sealed partial class UIApplication
             _buffer = parked;
             _renderer = new FrameRenderer(_capabilities.Output,
                                           new FrameRendererOptions(OrderedDither: _options.OrderedDither,
-                                                                   Inline: true));
+                                                                   Inline: true,
+                                                                   RelativeInline: _options.InlineRelativeMoves));
             IsPresentingInline = true;
             _windowManager!.OnViewportResized(new Size(_buffer.Columns, _buffer.Rows));
 
@@ -1299,7 +1301,8 @@ public sealed partial class UIApplication
 
             _renderer = new FrameRenderer(effective.Output,
                                           new FrameRendererOptions(OrderedDither: _options.OrderedDither,
-                                                                   Inline: IsPresentingInline)); // the LIVE side — a renegotiation while escalated must rebuild a fullscreen renderer
+                                                                   Inline: IsPresentingInline,
+                                                                   RelativeInline: _options.InlineRelativeMoves)); // the LIVE side — a renegotiation while escalated must rebuild a fullscreen renderer
 
             _effectiveInputCapabilities = ApplyDecorationProjections(effective.Input);
             _supportsAltKeyTracking = ComputeAltKeyTracking(effective.Input);

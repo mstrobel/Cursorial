@@ -281,6 +281,60 @@ public sealed class InlinePresentationTests
         Assert.Throws<ArgumentOutOfRangeException>(() => builder.UseInline(maxHeight: 0));
     }
 
+    // ── Relative-move inline (UseInline(relativeMoves: true)) — the floating-region path ──────────
+
+    private static UIHeadlessHost CreateInlineRelative()
+        => UIHeadlessHost.Create(new UIHeadlessHostOptions
+                                 {
+                                     InitialSize = new Size(40, 12),
+                                     CaptureFrameBytes = true,
+                                     ConfigureBuilder = b => b.UseInline(relativeMoves: true)
+                                 });
+
+    [Fact]
+    public void RelativeMoves_PaintWithRelativeClimb_NotAbsoluteOrigin()
+    {
+        using var host = CreateInlineRelative();
+        host.ShowRoot(new Probe(10, 3) { FillGlyph = "X" });
+        host.RunFrame();
+        ReplyCursorPosition(host, row: 5); // region tops at terminal row 5
+        host.RunFrame();
+
+        var frame = Frame(host);
+        // Relative mode climbs from the parked region bottom (CUU) instead of the absolute origin CUP
+        // the absolute path would emit (CSI 5;1H / 6;1H / 7;1H).
+        Assert.Matches("\\[[0-9]+A", frame);   // a CUU climb is present
+        Assert.DoesNotContain("\x1b[5;1H", frame);
+        Assert.DoesNotContain("\x1b[6;1H", frame);
+        Assert.DoesNotContain("\x1b[7;1H", frame);
+        Assert.Contains("XXXXXXXXXX", frame);
+        Assert.DoesNotContain("\x1b[2J", frame);
+    }
+
+    [Fact]
+    public void RelativeMoves_SecondFrame_NeverReaddressesTheStaleAbsoluteOrigin()
+    {
+        // The reported bug in absolute mode: after the region moves (an unobserved clear), the diff
+        // keeps repainting at the ORIGINAL absolute rows — the region "snaps back". Relative mode
+        // emits only deltas, so a later frame never re-addresses the stale origin rows.
+        using var host = CreateInlineRelative();
+        var probe = new Probe(10, 3) { FillGlyph = "X" };
+        host.ShowRoot(probe);
+        host.RunFrame();
+        ReplyCursorPosition(host, row: 5);
+        host.RunFrame();
+
+        probe.FillGlyph = "Y";
+        probe.InvalidateVisual();
+        host.RunFrame();
+
+        var frame = Frame(host);
+        Assert.Contains("Y", frame);                 // the change reached the region
+        Assert.DoesNotContain("\x1b[5;1H", frame);   // no absolute origin re-address
+        Assert.DoesNotContain("\x1b[6;1H", frame);
+        Assert.DoesNotContain("\x1b[7;1H", frame);
+    }
+
     [Fact]
     public void ProductionInline_QueriesCursor_NeverTakesTheScreen()
     {

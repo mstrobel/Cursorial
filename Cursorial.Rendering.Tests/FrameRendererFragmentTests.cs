@@ -43,6 +43,26 @@ public class FrameRendererFragmentTests
     }
 
     [Fact]
+    public void RelativeInline_Fragment_BracketsRelatively_NotWithSaveRestore()
+    {
+        // In relative-inline mode a fragment must NOT use DECSC/DECRC (\x1b7/\x1b8) — DECRC's cursor
+        // restore is implementation-defined and the model has no absolute CUP to correct its drift.
+        // It brackets with an explicit relative move to the anchor and back, keeping the tracked cursor
+        // truthful (the absolute path's post-fragment `_cursorRow = -1` sentinel would break relative moves).
+        var r = new FrameRenderer(new FrameRendererOptions(Inline: true, RelativeInline: true));
+        var buffer = new CellBuffer(6, 2);
+        for (int c = 0; c < 6; c++) buffer.Set(c, 0, "A", CellStyle.Default);
+        buffer.AddFragment(1, 1, new SentinelFragment(new Size(2, 1), "[F]"));
+
+        var output = Render(r, buffer);
+
+        Assert.Contains("[F]", output);           // the fragment payload is emitted
+        Assert.DoesNotContain("\x1b7", output);   // no DECSC (save)
+        Assert.DoesNotContain("\x1b8", output);   // no DECRC (restore)
+        Assert.DoesNotContain("H", output);       // no absolute CUP anywhere (content A / [F] — no literal 'H')
+    }
+
+    [Fact]
     public void ForceRepaintRegion_ReEmitsCellsThatMatchTheFrontBuffer()
     {
         // The force-repaint channel (CellBuffer.ForceRepaint) re-emits cells even when they're byte-identical

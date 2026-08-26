@@ -1163,6 +1163,26 @@ public sealed partial class UIApplication
         var rows = Math.Max(1, _screenSize.Rows);
         var height = Math.Min(_buffer?.Rows ?? 1, rows);
 
+        if (_options.InlineRelativeMoves)
+        {
+            // Relative exit: the renderer parked the cursor at the region bottom-left, so we position
+            // relatively rather than to the (possibly stale) absolute origin — the exit survives an
+            // unobserved clear exactly as rendering does. Clear climbs to the region top and erases
+            // below; Retain drops one fresh line below the region and sweeps below that.
+            if (InlineExitBehavior == InlineExitBehavior.Clear)
+                CursorWriter.WriteMoveUp(output, height - 1); // bottom-left → region top (CUU, no-op at height 1)
+            else
+            {
+                var lf = output.GetSpan(1);
+                lf[0] = (byte) '\n'; // already at the region bottom-left — one line below the last frame
+                output.Advance(1);
+            }
+
+            CursorWriter.WriteColumnAbsolute(output, 0);
+            ScreenWriter.WriteClearScreenAfter(output);
+            return;
+        }
+
         if (InlineExitBehavior == InlineExitBehavior.Clear)
         {
             CursorWriter.WriteMoveTo(output, 0, Math.Clamp(origin, 0, rows - 1));

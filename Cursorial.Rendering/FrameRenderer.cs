@@ -1192,8 +1192,14 @@ public sealed class FrameRenderer
                                     IBufferWriter<byte> output, OutputCapabilities caps,
                                     CellStyle existingStyle)
     {
-        CursorWriter.WriteSavePosition(output);
+        // Save the cursor, move to the anchor. Absolute: DECSC + CUP (DECRC restores below). Relative:
+        // no DECSC — DECRC's cursor restore is implementation-defined, and a relative model has no
+        // absolute CUP to correct its drift, so we track through and return explicitly (see the end).
+        int savedFragRow = _cursorRow, savedFragCol = _cursorCol;
+        if (!RelativeInline)
+            CursorWriter.WriteSavePosition(output);
         MoveTo(output, col, row);
+        if (RelativeInline) { _cursorRow = row; _cursorCol = col; }
 
         // The anchor cell's style before capability adaptation. The default-color substitution decides
         // on the unadapted color and applies the replacement to the adapted one — see
@@ -1283,22 +1289,37 @@ public sealed class FrameRenderer
 
         entry.Fragment.Emit(col, row, output, caps);
 
-        CursorWriter.WriteRestorePosition(output);
+        if (RelativeInline)
+        {
+            // Explicit relative return to the pre-fragment position — no DECRC (its cursor restore is
+            // implementation-defined and a relative model can't correct the drift with an absolute CUP).
+            MoveTo(output, savedFragCol, savedFragRow);
+            _cursorRow = savedFragRow;
+            _cursorCol = savedFragCol;
+        }
+        else
+        {
+            CursorWriter.WriteRestorePosition(output);
+        }
 
         // DECRC's SGR-restore behavior varies across terminals (xterm restores it; some VT
         // emulators don't). Explicitly resync our SGR tracking by writing an SGR reset.
         SgrEncoder.WriteReset(output);
         _currentStyle = CellStyle.Default;
 
-        // DECRC's *cursor*-restore behavior is also implementation-defined when the saved-state
-        // stack has been disturbed in between (some conhost versions, ConEmu/Cmder, …).
-        // Invalidate the tracked position so the next emission issues an explicit CUP rather
-        // than trusting DECRC to have landed us where DECSC saved. Symptom of getting this
-        // wrong: rows downstream of fragment emissions shift left by N (where N is roughly the
-        // count of fragments emitted this frame), producing the "first few characters of each
-        // labeled row are missing" wrap that conhost / WT exhibit.
-        _cursorRow = -1;
-        _cursorCol = -1;
+        if (!RelativeInline)
+        {
+            // DECRC's *cursor*-restore behavior is also implementation-defined when the saved-state
+            // stack has been disturbed in between (some conhost versions, ConEmu/Cmder, …).
+            // Invalidate the tracked position so the next emission issues an explicit CUP rather
+            // than trusting DECRC to have landed us where DECSC saved. Symptom of getting this
+            // wrong: rows downstream of fragment emissions shift left by N (where N is roughly the
+            // count of fragments emitted this frame), producing the "first few characters of each
+            // labeled row are missing" wrap that conhost / WT exhibit. (Relative mode returns
+            // explicitly above, so the tracked position stays truthful and needs no invalidation.)
+            _cursorRow = -1;
+            _cursorCol = -1;
+        }
     }
 
     /// <summary>
@@ -1309,22 +1330,38 @@ public sealed class FrameRenderer
     private void EmitFragmentEraseBytes(int col, int row, CellBuffer.FragmentEntry entry,
                                         IBufferWriter<byte> output, OutputCapabilities caps)
     {
-        CursorWriter.WriteSavePosition(output);
+        // See EmitFragmentBytes for the absolute-vs-relative bracket rationale.
+        int savedEraseRow = _cursorRow, savedEraseCol = _cursorCol;
+        if (!RelativeInline)
+            CursorWriter.WriteSavePosition(output);
         MoveTo(output, col, row);
+        if (RelativeInline) { _cursorRow = row; _cursorCol = col; }
 
         entry.Fragment.EmitErase(col, row, output, caps);
 
-        CursorWriter.WriteRestorePosition(output);
+        if (RelativeInline)
+        {
+            MoveTo(output, savedEraseCol, savedEraseRow);
+            _cursorRow = savedEraseRow;
+            _cursorCol = savedEraseCol;
+        }
+        else
+        {
+            CursorWriter.WriteRestorePosition(output);
+        }
 
         SgrEncoder.WriteReset(output);
         _currentStyle = CellStyle.Default;
 
-        // See EmitFragmentBytes for why we invalidate the tracked cursor after DECRC: the
-        // restore is implementation-defined when the SC/RC stack has been disturbed, and
-        // trusting DECRC to land us at the pre-DECSC position produces silent drift across
-        // frames on conhost / ConEmu.
-        _cursorRow = -1;
-        _cursorCol = -1;
+        if (!RelativeInline)
+        {
+            // See EmitFragmentBytes for why we invalidate the tracked cursor after DECRC: the
+            // restore is implementation-defined when the SC/RC stack has been disturbed, and
+            // trusting DECRC to land us at the pre-DECSC position produces silent drift across
+            // frames on conhost / ConEmu. (Relative mode returns explicitly and stays truthful.)
+            _cursorRow = -1;
+            _cursorCol = -1;
+        }
     }
 
     /// <summary>

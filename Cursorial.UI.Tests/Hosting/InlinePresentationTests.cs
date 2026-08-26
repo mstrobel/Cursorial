@@ -336,6 +336,44 @@ public sealed class InlinePresentationTests
     }
 
     [Fact]
+    public void RelativeMoves_ExitClear_ClimbsToRegionTop_NotAbsoluteOrigin()
+    {
+        var host = CreateInlineRelative();
+        host.ShowRoot(new Probe(10, 3) { FillGlyph = "X" });
+        host.RunFrame();
+        ReplyCursorPosition(host, row: 5);
+        Assert.True(host.RunUntilIdle());
+
+        host.Dispose();
+
+        var teardown = Encoding.ASCII.GetString(host.TeardownBytes.Span);
+        // From the parked region bottom (row H-1 = 2) climb CUU(2) + CHA, then erase below — never the
+        // absolute origin CUP the absolute path emits (CSI 5;1H). Survives an unobserved clear as rendering does.
+        Assert.Contains("\x1b[2A\x1b[1G\x1b[0J", teardown);
+        Assert.DoesNotContain("\x1b[5;1H", teardown);
+        Assert.DoesNotContain("\x1b[2J", teardown);
+    }
+
+    [Fact]
+    public void RelativeMoves_ExitRetain_DropsOneLineBelow_NotAbsoluteOrigin()
+    {
+        var host = CreateInlineRelative();
+        host.ShowRoot(new Probe(10, 3) { FillGlyph = "X" });
+        host.RunFrame();
+        ReplyCursorPosition(host, row: 5);
+        Assert.True(host.RunUntilIdle());
+
+        host.Application.InlineExitBehavior = InlineExitBehavior.Retain;
+        host.Dispose();
+
+        var teardown = Encoding.ASCII.GetString(host.TeardownBytes.Span);
+        // Already parked at the region bottom-left — one LF drops below the last frame, then CHA + erase.
+        Assert.Contains("\n\x1b[1G\x1b[0J", teardown);
+        Assert.DoesNotContain("\x1b[7;1H", teardown);
+        Assert.DoesNotContain("\x1b[2J", teardown);
+    }
+
+    [Fact]
     public void ProductionInline_QueriesCursor_NeverTakesTheScreen()
     {
         // The full production path (dedicated UI thread, real clock) — the one place the ENTRY

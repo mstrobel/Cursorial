@@ -189,19 +189,20 @@ terminal.
      contract) since they drive `Render` without the frame loop. The **glyph-height beam** (Kitty extra
      cursors, `Rows>1`) is screen-fixed/absolute regardless — it re-anchors on focus-in like the mouse
      (phase 3), not a relative-move problem.
-3. **Desync heal.** Two shapes, pick one (or hybridize):
-   - **(preferred) Fixed-interval DSR-CPR poll**, handled in the input loop. Because the cursor is
-     parked at a KNOWN region-relative row at every frame boundary, a periodic `CSI 6 n` re-derives
-     `origin = reported − parkedRow` unconditionally — which closes the clear-*while-focused* residual
-     hole the event-driven triggers leave open. A detected origin *change* doubles as the clear signal
-     that forces a `Reset()` full redraw for the region-clearing terminals (§4b), so ONE mechanism
-     heals both the mouse origin and the blank-region-after-clear. Cost: constant background chatter +
-     an idle wake per interval (use ~1–2 s; pause it when the terminal never answered the startup CPR;
-     keep a single outstanding query via the existing `_inlineCpr` state machine — replies are
-     indistinguishable `CSI row;col R`). DSR-CPR does not move the cursor, so no save/restore is needed.
-   - **(alternative) Event-driven** — a focus-in handler that both re-anchors the origin AND forces a
-     `Reset()`, plus a lazy pre-mouse re-anchor gated on an origin **freshness TTL**. Lower idle cost,
-     but leaves the clear-while-focused residual stale-mouse window (§4a). Can fast-path the poll.
+3. **✅ DONE — Desync heal via a fixed-interval DSR-CPR poll.** Relative-inline only. The cursor is
+   parked at a known region row at every frame boundary, so a periodic `CSI 6 n` (every ~1.5 s)
+   re-derives `origin = reported − parkedRow`. It heals the absolute-anchored mouse origin AND detects
+   an unobserved clear/scroll — a CHANGED origin means the region moved, so it re-anchors and forces a
+   `Reset()` repaint (also recovering the region-clearing terminals whose front buffer went stale, §4b),
+   closing the clear-*while-focused* hole the event-driven triggers leave. Kept OUT of `_inlineCpr` (so
+   it never gates rendering) via `_inlinePollOutstanding` + `_inlineDsrAnswered` (armed only after the
+   terminal proves it answers DSR); a stuck poll is abandoned after the CPR timeout; the idle park is
+   bounded by `InlinePollWakeDelay` so an idle loop wakes at the poll cadence, not frame pace. Tests:
+   fires on the interval, re-anchors+repaints on an origin change, absolute inline never polls. (The
+   event-driven focus-in + freshness-TTL alternative is unused — the poll is simpler and more complete.)
+   **⚠ Phase-2b interaction:** the poll anchors from the parked row = `height−1` (phase 1's bottom-left
+   park). When 2b ends the frame at the caret instead, the poll's `parkedRow` must become
+   `_buffer.CursorRow` — unifying it with the resize re-anchor formula, which already uses that.
 4. **Re-validate** growth/scroll/resize under the relative model; update `inline-presentation.md`
    (the origin protocol section becomes "origin for mouse only"). Extend the terminal-matrix note
    (4b) to Windows Terminal, the one unconfirmed clear behavior.

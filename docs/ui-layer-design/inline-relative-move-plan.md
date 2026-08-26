@@ -156,11 +156,18 @@ terminal.
 
 ## 5. Implementation phases
 
-1. **Relative emission in `FrameRenderer`** (behind an option, e.g. `FrameRendererOptions` gains a
-   relative-inline flag, or it becomes the inline default). `MoveTo` relative; frame-start
-   `CR`+`CUU(height−1)`+`ED 0`; frame-end park at bottom-left. Stop using `RowOffset` for
-   rendering; keep the field for mouse. Adapt the headless inline byte assertions (CUP → CUU/CR+CUF).
-2. **Exit + fragments + caret** relative (Clear/Retain, fragment placement, caret band).
+1. **✅ DONE — Relative emission in `FrameRenderer`** (behind `FrameRendererOptions.RelativeInline`,
+   surfaced as `UseInline(relativeMoves: true)`; off by default). The single `MoveTo` seam emits a
+   `CUU`/`CUD` row delta + column-absolute `CHA` (chosen over `CR`+`CUF` — one deterministic
+   sequence); the frame-start park assertion (`_cursorRow = height−1`) makes the full-redraw climb
+   `MoveTo(0,0) → CUU(height−1)` and the first delta correct; the frame ends parked at bottom-left.
+   `RowOffset` is untouched by relative rendering (still used for mouse). The existing absolute byte
+   assertions were **kept** (the flag is opt-in, not the default yet) and new relative assertions
+   added instead. Tests: `FrameRendererInlineTests` (bottom-up climb, frame-end park, incremental
+   relative-only, **RowOffset-independence** = the renderer-level clear-survival proof) +
+   `InlinePresentationTests` (end-to-end relative climb, and a second frame never re-addressing the
+   stale origin — the direct anti-regression). Rendering 1831 / UI 3911 green.
+2. **Exit + fragments + caret** relative (Clear/Retain, fragment placement, caret band). ← next
 3. **Desync heal** — a focus-in handler that *both* re-anchors the mouse origin via DSR-CPR **and**
    forces a full redraw (`Reset()`, for the region-clearing terminals — 4b); plus a lazy pre-mouse
    re-anchor gated on an origin **freshness TTL** (4a). Document the residual stale-mouse window.

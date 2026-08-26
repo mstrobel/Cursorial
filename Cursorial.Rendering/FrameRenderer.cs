@@ -141,6 +141,10 @@ public sealed class FrameRenderer
     /// <summary>The options the renderer was constructed with.</summary>
     public FrameRendererOptions Options => _options;
 
+    // Relative-inline positioning is active — every cursor move is a CUU/CUD delta + CHA rather than
+    // absolute CUP. Requires both flags; a no-op for full-screen or absolute-inline rendering.
+    private bool RelativeInline => _options is { Inline: true, RelativeInline: true };
+
     /// <summary>
     /// The absolute terminal row of buffer row 0 — every emitted cursor address adds this offset.
     /// Zero (the default) for full-screen rendering; an inline host
@@ -220,6 +224,17 @@ public sealed class FrameRenderer
                           _frontCols != back.Columns ||
                           _frontRows != back.Rows ||
                           _options.ForceFullRedraw;
+
+        // Relative-inline park invariant: the physical cursor sits at the region bottom-left at the
+        // start of every frame (the host's make-room leaves it there; the frame-end park below keeps
+        // it there). Assert that as the tracked delta origin so the full-redraw climb to the top and
+        // the first in-frame move are correct — and, on the first frame, so the reserved-bottom climb
+        // isn't skipped (tracked row defaults to 0, but the cursor is physically at the bottom).
+        if (RelativeInline)
+        {
+            _cursorRow = back.Rows - 1;
+            _cursorCol = 0;
+        }
 
         if (fullRedraw)
         {
@@ -326,6 +341,12 @@ public sealed class FrameRenderer
             HyperlinkWriter.WriteClose(output);
             _currentHyperlink = Hyperlink.None;
         }
+
+        // Relative-inline frame-end park: return the cursor to the region bottom-left — the defined
+        // anchor the NEXT frame's relative moves (and the full-redraw climb) start from. EmitCursor
+        // left it at the caret; SyncCursor moves it back (the visible-caret refinement is phase 2).
+        if (RelativeInline)
+            SyncCursor(output, back.Rows - 1, 0);
 
         // Close the synchronized-output frame opened at the top — the terminal commits the
         // buffered paints atomically here. Sequence is symmetric with the begin emit above.
@@ -758,10 +779,27 @@ public sealed class FrameRenderer
         SgrEncoder.WriteReset(output);
     }
 
-    // Emit a CUP to buffer position (row, column) — the one place buffer rows become terminal
-    // rows. RowOffset is zero in full-screen rendering; inline it is the region's absolute top.
+    // Emit a cursor move to buffer position (row, column) — the one place buffer rows become
+    // terminal position. Absolute (CUP, `row + RowOffset`) for full-screen and absolute-inline
+    // rendering; RELATIVE (a CUU/CUD row delta from the tracked cursor row + a column-absolute CHA)
+    // under RelativeInline. The relative form reads the CURRENT tracked row as the delta origin, so
+    // callers must not have advanced _cursorRow past the real position before calling (SyncCursor and
+    // the direct callers update it AFTER). A relative row delta is invariant under the absolute row
+    // shift an unobserved clear causes — that invariance is the whole point (plan §2/§4b).
     private void MoveTo(IBufferWriter<byte> output, int column, int row)
-        => CursorWriter.WriteMoveTo(output, column, row + _rowOffset);
+    {
+        if (RelativeInline)
+        {
+            int dr = row - _cursorRow;
+            if (dr < 0) CursorWriter.WriteMoveUp(output, -dr);
+            else if (dr > 0) CursorWriter.WriteMoveDown(output, dr);
+            CursorWriter.WriteColumnAbsolute(output, column); // deterministic regardless of column drift
+        }
+        else
+        {
+            CursorWriter.WriteMoveTo(output, column, row + _rowOffset);
+        }
+    }
 
     // Re-position the cursor to (r, c) if our tracked position differs.
     private void SyncCursor(IBufferWriter<byte> output, int r, int c)
@@ -1456,6 +1494,16 @@ public sealed class FrameRenderer
 /// line-feeds when the region grows past the last row), and updates <see cref="FrameRenderer.RowOffset"/>
 /// before rendering.
 /// </param>
+/// <param name="RelativeInline">
+/// Opt-in (inline only) for RELATIVE cursor positioning instead of absolute <c>CUP</c>: each move is a
+/// <c>CUU</c>/<c>CUD</c> row delta from the tracked cursor plus a column-absolute <c>CHA</c>, and the
+/// region floats relative to the cursor's physical position rather than an absolute
+/// <see cref="FrameRenderer.RowOffset"/>. Because a relative row delta is invariant under the absolute
+/// row shift an <em>unobserved</em> terminal clear causes, the region survives such a clear on
+/// terminals that retain it (see <c>docs/ui-layer-design/inline-relative-move-plan.md</c>). Requires
+/// <see cref="Inline"/>; ignored otherwise. Contract: the host keeps the physical cursor parked at the
+/// region bottom-left at the start of every frame (the renderer parks it there at frame end).
+/// </param>
 public readonly record struct FrameRendererOptions(
     bool ForceFullRedraw = false, bool RestrictToDirtyRegions = false, bool OrderedDither = false,
-    bool Inline = false);
+    bool Inline = false, bool RelativeInline = false);

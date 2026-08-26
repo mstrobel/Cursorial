@@ -126,4 +126,75 @@ public class FrameRendererInlineTests
         Assert.Contains("\x1b[1;1H", output);
         Assert.DoesNotContain("\x1b[0J", output);
     }
+
+    // ── Relative-inline positioning (FrameRendererOptions.RelativeInline) ──────────────────────
+    // Moves become a CUU/CUD row delta + column-absolute CHA rather than absolute CUP; the region
+    // floats relative to the cursor's physical position (parked at the region bottom-left each frame).
+
+    private static FrameRenderer RelativeInline(int rowOffset = 0) =>
+        new(new FrameRendererOptions(Inline: true, RelativeInline: true)) { RowOffset = rowOffset };
+
+    [Fact]
+    public void RelativeInline_FullRedraw_ClimbsFromRegionBottomAndErasesRegion()
+    {
+        var r = RelativeInline(rowOffset: 5);
+        var buffer = new CellBuffer(5, 2);
+        FillRow(buffer, 0, "AAAAA");
+
+        var output = Render(r, buffer);
+
+        // Climb from the parked region bottom (row H-1 = 1) to the top: CUU(1) + CHA(col 0), then ED 0.
+        // The absolute CUP an offset-5 renderer would emit (CSI 6;1H) never appears, and never ED 2.
+        Assert.Contains("\x1b[1A\x1b[1G\x1b[0J", output);
+        Assert.DoesNotContain("\x1b[6;1H", output);
+        Assert.DoesNotContain("\x1b[2J", output);
+    }
+
+    [Fact]
+    public void RelativeInline_EmissionIsIndependentOfRowOffset()
+    {
+        // The clear-survival proof at the renderer level: relative moves encode no absolute row, so
+        // the SAME buffer emits byte-identical output at any RowOffset. Wherever an unobserved clear
+        // has shifted the region, the next frame's relative moves land it at the region's new top.
+        var buffer = new CellBuffer(6, 3);
+        FillRow(buffer, 0, "AAAAA");
+        FillRow(buffer, 2, "CCCCC");
+
+        var atThree = Render(RelativeInline(rowOffset: 3), buffer);
+        var atNine = Render(RelativeInline(rowOffset: 9), buffer);
+
+        Assert.Equal(atThree, atNine);
+        Assert.DoesNotContain("H", atThree); // no CUP at all (content is A/C — no literal 'H')
+    }
+
+    [Fact]
+    public void RelativeInline_ParksCursorAtRegionBottomAtFrameEnd()
+    {
+        var r = RelativeInline();
+        var buffer = new CellBuffer(5, 3) { CursorVisible = true, CursorRow = 0, CursorColumn = 0 };
+        FillRow(buffer, 0, "AAAAA");
+
+        var output = Render(r, buffer);
+
+        // EmitCursor left the caret at row 0; the frame ends by parking at the region bottom
+        // (row H-1 = 2, col 0): CUD(2) + CHA(col 0).
+        Assert.Contains("\x1b[2B\x1b[1G", output);
+    }
+
+    [Fact]
+    public void RelativeInline_IncrementalFrame_UsesRelativeMovesOnly()
+    {
+        var r = RelativeInline();
+        var buffer = new CellBuffer(5, 3);
+        FillRow(buffer, 0, "XXXXX");
+        Render(r, buffer); // full frame; parks at the region bottom (row 2)
+
+        // Change one cell; the incremental move to it is relative from the parked bottom — no CUP.
+        buffer.Set(0, 2, "X", CellStyle.Default);
+        var output = Render(r, buffer);
+
+        Assert.False(r.NeedsFullRedraw);    // a steady incremental frame
+        Assert.DoesNotContain("H", output); // no absolute CUP (content is 'X' — no literal 'H')
+        Assert.Contains("X", output);
+    }
 }

@@ -449,6 +449,55 @@ public sealed class InlinePresentationTests
         Assert.Contains("XXXXXXXXXX", frame);
     }
 
+    // Screen-grid verification (VtScreen actually EXECUTES the emitted moves) — byte-substring
+    // assertions can't verify where relative (position-dependent) moves LAND.
+
+    [Fact]
+    public void VtScreen_ExecutesRelativeMovesAndScroll()
+    {
+        var screen = new VtScreen(6, 3);
+        screen.Feed(Encoding.UTF8.GetBytes("\x1b[3;1HXY"));  // CUP row 3 (0-based 2), col 1 → "XY" on row 2
+        screen.Feed(Encoding.UTF8.GetBytes("\x1b[2A"));       // CUU 2 → row 0
+        screen.Feed(Encoding.UTF8.GetBytes("\x1b[1GAB"));     // CHA col 1 (0-based 0) → "AB" on row 0
+        Assert.Equal("AB", screen.LineTrimmed(0));
+        Assert.Equal("XY", screen.LineTrimmed(2));
+
+        screen.Feed(Encoding.UTF8.GetBytes("\x1b[3;1H\n"));   // to the bottom row, then LF → whole screen scrolls up
+        Assert.Equal("XY", screen.LineTrimmed(1));            // row 2 → row 1
+        Assert.Equal("", screen.LineTrimmed(2));              // new blank bottom row
+    }
+
+    [Fact]
+    public void RelativeMoves_GrowthAtBottom_LandsTheRegionOnScreen()
+    {
+        var screen = new VtScreen(40, 12);
+        for (int r = 0; r < 12; r++) { screen.SetCursor(r, 0); screen.Print($"history-{r:00}"); }
+        screen.SetCursor(11, 0); // the shell prompt sits on the LAST row
+
+        using var host = CreateInlineRelative();
+        var probe = new Probe(10, 1) { FillGlyph = "X" };
+        host.ShowRoot(probe);
+        host.RunFrame();
+        ReplyCursorPosition(host, row: screen.CursorRow + 1); // reply with the prompt row (12)
+        host.RunFrame();
+        screen.Feed(host.LastFrameBytes.Span); // first paint — a 1-row region on the bottom line
+
+        // The dropdown grows to 5 rows: no room below the bottom-row prompt, so the region must scroll
+        // the shell history up. Feed the frame and assert what actually LANDS on screen.
+        probe.Natural = new Size(10, 5);
+        probe.InvalidateMeasure();
+        host.RunFrame();
+        screen.Feed(host.LastFrameBytes.Span);
+
+        // The 5-row region occupies the bottom five rows (7..11), full width — NOT clipped to the last
+        // line. The Probe stretches to the region width, so each row is all 'X'.
+        for (int r = 7; r <= 11; r++)
+            Assert.Equal(new string('X', screen.Cols), screen.Line(r));
+        // The row just above the region is scrolled shell history, not region content.
+        Assert.DoesNotContain('X', screen.Line(6));
+        Assert.Contains("history-", screen.LineTrimmed(0));
+    }
+
     [Fact]
     public void ProductionInline_QueriesCursor_NeverTakesTheScreen()
     {

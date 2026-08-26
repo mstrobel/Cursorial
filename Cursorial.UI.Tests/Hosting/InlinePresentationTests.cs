@@ -347,9 +347,10 @@ public sealed class InlinePresentationTests
         host.Dispose();
 
         var teardown = Encoding.ASCII.GetString(host.TeardownBytes.Span);
-        // From the parked region bottom (row H-1 = 2) climb CUU(2) + CHA, then erase below — never the
-        // absolute origin CUP the absolute path emits (CSI 5;1H). Survives an unobserved clear as rendering does.
-        Assert.Contains("\x1b[2A\x1b[1G\x1b[0J", teardown);
+        // The frame ended at the caret (row 0 — no focused input), so Clear climbs CUU(caretRow=0) — a
+        // no-op — then CHA + ED0 erases the region and below. Never the absolute origin CUP the absolute
+        // path emits (CSI 5;1H). Survives an unobserved clear as rendering does.
+        Assert.Contains("\x1b[1G\x1b[0J", teardown);
         Assert.DoesNotContain("\x1b[5;1H", teardown);
         Assert.DoesNotContain("\x1b[2J", teardown);
     }

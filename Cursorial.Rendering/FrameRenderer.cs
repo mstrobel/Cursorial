@@ -146,6 +146,20 @@ public sealed class FrameRenderer
     private bool RelativeInline => _options is { Inline: true, RelativeInline: true };
 
     /// <summary>
+    /// Tell the renderer the HOST moved the physical cursor to buffer position (<paramref name="row"/>,
+    /// <paramref name="column"/>) between frames. Relative-inline positioning computes each move as a
+    /// delta from the tracked cursor, so the tracked position must follow a host-driven move — the only
+    /// one is <c>PrepareInlineRegion</c>'s make-room scroll, which lands the cursor at the region
+    /// bottom-left. A no-op unless relative-inline (absolute rendering re-addresses with CUP regardless).
+    /// </summary>
+    public void MarkInlineCursorMoved(int row, int column)
+    {
+        if (!RelativeInline) return;
+        _cursorRow = row;
+        _cursorCol = column;
+    }
+
+    /// <summary>
     /// The absolute terminal row of buffer row 0 — every emitted cursor address adds this offset.
     /// Zero (the default) for full-screen rendering; an inline host
     /// (<see cref="FrameRendererOptions.Inline"/>) sets it to the region's top row and updates it
@@ -225,17 +239,11 @@ public sealed class FrameRenderer
                           _frontRows != back.Rows ||
                           _options.ForceFullRedraw;
 
-        // Relative-inline park invariant: the physical cursor sits at the region bottom-left at the
-        // start of every frame (the host's make-room leaves it there; the frame-end park below keeps
-        // it there). Assert that as the tracked delta origin so the full-redraw climb to the top and
-        // the first in-frame move are correct — and, on the first frame, so the reserved-bottom climb
-        // isn't skipped (tracked row defaults to 0, but the cursor is physically at the bottom).
-        if (RelativeInline)
-        {
-            _cursorRow = back.Rows - 1;
-            _cursorCol = 0;
-        }
-
+        // Relative-inline: the tracked cursor is truthful ACROSS frames — a frame ends wherever
+        // EmitCursor left it (the caret), and the host reports the only inter-frame move, its
+        // make-room scroll, via MarkInlineCursorMoved. So there is no frame-start assertion: the
+        // full-redraw climb MoveTo(0,0) → CUU(_cursorRow) and the first delta are correct from
+        // wherever the cursor physically is (and the CUU count is invariant under a clear's shift).
         if (fullRedraw)
         {
             // Erase outgoing fragments BEFORE the clear-screen. Overlay-layer protocols (Kitty
@@ -342,11 +350,10 @@ public sealed class FrameRenderer
             _currentHyperlink = Hyperlink.None;
         }
 
-        // Relative-inline frame-end park: return the cursor to the region bottom-left — the defined
-        // anchor the NEXT frame's relative moves (and the full-redraw climb) start from. EmitCursor
-        // left it at the caret; SyncCursor moves it back (the visible-caret refinement is phase 2).
-        if (RelativeInline)
-            SyncCursor(output, back.Rows - 1, 0);
+        // Relative-inline: the frame ends wherever EmitCursor left the cursor — the caret cell — so
+        // the VISIBLE (1-row) hardware caret is correct, and the tracked row stays truthful as the
+        // next frame's delta origin. (No park: the host reports its make-room scroll via
+        // MarkInlineCursorMoved; the exit / poll anchor from the caret row, not a fixed bottom-left.)
 
         // Close the synchronized-output frame opened at the top — the terminal commits the
         // buffered paints atomically here. Sequence is symmetric with the begin emit above.

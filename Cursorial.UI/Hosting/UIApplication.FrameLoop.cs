@@ -1072,12 +1072,12 @@ public sealed partial class UIApplication
         {
             _inlinePollOutstanding = false;
 
-            // The cursor is parked at the region bottom-left (row height-1) at frame boundaries, so the
-            // report recovers the origin directly. A CHANGED origin means the region moved under an
+            // The cursor is parked at the caret row (the frame ends there — Approach C) at frame
+            // boundaries, so the report recovers the origin the same way the resize re-anchor does:
+            // subtract the believed cursor region row. A CHANGED origin means the region moved under an
             // unobserved clear/scroll: refresh the mouse origin AND repaint — the repaint also heals a
             // clearing terminal whose front buffer went stale (plan §4b).
-            var height = Math.Min(_buffer?.Rows ?? 1, rows);
-            var polled = Math.Clamp(row - Math.Max(0, height - 1), 0, Math.Max(0, rows - (_buffer?.Rows ?? 1)));
+            var polled = Math.Clamp(row - Math.Max(0, _buffer?.CursorRow ?? 0), 0, Math.Max(0, rows - (_buffer?.Rows ?? 1)));
             if (_inlineOrigin != polled)
             {
                 _inlineOrigin = polled;
@@ -1192,6 +1192,12 @@ public sealed partial class UIApplication
             output.Advance(scroll);
 
             origin = rows - height;
+
+            // Relative-inline: the make-room LFs left the cursor at the region bottom-left (buffer row
+            // height-1). The renderer computes moves relative to the tracked cursor and ends each frame
+            // at the caret, so the ONE inter-frame move — this scroll — must be reported to it.
+            if (_options.InlineRelativeMoves)
+                _renderer!.MarkInlineCursorMoved(height - 1, 0);
         }
 
         _inlineOrigin = origin;
@@ -1266,16 +1272,19 @@ public sealed partial class UIApplication
 
         if (_options.InlineRelativeMoves)
         {
-            // Relative exit: the renderer parked the cursor at the region bottom-left, so we position
-            // relatively rather than to the (possibly stale) absolute origin — the exit survives an
-            // unobserved clear exactly as rendering does. Clear climbs to the region top and erases
-            // below; Retain drops one fresh line below the region and sweeps below that.
+            // Relative exit: the frame ended at the caret (Approach C — the visible caret rides the
+            // hardware cursor), so position relative to the caret row, not the absolute origin. Clear
+            // climbs to the region top and erases below; Retain drops to the region bottom + one line
+            // and sweeps below. Survives an unobserved clear exactly as rendering does.
+            var caretRow = Math.Clamp(_buffer?.CursorRow ?? 0, 0, Math.Max(0, height - 1));
+
             if (InlineExitBehavior == InlineExitBehavior.Clear)
-                CursorWriter.WriteMoveUp(output, height - 1); // bottom-left → region top (CUU, no-op at height 1)
+                CursorWriter.WriteMoveUp(output, caretRow); // caret → region top (CUU; no-op when already at the top)
             else
             {
+                CursorWriter.WriteMoveDown(output, (height - 1) - caretRow); // caret → region bottom (CUD; no-op if already there)
                 var lf = output.GetSpan(1);
-                lf[0] = (byte) '\n'; // already at the region bottom-left — one line below the last frame
+                lf[0] = (byte) '\n'; // one line below the region
                 output.Advance(1);
             }
 

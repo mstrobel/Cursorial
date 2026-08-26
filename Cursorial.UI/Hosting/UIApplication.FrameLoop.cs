@@ -383,7 +383,15 @@ public sealed partial class UIApplication
                     }
 
                     if (!wokeDuringClamp && !_shutdownRequested)
-                        Dispatcher.WaitForWake();
+                    {
+                        // Relative-inline poll pacing: when idle but a DSR-CPR poll is active, bound the
+                        // park so the loop wakes when the next poll (or a stuck poll's timeout) comes due
+                        // — instead of sleeping until the next external event. Otherwise park for free.
+                        if (InlinePollWakeDelay() is { } pollDelay)
+                            Dispatcher.WaitForWake(pollDelay);
+                        else
+                            Dispatcher.WaitForWake();
+                    }
                 }
             }
 
@@ -688,6 +696,14 @@ public sealed partial class UIApplication
                     }
                 }
 
+                // Phase 6.5 — the relative-inline DSR-CPR poll (desync heal, plan §3): the cursor is
+                // parked at the region bottom-left here, so a due poll's reply recovers the origin. Force
+                // a flush on an otherwise-idle frame; a rendered frame appends the query after its delta.
+                if (!rendered)
+                    _scratch.ResetWrittenCount();
+                if (TryEmitInlineCprPoll(_scratch))
+                    rendered = true;
+
                 if (!_controlSequences.IsEmpty)
                 {
                     // The out-of-band OSC channel — AFTER the delta; forces a flush even when empty.
@@ -966,6 +982,60 @@ public sealed partial class UIApplication
     private static readonly TimeSpan InlineCprTimeout = TimeSpan.FromSeconds(1);
 
     /// <summary>
+    /// The relative-inline DSR-CPR poll interval (phase 3 of the inline-relative-move plan): how often
+    /// a background cursor-position query re-derives the region origin from the parked cursor, catching
+    /// an unobserved clear/scroll the framework can't otherwise see. Long enough that idle chatter is
+    /// negligible; short enough that a human clear-then-interact heals well within a beat.
+    /// </summary>
+    private static readonly TimeSpan InlineCprPollInterval = TimeSpan.FromMilliseconds(1500);
+
+    /// <summary>
+    /// Emits a background DSR-CPR poll into <paramref name="output"/> when due — relative-inline only,
+    /// region resolved, no startup/reanchor query outstanding, the terminal has answered DSR before, and
+    /// the interval has elapsed. Emitted at a frame boundary where the cursor is parked at the region
+    /// bottom-left, so <see cref="OnInlineDeviceResponse"/> recovers the origin from the report. Returns
+    /// true when it emitted (the caller forces the flush). A stuck outstanding poll is abandoned after
+    /// <see cref="InlineCprTimeout"/> so the next interval can re-poll; a late reply is then ignored.
+    /// </summary>
+    private bool TryEmitInlineCprPoll(IBufferWriter<byte> output)
+    {
+        if (!_options.InlineRelativeMoves || !IsPresentingInline || _inlineOrigin is null ||
+            _renegotiating || !_inlineDsrAnswered || _inlineCpr != InlineCprState.None)
+            return false;
+
+        if (_inlinePollOutstanding)
+        {
+            if (_options.TimeProvider.GetElapsedTime(_inlineLastPollTimestamp) >= InlineCprTimeout)
+                _inlinePollOutstanding = false; // reply overdue — allow the next interval to re-poll
+            return false;
+        }
+
+        if (_options.TimeProvider.GetElapsedTime(_inlineLastPollTimestamp) < InlineCprPollInterval)
+            return false;
+
+        _inlinePollOutstanding = true;
+        _inlineLastPollTimestamp = _options.TimeProvider.GetTimestamp();
+        CursorWriter.WriteQueryPosition(output);
+        return true;
+    }
+
+    /// <summary>
+    /// The idle park bound when a relative-inline DSR-CPR poll is active: time until the next poll is
+    /// due (or a stuck outstanding poll times out), so an otherwise event-driven idle still ticks at the
+    /// poll cadence. Null when no poll pacing is needed (not relative-inline, region unresolved, or the
+    /// terminal never answered DSR) — the caller then parks for free until the next external event.
+    /// </summary>
+    private TimeSpan? InlinePollWakeDelay()
+    {
+        if (!_options.InlineRelativeMoves || !IsPresentingInline || _inlineOrigin is null || !_inlineDsrAnswered)
+            return null;
+
+        var target = _inlinePollOutstanding ? InlineCprTimeout : InlineCprPollInterval;
+        var due = target - _options.TimeProvider.GetElapsedTime(_inlineLastPollTimestamp);
+        return due > TimeSpan.Zero ? due : TimeSpan.Zero;
+    }
+
+    /// <summary>
     /// The inline device-response sink: anchors the region from a cursor-position report. Runs on
     /// the UI thread (Phase 1's response router). Only an <b>outstanding</b> query may anchor —
     /// an R-final CSI with two parameters is also how F3-with-modifiers arrives on some terminals
@@ -973,17 +1043,48 @@ public sealed partial class UIApplication
     /// </summary>
     private void OnInlineDeviceResponse(DeviceResponseEvent response)
     {
-        if (response.Kind != DeviceResponseKind.CursorPositionReport || _inlineCpr == InlineCprState.None)
+        if (response.Kind != DeviceResponseKind.CursorPositionReport)
             return;
 
         if (!IsPresentingInline)
             return; // a stale reply draining mid-excursion would resolve against the fullscreen buffer
 
+        // The reply belongs to an outstanding startup/reanchor query, or to a background poll (kept
+        // apart from _inlineCpr so it never gates rendering). An unsolicited report — the F3-with-mods
+        // CPR collision — matches neither outstanding query and is ignored.
+        bool forPoll = _inlineCpr == InlineCprState.None && _inlinePollOutstanding;
+        if (_inlineCpr == InlineCprState.None && !forPoll)
+            return;
+
         if (!TryParseCursorReport(response.Payload.Span, out var row, out var column))
             return;
 
+        if (!_inlineDsrAnswered)
+        {
+            _inlineDsrAnswered = true; // the terminal answers DSR — the poll may run from here on
+            _inlineLastPollTimestamp = _options.TimeProvider.GetTimestamp(); // first poll one interval later
+        }
+
         var rows = Math.Max(1, _screenSize.Rows);
         row = Math.Clamp(row - 1, 0, rows - 1); // 1-based wire → 0-based screen
+
+        if (forPoll)
+        {
+            _inlinePollOutstanding = false;
+
+            // The cursor is parked at the region bottom-left (row height-1) at frame boundaries, so the
+            // report recovers the origin directly. A CHANGED origin means the region moved under an
+            // unobserved clear/scroll: refresh the mouse origin AND repaint — the repaint also heals a
+            // clearing terminal whose front buffer went stale (plan §4b).
+            var height = Math.Min(_buffer?.Rows ?? 1, rows);
+            var polled = Math.Clamp(row - Math.Max(0, height - 1), 0, Math.Max(0, rows - (_buffer?.Rows ?? 1)));
+            if (_inlineOrigin != polled)
+            {
+                _inlineOrigin = polled;
+                RequestFullRedraw();
+            }
+            return;
+        }
 
         _inlineOrigin = _inlineCpr == InlineCprState.Startup
             // The region starts on the shell's cursor line — or the NEXT line when the shell left

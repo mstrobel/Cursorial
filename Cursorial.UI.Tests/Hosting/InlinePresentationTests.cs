@@ -373,6 +373,60 @@ public sealed class InlinePresentationTests
         Assert.DoesNotContain("\x1b[2J", teardown);
     }
 
+    // ── Phase 3: the DSR-CPR poll desync heal (relative-inline only) ──────────────────────────────
+
+    // Explicit RunFrame stepping (not RunUntilIdle, which advances fake time far enough to fire a poll
+    // on its own) so the interval crossing is controlled precisely.
+
+    [Fact]
+    public void RelativeMoves_PollsCursorPosition_OnInterval()
+    {
+        var host = CreateInlineRelative();
+        host.ShowRoot(new Probe(10, 3) { FillGlyph = "X" });
+        host.RunFrame();
+        ReplyCursorPosition(host, row: 8); // startup reply
+        host.RunFrame();                    // process it → DSR proven, the poll clock starts
+
+        // Past the poll interval, an idle frame emits a background DSR-CPR poll.
+        host.Time.Advance(TimeSpan.FromSeconds(2)); // advance the clock only — no catch-up frames
+        host.RunFrame();
+        Assert.Contains("\x1b[6n", Frame(host));
+    }
+
+    [Fact]
+    public void RelativeMoves_Poll_ReanchorsAndRepaints_WhenTheRegionMoved()
+    {
+        var host = CreateInlineRelative();
+        host.ShowRoot(new Probe(10, 3) { FillGlyph = "X" });
+        host.RunFrame();
+        ReplyCursorPosition(host, row: 8); // startup → origin 7; region [7..9], parked bottom at row 9
+        host.RunFrame();
+
+        host.Time.Advance(TimeSpan.FromSeconds(2)); // advance the clock only — no catch-up frames
+        host.RunFrame();
+        Assert.Contains("\x1b[6n", Frame(host)); // the poll query went out
+
+        // An unobserved clear moved the region up: the parked bottom now reports wire row 5 (0-based 4)
+        // → origin 4 − (height−1) = 2, a CHANGE from 7. The poll re-anchors and forces a repaint.
+        ReplyCursorPosition(host, row: 5);
+        host.RunFrame();
+        Assert.Contains("XXXXXXXXXX", Frame(host)); // the region was repainted at the new anchor
+    }
+
+    [Fact]
+    public void AbsoluteInline_NeverPolls()
+    {
+        var host = CreateInline(); // relativeMoves: false (the default)
+        host.ShowRoot(new Probe(10, 3) { FillGlyph = "X" });
+        host.RunFrame();
+        ReplyCursorPosition(host, row: 8);
+        host.RunFrame();
+
+        host.Time.Advance(TimeSpan.FromSeconds(5));
+        host.RunFrame();
+        Assert.DoesNotContain("\x1b[6n", Frame(host));
+    }
+
     [Fact]
     public void ProductionInline_QueriesCursor_NeverTakesTheScreen()
     {

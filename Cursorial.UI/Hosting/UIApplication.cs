@@ -100,6 +100,14 @@ public sealed partial class UIApplication : IAsyncDisposable
     private bool _inlineForceBottomScroll;
     private IDisposable? _inlineCprSink;
 
+    // Relative-inline DSR-CPR poll (the desync heal): a periodic query that re-derives the origin from
+    // the parked cursor, to catch a clear/scroll the framework can't observe (the region floated but the
+    // mouse origin / clearing-terminal front buffer went stale). Kept OUT of _inlineCpr so it never gates
+    // rendering, and armed only once the terminal has proven it answers DSR (_inlineDsrAnswered).
+    private bool _inlinePollOutstanding;
+    private long _inlineLastPollTimestamp;
+    private bool _inlineDsrAnswered;
+
     private enum InlineCprState
     {
         None,     // no outstanding cursor-position query

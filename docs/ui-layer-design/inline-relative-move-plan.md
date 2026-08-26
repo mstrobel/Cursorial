@@ -65,33 +65,65 @@ SGR mouse reports (DECSET 1006) carry **absolute screen** row/col. Mapping a cli
 cell is `row − origin`. Relative rendering never computes an origin, so **mouse mapping still needs
 one**, and it goes stale on an undetectable clear exactly as today.
 
-Consequence: the fix makes *rendering* survive the clear, but *mouse hit-testing* is stale until
-re-anchored. This is a genuine residual imperfection, not a full cure. Mitigations, in order of
-preference:
-- **Re-anchor the origin via DSR-CPR opportunistically** — on terminal focus-in (a clear is often
-  followed by the user clicking back), and/or lazily before the first mouse event after a
-  suspected desync. Cheap, bounded, and the hardware cursor rides the region so the reply
-  re-derives `origin = reported − believed cursor row` (the existing re-anchor formula).
-- Accept a stale-mouse window between clear and the next re-anchor (rendering is already correct;
-  only clicks in that window mis-map).
+The re-anchor *mechanism* is always the same DSR-CPR round-trip — `origin = reported − believed
+cursor region-row` (the existing formula, valid because the hardware cursor rides the region). What
+needs pinning down is **when** to pay for it; you cannot CPR every frame. A manual clear is
+*unobservable* (the terminal never reports it), so "suspected desync" is a heuristic, not a
+detection:
+
+- **Known shifts — corrected directly, no heuristic.** A **resize** re-queries CPR (already in the
+  design); a **self-inflicted scroll** past the screen bottom is one the app emitted, so it
+  decrements the origin by k (caveat 4c) and stays fresh.
+- **Focus-in — re-anchor eagerly.** The user was away (clearing / scrolling / resizing the window)
+  and came back: the reported "clear then click back" path, and the strongest, cheapest signal.
+  This handler should **also force a full redraw** — see 4b, where it heals region-clearing
+  terminals with the same trigger.
+- **Origin freshness TTL — what "suspected" concretely means.** Stamp the origin on every anchor;
+  treat it as suspect once older than a freshness window. A mouse event against a stale-past-TTL
+  origin triggers a **lazy pre-mouse re-anchor** before the coordinate is trusted. This catches a
+  clear during an idle stretch with *no* focus transition, while bounding cost — a burst of rapid
+  clicks reuses one fresh anchor; only the first click after a quiet gap pays the round-trip.
+- **Rejected trigger: "the coordinate mapped outside the region."** Unreliable both ways —
+  all-motion tracking (DECSET 1003) makes out-of-region events legitimate, and a stale origin can
+  mis-map *within* range (wrong cell, silently). It neither fires reliably on real desync nor
+  avoids false positives.
+
+**Residual hole:** a clear *while focused*, followed by continued in-region clicking inside the TTL,
+is uncovered short of a CPR poll per click — the honest stale-mouse window (rendering stays correct;
+only those clicks mis-map).
 
 **This caveat is why the task can't be "relative and done."** The honest end state is *relative
-rendering + an origin kept solely for mouse, re-anchored on focus-in*.
+rendering + an origin kept solely for mouse, re-anchored on focus-in and a freshness TTL*.
 
-### 4b. "Rigid translation" is terminal-specific — best-effort, not provable
-The invariance argument assumes a clear moves content **and** cursor by the same delta. Real
-terminals differ:
-- If clear homes the cursor to `(0,0)` and the region was parked at its bottom, `CUU(height−1)`
-  clamps at row 0 and the region repaints at the top — **works** (the region *is* now at top).
-- If clear leaves the cursor mid-screen with region rows wiped, the next repaint lands wherever the
-  cursor sits — **may be wrong**.
-- kitty `cmd+K` scrolls the current line to the top; whether the region *below* the parked cursor
-  survives or scrolls into cleared history needs empirical confirmation on the support matrix
-  (kitty, Ghostty, WezTerm, Apple Terminal, Windows Terminal).
+### 4b. Terminal clear behavior is terminal-specific — confirmed to diverge (two failure modes)
+The invariance argument assumes a clear moves content **and** cursor by the same delta. It does not
+hold uniformly. **Empirical results** (curio filter — an edit box on the current line, a dropdown in
+the region below it; manual clear):
 
-Consequence: relative is **strictly better** than absolute (it can't be *more* wrong), but it is
-best-effort. Frame the acceptance criterion as "the reported kitty `cmd+K` case is fixed and no
-supported terminal regresses," not "provably correct under all clears."
+| Terminal | Kept on clear | Region below the current line |
+|---|---|---|
+| kitty, Ghostty | current line + everything below it | **retained** — edit box *and* dropdown stay visible |
+| Apple Terminal, WezTerm | only the current line | **cleared** — edit box stays, dropdown gone |
+| Windows Terminal | *unconfirmed* | *unconfirmed* |
+
+These are **two different failure modes** needing different cures:
+
+- **Retained (kitty/Ghostty)** — the region survives, but absolute addressing repaints it at the
+  *stale* rows (the reported bug). Content and cursor moved together, so **relative moves fix it**:
+  `CUU(height−1)` from the ridden cursor lands on the region's new top.
+- **Cleared (Apple Terminal/WezTerm)** — the region is wiped, and the diff renderer's front buffer
+  still believes it painted, so an unchanged back buffer diffs to **nothing** — the region stays
+  blank until a full redraw (or until a content change happens to re-emit those cells). Relative
+  moves don't help; there is nothing to translate. This needs a **forced full redraw** (`Reset()`),
+  which requires noticing the clear — the same unobservable-desync problem as 4a, healed by the same
+  trigger: **focus-in should re-anchor the mouse origin *and* force a full redraw.** One handler,
+  both cures.
+
+Consequence: relative is **strictly better** than absolute on retaining terminals (it cannot be
+*more* wrong) and **neutral** on clearing ones (blank until a redraw, same as today) — but pairing it
+with a focus-in `Reset()` recovers the clearing terminals too. Acceptance criterion: "the reported
+kitty `cmd+K` case is fixed, the clearing terminals recover on focus-in, and no supported terminal
+regresses" — not "provably correct under all clears."
 
 ### 4c. Growth past the terminal bottom
 When the region grows past the screen bottom the terminal scrolls; today the loop makes room
@@ -129,10 +161,12 @@ terminal.
    `CR`+`CUU(height−1)`+`ED 0`; frame-end park at bottom-left. Stop using `RowOffset` for
    rendering; keep the field for mouse. Adapt the headless inline byte assertions (CUP → CUU/CR+CUF).
 2. **Exit + fragments + caret** relative (Clear/Retain, fragment placement, caret band).
-3. **Mouse-origin heal** — re-anchor the origin via DSR-CPR on focus-in (and/or lazily pre-mouse).
-   Document the residual stale-mouse window (caveat 4a).
+3. **Desync heal** — a focus-in handler that *both* re-anchors the mouse origin via DSR-CPR **and**
+   forces a full redraw (`Reset()`, for the region-clearing terminals — 4b); plus a lazy pre-mouse
+   re-anchor gated on an origin **freshness TTL** (4a). Document the residual stale-mouse window.
 4. **Re-validate** growth/scroll/resize under the relative model; update `inline-presentation.md`
-   (the origin protocol section becomes "origin for mouse only").
+   (the origin protocol section becomes "origin for mouse only"). Extend the terminal-matrix note
+   (4b) to Windows Terminal, the one unconfirmed clear behavior.
 
 ## 6. Test strategy
 

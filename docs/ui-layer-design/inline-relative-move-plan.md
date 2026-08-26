@@ -167,10 +167,41 @@ terminal.
    relative-only, **RowOffset-independence** = the renderer-level clear-survival proof) +
    `InlinePresentationTests` (end-to-end relative climb, and a second frame never re-addressing the
    stale origin — the direct anti-regression). Rendering 1831 / UI 3911 green.
-2. **Exit + fragments + caret** relative (Clear/Retain, fragment placement, caret band). ← next
-3. **Desync heal** — a focus-in handler that *both* re-anchors the mouse origin via DSR-CPR **and**
-   forces a full redraw (`Reset()`, for the region-clearing terminals — 4b); plus a lazy pre-mouse
-   re-anchor gated on an origin **freshness TTL** (4a). Document the residual stale-mouse window.
+2. Exit + fragments + caret relative:
+   - **✅ DONE — Exit** (`WriteInlineExit`). Under `InlineRelativeMoves` the cursor is parked at the
+     region bottom-left, so Clear climbs `CUU(height−1)`+`CHA`+`ED 0` to the region top and Retain
+     drops one `LF` below — never the (possibly stale) absolute origin. Survives an unobserved clear.
+   - **✅ DONE — Fragments** (`EmitFragmentBytes` / `EmitFragmentEraseBytes`). Positioning already went
+     through `MoveTo` (so it relativizes), but the absolute path's post-fragment `_cursorRow = -1`
+     sentinel (forcing a CUP to correct DECRC's implementation-defined restore) breaks the relative
+     model. Relative mode skips DECSC/DECRC and brackets with an explicit relative move to the anchor
+     and back, keeping the tracked cursor truthful. (Overlay-protocol *images* still anchor in pixel
+     space and can strand on a clear — same class as the mouse, re-anchored in phase 3.)
+   - **← NEXT — Visible caret.** For a 1-row caret the visible cursor IS the hardware cursor at the
+     caret cell — but phase 1 parks that cursor at bottom-left for the next frame's climb. The physical
+     cursor can't be at the caret (visibility) AND bottom-left (climb) at once. **Resolution (Approach
+     C):** end the frame at the caret (drop the frame-end park); the renderer tracks the true end
+     position across frames; and `PrepareInlineRegion` — the only thing that moves the cursor between
+     frames (the make-room scroll) — tells the renderer via a new `MarkInlineCursorMoved(row,col)` when
+     it does, so the frame-start delta origin stays truthful without the bottom-left assertion.
+     Requires reworking phase 1's park + updating its renderer tests (the "parks at bottom" test
+     becomes "ends at the caret"); the renderer tests must set the start position (simulating the host
+     contract) since they drive `Render` without the frame loop. The **glyph-height beam** (Kitty extra
+     cursors, `Rows>1`) is screen-fixed/absolute regardless — it re-anchors on focus-in like the mouse
+     (phase 3), not a relative-move problem.
+3. **Desync heal.** Two shapes, pick one (or hybridize):
+   - **(preferred) Fixed-interval DSR-CPR poll**, handled in the input loop. Because the cursor is
+     parked at a KNOWN region-relative row at every frame boundary, a periodic `CSI 6 n` re-derives
+     `origin = reported − parkedRow` unconditionally — which closes the clear-*while-focused* residual
+     hole the event-driven triggers leave open. A detected origin *change* doubles as the clear signal
+     that forces a `Reset()` full redraw for the region-clearing terminals (§4b), so ONE mechanism
+     heals both the mouse origin and the blank-region-after-clear. Cost: constant background chatter +
+     an idle wake per interval (use ~1–2 s; pause it when the terminal never answered the startup CPR;
+     keep a single outstanding query via the existing `_inlineCpr` state machine — replies are
+     indistinguishable `CSI row;col R`). DSR-CPR does not move the cursor, so no save/restore is needed.
+   - **(alternative) Event-driven** — a focus-in handler that both re-anchors the origin AND forces a
+     `Reset()`, plus a lazy pre-mouse re-anchor gated on an origin **freshness TTL**. Lower idle cost,
+     but leaves the clear-while-focused residual stale-mouse window (§4a). Can fast-path the poll.
 4. **Re-validate** growth/scroll/resize under the relative model; update `inline-presentation.md`
    (the origin protocol section becomes "origin for mouse only"). Extend the terminal-matrix note
    (4b) to Windows Terminal, the one unconfirmed clear behavior.

@@ -153,6 +153,18 @@ public sealed record NegotiationOptions
     /// unsupported. Defaults to <see cref="DefaultProbeTimeout"/> (500 ms).
     /// </summary>
     public TimeSpan ProbeTimeout { get; init; } = DefaultProbeTimeout;
+
+    /// <summary>
+    /// When seeding from a cached snapshot (<see cref="TerminalSessionOptions.CachedCapabilities"/>),
+    /// still fire ONE fresh default-color probe (OSC 10 / 11 / 12 + a DA1 sentinel) and override the
+    /// snapshot's default foreground / background / cursor colors with the live values. The default
+    /// colours are the volatile part of the capability set — a user flipping their terminal's light/dark
+    /// theme does not change the cache key (TERM / TERM_PROGRAM), so a purely cached seed carries a stale
+    /// background forever. This refresh catches that in one round-trip while still skipping the identity
+    /// and DECRQM handshakes. A terminal that doesn't answer a colour query keeps the cached value (no
+    /// clobber). No effect on a full (uncached) negotiation, which always probes colours. Default false.
+    /// </summary>
+    public bool RefreshColorsFromCache { get; init; }
 }
 
 /// <summary>

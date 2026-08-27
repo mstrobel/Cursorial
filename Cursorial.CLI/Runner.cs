@@ -60,17 +60,26 @@ public static class Runner
         // warning). Null when stdin is a terminal.
         var stdinItems = StdinFeed.TryReadLines();
 
-        // Capability cache (docs/cli-design.md §6, FW-1): warm key → seed the session and skip the
-        // probe rounds entirely; cold key → normal negotiation, then persist the realized snapshot
-        // for next time. Kill-switches: --no-caps-cache and CURIO_NO_CAPS_CACHE (checked inside
-        // CapabilityCache too — belt and braces for future call sites).
+        // Capability cache (docs/cli-design.md §6, FW-1): warm key → seed the session, skipping the
+        // identity + DECRQM handshake but still refreshing the volatile default colours (below); cold
+        // key → normal negotiation, then persist the realized snapshot for next time. Kill-switches:
+        // --no-caps-cache and CURIO_NO_CAPS_CACHE (checked inside CapabilityCache too — belt and braces
+        // for future call sites).
         bool capsCacheEnabled = !globals.NoCapsCache && !CapabilityCache.IsDisabledByEnvironment;
         var cachedCaps = capsCacheEnabled ? CapabilityCache.TryLoad() : null;
 
         TerminalSession session;
         try
         {
-            session = await TerminalSession.OpenAsync(new TerminalSessionOptions { CachedCapabilities = cachedCaps });
+            session = await TerminalSession.OpenAsync(new TerminalSessionOptions
+            {
+                CachedCapabilities = cachedCaps,
+                // FW-10: refresh the volatile default colours even on a warm seed. The cache key doesn't
+                // track a terminal light/dark theme flip, so a purely cached background goes stale; one
+                // OSC 10/11/12 + DA1 round-trip (sub-frame — see the `bgprobe` demo) keeps light/dark
+                // correct. No-op on a cold run (full negotiation always probes colours).
+                Negotiation = new NegotiationOptions { RefreshColorsFromCache = true },
+            });
         }
         catch (InvalidOperationException ex)
         {

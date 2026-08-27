@@ -377,8 +377,9 @@ timeout, `curio serve --stop`, and session-death cleanup. Windows ships direct m
 | FW-7 | Inline-hostable `MessageBox`/`TaskDialog` (overlay-layer modal lane under inline models) | M |
 | FW-8 | `caps-inline`/`caps-fullscreen` style stamps, re-stamped on presentation transitions | S |
 | FW-9 | Fix stale `TerminalSessionHost` remarks (emergency-restore seam landed) | XS |
+| FW-10 | ~~Refresh volatile colours on the cached seed~~ **DONE**: `NegotiationOptions.RefreshColorsFromCache` — `ApplyCachedAsync` fires ONE fresh OSC 10/11/12 + DA1 colour probe and overrides the snapshot's default fg/bg/cursor (a colour the terminal declines to report keeps its cached value), still skipping the identity/DECRQM handshake. Fixes the friction that a purely cached seed **froze light/dark detection** — the cache key (TERM/TERM_PROGRAM) doesn't change on a terminal theme flip, so the stale background rode along forever. CLI side: the runner opts in on the warm seed; cost is one round-trip (~sub-frame — see the `bgprobe` demo). | S |
 
-FW-1/2/4/5 unblock M0–M1 and are individually small; FW-6/7/8 land with M2.
+FW-1/2/4/5 unblock M0–M1 and are individually small; FW-6/7/8 land with M2. FW-10 extends FW-1.
 
 ---
 

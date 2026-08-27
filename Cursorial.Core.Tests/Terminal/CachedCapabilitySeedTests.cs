@@ -1,4 +1,5 @@
 using Cursorial.Input.Capabilities;
+using Cursorial.Media;
 using Cursorial.Terminal;
 
 namespace Cursorial.Tests.Terminal;
@@ -340,6 +341,106 @@ public class CachedCapabilitySeedTests
             Assert.Equal(cold, session.Capabilities);
             Assert.Equal(ExpectedKittyEnableRun(),
                          System.Text.Encoding.ASCII.GetString(await sink.ReadAllWrittenAsync()));
+        }
+    }
+
+    // ---- FW-2: RefreshColorsFromCache — refresh the volatile default colours on a warm seed ----
+
+    [Fact]
+    public async Task ApplyCached_RefreshColorsFromCache_OverridesTheStaleBackground()
+    {
+        var (cold, _, _) = await RunColdAsync(DefaultOptions());
+
+        // A cache written when the terminal was LIGHT: white background, near-black foreground.
+        var stale = cold with
+        {
+            Output = cold.Output with
+            {
+                Color = cold.Output.Color with
+                {
+                    DefaultBackground = Color.FromRgb(0xFF, 0xFF, 0xFF),
+                    DefaultForeground = Color.FromRgb(0x11, 0x11, 0x11),
+                },
+            },
+        };
+
+        var source = new InMemoryInputByteSource();
+        var sink = new InMemoryOutputByteSink();
+        await using (source)
+        await using (sink)
+        {
+            // The terminal is DARK now — it answers OSC 11 with a near-black background (bg only;
+            // no OSC 10 foreground / OSC 12 cursor reply), then the DA1 sentinel ends the probe.
+            source.Enqueue("\x1b]11;rgb:2e2e/3434/4848\x07");
+            source.Enqueue("\x1b[?64c");
+
+            await using var negotiator = new VtTerminalNegotiator(
+                source, sink, mode: null, timeProvider: null, environmentReader: new StubEnvironmentReader());
+
+            var seeded = await negotiator.ApplyCachedAsync(
+                stale, DefaultOptions() with { RefreshColorsFromCache = true });
+
+            var written = System.Text.Encoding.ASCII.GetString(await sink.ReadAllWrittenAsync());
+            Assert.Contains("\x1b]11;?", written); // the fresh background query went out
+
+            // The fresh dark background overrides the stale white one...
+            Assert.Equal(Color.FromRgb(0x2E, 0x34, 0x48), seeded.Output.Color.DefaultBackground);
+            // ...while the foreground (no OSC 10 reply) keeps its cached value — no clobber to null.
+            Assert.Equal(Color.FromRgb(0x11, 0x11, 0x11), seeded.Output.Color.DefaultForeground);
+        }
+    }
+
+    [Fact]
+    public async Task ApplyCached_RefreshColorsFromCache_KeepsCachedColorsWhenTerminalStaysSilent()
+    {
+        var (cold, _, _) = await RunColdAsync(DefaultOptions());
+
+        var stale = cold with
+        {
+            Output = cold.Output with
+            {
+                Color = cold.Output.Color with { DefaultBackground = Color.FromRgb(0x20, 0x20, 0x20) },
+            },
+        };
+
+        var source = new InMemoryInputByteSource();
+        var sink = new InMemoryOutputByteSink();
+        await using (source)
+        await using (sink)
+        {
+            // A terminal that doesn't support OSC colour queries: only the DA1 sentinel comes back.
+            source.Enqueue("\x1b[?64c");
+
+            await using var negotiator = new VtTerminalNegotiator(
+                source, sink, mode: null, timeProvider: null, environmentReader: new StubEnvironmentReader());
+
+            var seeded = await negotiator.ApplyCachedAsync(
+                stale, DefaultOptions() with { RefreshColorsFromCache = true });
+
+            // No reply → the cached value is preserved (not clobbered to null).
+            Assert.Equal(Color.FromRgb(0x20, 0x20, 0x20), seeded.Output.Color.DefaultBackground);
+        }
+    }
+
+    [Fact]
+    public async Task ApplyCached_WithoutRefreshFlag_DoesNotProbeColors()
+    {
+        // The default (flag off) still emits no OSC at all and returns the snapshot by reference.
+        var (cold, _, _) = await RunColdAsync(DefaultOptions());
+
+        var source = new InMemoryInputByteSource();
+        var sink = new InMemoryOutputByteSink();
+        await using (source)
+        await using (sink)
+        {
+            await using var negotiator = new VtTerminalNegotiator(
+                source, sink, mode: null, timeProvider: null, environmentReader: new StubEnvironmentReader());
+
+            var seeded = await negotiator.ApplyCachedAsync(cold, DefaultOptions());
+            var written = System.Text.Encoding.ASCII.GetString(await sink.ReadAllWrittenAsync());
+
+            Assert.DoesNotContain("\x1b]", written); // no OSC colour query
+            Assert.Same(cold, seeded);               // snapshot returned verbatim
         }
     }
 }

@@ -216,8 +216,11 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
     /// <summary>
     /// Seed the negotiator from a previously negotiated capability snapshot, skipping the wire
     /// handshake entirely — no identification probes (XTVERSION / CSI 16 t / CSI 18 t / DA1),
-    /// no DECRQM verification, no OSC color probes, and therefore no reads from the input
-    /// source at all. The opt-in <b>enable</b> sequences are still emitted: the applied set is
+    /// no DECRQM verification, and (unless <see cref="NegotiationOptions.RefreshColorsFromCache"/>
+    /// is set) no OSC color probes and therefore no reads from the input source at all. When that
+    /// flag IS set, one fresh default-colour probe (OSC 10/11/12 + DA1) runs to refresh the volatile
+    /// theme colours over the snapshot's stale ones — one round-trip, the only input-source read on
+    /// this path. The opt-in <b>enable</b> sequences are still emitted: the applied set is
     /// decided by the same pure <see cref="DecideOptIns"/> the full negotiation's opt-in round
     /// uses (from <paramref name="options"/> + the snapshot's identification, family-gated
     /// identically) and emitted by the same single producer (<see cref="EmitOptInEnables"/>),
@@ -281,6 +284,30 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
         _mode.TextAreaColumns = window.TextAreaColumns;
         _mode.TextAreaRows = window.TextAreaRows;
 
+        // Volatile-colour refresh (NegotiationOptions.RefreshColorsFromCache): the snapshot's default
+        // colours may be stale if the user changed their terminal theme since it was captured — the
+        // cache key (TERM / TERM_PROGRAM) doesn't track that. One fresh OSC 10/11/12 + DA1 round-trip
+        // overrides them; a colour the terminal declines to report keeps its cached value. Done BEFORE
+        // the opt-in enables so the query/response cycle completes before any mouse/focus reporting we
+        // turn on begins producing input.
+        var refreshed = cached;
+        if (options.RefreshColorsFromCache)
+        {
+            await ProbeDefaultColorsAsync(options, cancellationToken).ConfigureAwait(false);
+            refreshed = cached with
+            {
+                Output = cached.Output with
+                {
+                    Color = cached.Output.Color with
+                    {
+                        DefaultForeground = _defaultForeground ?? cached.Output.Color.DefaultForeground,
+                        DefaultBackground = _defaultBackground ?? cached.Output.Color.DefaultBackground,
+                        DefaultCursorColor = _defaultCursorColor ?? cached.Output.Color.DefaultCursorColor,
+                    },
+                },
+            };
+        }
+
         if (options.OptIns != OptInPolicy.Allowed)
         {
             // Nothing applied — report it that way. Mirrors what a full negotiation under
@@ -288,10 +315,10 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
             // protocol enables cleared, family-gated passive bits (clipboard, passthrough,
             // pointer-shape) retained.
             var none = default(AppliedOptIns);
-            return cached with
+            return refreshed with
             {
                 Input = ResolveInputCapabilities(identification, in none),
-                Output = cached.Output with { Protocol = ResolveOutputProtocol(identification, in none) },
+                Output = refreshed.Output with { Protocol = ResolveOutputProtocol(identification, in none) },
             };
         }
 
@@ -311,7 +338,7 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
         _applied = applied;
         ApplyToInputMode(in applied);
 
-        return cached;
+        return refreshed;
     }
 
     public async Task RestoreAsync(CancellationToken cancellationToken = default)
@@ -1073,6 +1100,37 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
         _defaultForeground = FindFirstColor(collector, DeviceResponseKind.ForegroundColor);
         _defaultBackground = FindFirstColor(collector, DeviceResponseKind.BackgroundColor);
         _defaultCursorColor = FindFirstColor(collector, DeviceResponseKind.CursorColor);
+    }
+
+    /// <summary>
+    /// Re-query ONLY the default foreground / background / cursor colours (OSC 10 / 11 / 12) behind a
+    /// DA1 sentinel — the volatile theme data — skipping the truecolor palette round-trip (a stable
+    /// capability) and the whole identification / DECRQM handshake. Drives the cached seed's
+    /// <see cref="NegotiationOptions.RefreshColorsFromCache"/> refresh: one round-trip, bounded by the
+    /// sentinel exactly like the full colour probe. A colour a terminal declines to report stays null,
+    /// so the caller keeps the cached value rather than clobbering it.
+    /// </summary>
+    private async Task ProbeDefaultColorsAsync(NegotiationOptions options, CancellationToken cancellationToken)
+    {
+        _probeCollector ??= new ResponseCollector();
+        _probeClassifier ??= new VtSequenceClassifier();
+        _probeInterpreter ??= new VtInputInterpreter(_mode, _probeCollector, _time);
+
+        await WriteAsync(Osc10Query, cancellationToken).ConfigureAwait(false);
+        await WriteAsync(Osc11Query, cancellationToken).ConfigureAwait(false);
+        await WriteAsync(Osc12Query, cancellationToken).ConfigureAwait(false);
+        await WriteAsync(Da1Request, cancellationToken).ConfigureAwait(false);
+
+        await DrainResponsesUntilSentinelAsync(_probeClassifier,
+                                               _probeInterpreter,
+                                               _probeCollector,
+                                               sentinelTarget: _probeCollector.SentinelCount + 1,
+                                               options.ProbeTimeout,
+                                               cancellationToken).ConfigureAwait(false);
+
+        _defaultForeground = FindFirstColor(_probeCollector, DeviceResponseKind.ForegroundColor);
+        _defaultBackground = FindFirstColor(_probeCollector, DeviceResponseKind.BackgroundColor);
+        _defaultCursorColor = FindFirstColor(_probeCollector, DeviceResponseKind.CursorColor);
     }
 
     // ---- Kitty multiple-cursors probe --------------------------------------------------

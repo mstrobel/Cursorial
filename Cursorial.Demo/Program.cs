@@ -42,6 +42,7 @@ IReadOnlyList<IDemo> demos =
     new FormatDemo(),
     new PaletteDemo(),
     new ProbeDemo(),
+    new BackgroundProbeDemo(),
     new AccessKeysDemo(),
     new RasterBenchDemo(),
 ];

@@ -23,13 +23,15 @@ namespace Cursorial.Tests.UI.Hosting;
 /// </summary>
 public sealed class InlinePresentationTests
 {
+    // The LEGACY absolute-origin path (deprecated, removed before v1.0). Relative moves are the default
+    // now, so these tests opt into absolute explicitly to keep exercising that path while it exists.
     private static UIHeadlessHost CreateInline(int? maxHeight = null,
                                                InlineExitBehavior exitBehavior = InlineExitBehavior.Clear)
         => UIHeadlessHost.Create(new UIHeadlessHostOptions
                                  {
                                      InitialSize = new Size(40, 12),
                                      CaptureFrameBytes = true,
-                                     ConfigureBuilder = b => b.UseInline(maxHeight, exitBehavior)
+                                     ConfigureBuilder = b => b.UseInline(maxHeight, exitBehavior, relativeMoves: false)
                                  });
 
     /// <summary>Delivers the terminal's CPR reply (1-based wire coordinates) through the real parser.</summary>
@@ -65,6 +67,29 @@ public sealed class InlinePresentationTests
         Assert.Contains("XXXXXXXXXX", frame);
         Assert.DoesNotContain("\x1b[2J", frame);      // the screen is never cleared
         Assert.DoesNotContain("\x1b[?1049h", frame);  // the alt screen is never entered
+    }
+
+    [Fact]
+    public void UseInline_DefaultsToRelativeMoves()
+    {
+        // Relative-move rendering is the STANDARD inline behavior now — the flag defaults true, so a caller
+        // that does not specify gets a floating region. (The legacy absolute-origin path stays opt-in via
+        // relativeMoves: false — CreateInline above — deprecated pending removal before v1.0.)
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions
+                                               {
+                                                   InitialSize = new Size(40, 12),
+                                                   CaptureFrameBytes = true,
+                                                   ConfigureBuilder = b => b.UseInline() // no relativeMoves arg → the default
+                                               });
+        host.ShowRoot(new Probe(10, 3) { FillGlyph = "X" });
+        host.RunFrame();
+        ReplyCursorPosition(host, row: 5);
+        host.RunFrame();
+
+        var frame = Frame(host);
+        Assert.Contains("XXXXXXXXXX", frame);         // it rendered...
+        Assert.DoesNotContain("\x1b[7;1H", frame);    // ...but NOT via the absolute per-row CUP (buffer row 2 → term row 7)
+                                                      // the legacy path emits — so the default is the relative floating region.
     }
 
     [Fact]
@@ -594,11 +619,12 @@ public sealed class InlinePresentationTests
         // The full production path (dedicated UI thread, real clock) — the one place the ENTRY
         // bytes are observable (the headless harness pre-drains them): a DSR-CPR query and no
         // screen takeover of any kind, then the first paint at the reported origin, then the
-        // Clear-exit teardown.
+        // Clear-exit teardown. Pinned to the legacy absolute path (relativeMoves: false) — its
+        // assertions are absolute per-row CUP; relative is the default now (deprecated until v1.0).
         var terminal = new SyntheticTerminalHost(HeadlessCapabilities.KittyTruecolor, new Size(40, 12));
         var app = UIApplication.CreateBuilder()
             .WithTerminalHost(terminal, disposeWithApp: true)
-            .UseInline()
+            .UseInline(relativeMoves: false)
             .Build();
 
         var run = app.RunAsync(() => new Probe(10, 2) { FillGlyph = "Q" });

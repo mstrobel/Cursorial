@@ -138,12 +138,14 @@ public sealed class UIApplicationBuilder
     /// <param name="maxHeight">Optional cap on the region height in rows (≥ 1); the terminal
     /// height always caps regardless. <see langword="null"/> = terminal height only.</param>
     /// <param name="exitBehavior">The initial <see cref="UIApplication.InlineExitBehavior"/>.</param>
-    /// <param name="relativeMoves"><b>Experimental (phased).</b> Render the region with RELATIVE cursor
-    /// moves (a floating region) instead of an absolute origin, so it survives an unobserved terminal
-    /// clear on retaining terminals. Exit / fragments / visible caret still use the absolute path until
-    /// later phases land, so this is off by default. See the inline-relative-move plan.</param>
+    /// <param name="relativeMoves">Render the region with RELATIVE cursor moves (a floating region) rather
+    /// than an absolute origin, so it survives an unobserved terminal clear (a manual <c>cmd+K</c>, a
+    /// program printing above the region, a terminal-side reflow). This is the <b>default and standard</b>
+    /// inline behavior — validated across kitty / Ghostty / WezTerm / Apple Terminal. Pass
+    /// <see langword="false"/> to select the legacy absolute-origin path, which is <b>deprecated and slated
+    /// for removal before v1.0</b>.</param>
     public UIApplicationBuilder UseInline(int? maxHeight = null, InlineExitBehavior exitBehavior = InlineExitBehavior.Clear,
-                                          bool relativeMoves = false)
+                                          bool relativeMoves = true)
     {
         if (maxHeight is < 1)
             throw new ArgumentOutOfRangeException(nameof(maxHeight), maxHeight, "The inline region height cap must be at least one row.");
@@ -240,11 +242,11 @@ internal sealed class UIApplicationOptions
     public int? InlineMaxHeight;
     public InlineExitBehavior InlineExitBehavior = InlineExitBehavior.Clear;
 
-    /// <summary>Opt-in: render the inline region with RELATIVE cursor moves (a floating region) instead
-    /// of an absolute origin, so it survives an unobserved terminal clear on retaining terminals. Phased
-    /// (see the inline-relative-move plan): exit / fragments / visible caret still ride the absolute path
-    /// until later phases, so this stays off by default.</summary>
-    public bool InlineRelativeMoves;
+    /// <summary>Render the inline region with RELATIVE cursor moves (a floating region) rather than an
+    /// absolute origin, so it survives an unobserved terminal clear. The default/standard inline behavior
+    /// (<see cref="UIApplicationBuilder.UseInline"/> sets it true); the <see langword="false"/> legacy
+    /// absolute-origin path is deprecated and slated for removal before v1.0.</summary>
+    public bool InlineRelativeMoves = true;
     public bool OrderedDither;
     public bool ExitOnUnhandledCtrlC = true;
     public bool TranslateNumpadKeys = false;

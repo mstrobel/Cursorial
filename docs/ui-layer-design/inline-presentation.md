@@ -91,12 +91,16 @@ close, show cursor, SGR reset, OSC 112, autowrap — is unchanged):
   images / sized text survive in the retained frame.
 - An application whose origin never resolved rendered nothing and emits neither.
 
-## Relative-move mode (`UseInline(relativeMoves: true)`, experimental)
+## Relative-move mode (`UseInline(relativeMoves: true)` — the default)
 
-The absolute-origin model above desyncs when the region is moved by something the framework can't
-observe — a manual clear (kitty `cmd+K`), a program printing above it, a terminal-side reflow: the
-next frame's absolute `CUP` repaints at the stale rows. The opt-in relative mode (see
-`inline-relative-move-plan.md`) makes the region **float** instead:
+**This is the standard inline behavior** (`relativeMoves` defaults to `true`), validated across kitty,
+Ghostty, WezTerm, and Apple Terminal. The absolute-origin model described above is the **legacy path**,
+selected by `UseInline(relativeMoves: false)` and **deprecated — slated for removal before v1.0**.
+
+The absolute-origin model desyncs when the region is moved by something the framework can't observe — a
+manual clear (kitty `cmd+K`), a program printing above it, a terminal-side reflow: the next frame's
+absolute `CUP` repaints at the stale rows. Relative mode (see `inline-relative-move-plan.md`) makes the
+region **float** instead:
 
 - **Rendering** (`FrameRendererOptions.RelativeInline`) emits every cursor move as a `CUU`/`CUD` row
   delta from the tracked cursor + a column-absolute `CHA`, never `CUP(row + RowOffset)`. A relative

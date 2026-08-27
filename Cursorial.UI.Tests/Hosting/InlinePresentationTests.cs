@@ -557,6 +557,38 @@ public sealed class InlinePresentationTests
     }
 
     [Fact]
+    public void RelativeMoves_ReanchorMidGrowth_ScrollsInsteadOfClamping()
+    {
+        // The DISEASE, isolated from the spurious-resize trigger: a re-anchor that observes the region
+        // needing to grow past the bottom must leave make-room to SCROLL — it must NOT clamp the origin
+        // to `rows - height`, which pins the region on-screen and guarantees `scroll <= 0` (overpaint).
+        // Driven by a GENUINE (width-only) resize so the no-op skip does not apply and the row math is
+        // unchanged; the re-anchor reply lands after the region has grown.
+        using var host = CreateInlineRelative();
+        var probe = new Probe(10, 1) { FillGlyph = "X" };
+        host.ShowRoot(probe);
+        host.RunFrame();
+        ReplyCursorPosition(host, row: 12); // prompt on the bottom row (12) of the 12-row screen → origin 11
+        host.RunFrame();
+
+        // A genuine width-only resize re-anchors (DSR re-query, emission holds); the dropdown grows to
+        // 5 rows WHILE the re-anchor is outstanding (bufRows becomes 5).
+        host.SendResize(42, 12);
+        probe.Natural = new Size(10, 5);
+        probe.InvalidateMeasure();
+        host.RunFrame();
+
+        // The re-anchor reply: the cursor still rode the 1-row region at the bottom row (12).
+        ReplyCursorPosition(host, row: 12);
+        host.RunFrame();
+
+        // Origin stays 11 (clamped only on-screen), so make-room scrolls `11 + 5 - 12 = 4`: CUP bottom
+        // + line feeds. Under the bug the origin clamps to `12 - 5 = 7`, scroll = 0, and no make-room
+        // line feeds go out — the region would overpaint instead.
+        Assert.Contains("\x1b[12;1H\n", Frame(host));
+    }
+
+    [Fact]
     public void ProductionInline_QueriesCursor_NeverTakesTheScreen()
     {
         // The full production path (dedicated UI thread, real clock) — the one place the ENTRY

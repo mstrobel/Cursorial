@@ -811,13 +811,12 @@ public sealed partial class UIApplication
 
     private void ApplyResize(ResizeEvent resize)
     {
-        // A resize to the dimensions we already hold is a no-op: nothing rewrapped, so there is
-        // nothing to re-fit or re-anchor. This guard matters most inline — some terminals (kitty)
-        // emit a spurious same-size SIGWINCH at startup, and letting it drive BeginInlineReanchor
-        // re-queries DSR whose reply, arriving mid-growth, clamps the region origin to
-        // `rows - height` and PRE-EMPTS the make-room growth scroll (the region then overpaints the
-        // shell history instead of scrolling it into the scrollback). The real initial size is
-        // already established from the host in InitializeFromHost, so nothing is lost by skipping.
+        // Optimization: a resize to the dimensions we already hold is a no-op — nothing rewrapped, so
+        // there is nothing to re-fit or re-anchor. Some terminals (kitty) emit a spurious same-size
+        // SIGWINCH at startup; skipping it avoids a pointless DSR re-query + full-region repaint (and
+        // the brief emission hold while the reply is outstanding). This is NOT what makes the growth
+        // scroll correct — that is ClampOriginOnScreen, which stops the re-anchor from clamping the
+        // origin below the make-room scroll threshold. A genuine size change still re-anchors below.
         if (resize.Columns == _screenSize.Columns && resize.Rows == _screenSize.Rows)
         {
             InlineTrace($"[resize] SKIPPED unchanged {resize.Columns}x{resize.Rows} inline={IsPresentingInline}");
@@ -1095,7 +1094,7 @@ public sealed partial class UIApplication
             // subtract the believed cursor region row. A CHANGED origin means the region moved under an
             // unobserved clear/scroll: refresh the mouse origin AND repaint — the repaint also heals a
             // clearing terminal whose front buffer went stale (plan §4b).
-            var polled = Math.Clamp(row - Math.Max(0, _buffer?.CursorRow ?? 0), 0, Math.Max(0, rows - (_buffer?.Rows ?? 1)));
+            var polled = ClampOriginOnScreen(row - Math.Max(0, _buffer?.CursorRow ?? 0));
             InlineTrace($"[dsr-poll] reportedRow={row} caretRow={_buffer?.CursorRow} believedRows={rows} bufRows={_buffer?.Rows} polled={polled} prevOrigin={_inlineOrigin}");
             if (_inlineOrigin != polled)
             {
@@ -1112,8 +1111,9 @@ public sealed partial class UIApplication
             // PrepareInlineRegion makes the room.
             ? row + (column > 1 ? 1 : 0)
             // Re-anchor: the hardware cursor rode the region through the terminal's resize rewrap;
-            // subtracting its believed region-relative row recovers the region top.
-            : Math.Clamp(row - Math.Max(0, _buffer?.CursorRow ?? 0), 0, Math.Max(0, rows - (_buffer?.Rows ?? 1)));
+            // subtracting its believed region-relative row recovers the region top. Clamp ON-SCREEN
+            // only — an origin past `rows - height` is left for make-room to scroll onto the screen.
+            : ClampOriginOnScreen(row - Math.Max(0, _buffer?.CursorRow ?? 0));
 
         InlineTrace($"[dsr-anchor] state={_inlineCpr} reportedRow={row} col={column} believedRows={rows} caretRow={_buffer?.CursorRow} bufRows={_buffer?.Rows} -> origin={_inlineOrigin}");
 
@@ -1162,7 +1162,7 @@ public sealed partial class UIApplication
 
         if (!startup && _inlineOrigin is {} previous)
         {
-            _inlineOrigin = Math.Clamp(previous, 0, Math.Max(0, _screenSize.Rows - _buffer!.Rows));
+            _inlineOrigin = ClampOriginOnScreen(previous);
         }
         else
         {
@@ -1184,6 +1184,19 @@ public sealed partial class UIApplication
         if (_inlineTracePath is null) return;
         try { System.IO.File.AppendAllText(_inlineTracePath, message + "\n"); } catch { /* diagnostics never throw */ }
     }
+
+    /// <summary>
+    /// Clamps a region origin to the on-screen range [0, rows-1] — and DELIBERATELY NOT to
+    /// <c>rows - height</c>. An origin below <c>rows - height</c> is precisely the signal
+    /// <see cref="PrepareInlineRegion"/> needs to SCROLL the region onto the screen: make-room fires on
+    /// <c>origin + height &gt; rows</c>. Clamping origin to <c>rows - height</c> (the old
+    /// <c>rows - bufferRows</c> bound) guarantees <c>scroll &lt;= 0</c>, so make-room can NEVER fire —
+    /// the region then overpaints shell history in place instead of scrolling it into the scrollback
+    /// (the kitty growth-past-bottom bug). The re-anchor/poll only report where the region IS; make-room
+    /// is the sole fitter that reconciles a past-the-bottom origin by scrolling and re-pinning it.
+    /// </summary>
+    private int ClampOriginOnScreen(int origin)
+        => Math.Clamp(origin, 0, Math.Max(0, Math.Max(1, _screenSize.Rows) - 1));
 
     /// <summary>
     /// Pre-delta region maintenance, emitted into the same frame flush just before
@@ -1286,7 +1299,7 @@ public sealed partial class UIApplication
         if (_renegotiating)
         {
             if (_inlineOrigin is {} origin)
-                _inlineOrigin = Math.Clamp(origin, 0, Math.Max(0, _screenSize.Rows - _buffer!.Rows));
+                _inlineOrigin = ClampOriginOnScreen(origin);
 
             RequestFullRedraw();
             return;

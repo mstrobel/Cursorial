@@ -357,6 +357,8 @@ public abstract class UIObject : IInheritanceNode
 
         _store?.AppendStyleDiagnostics(property, results, BindingPriority.Style);
 
+        _store?.AppendStyleDiagnostics(property, results, BindingPriority.BaseTextStyle);
+
         if (property.Inherits && FindInheritedEntry(property.Id, out var source) is {} inherited)
             results.Add(new PropertyValueDiagnostic(
                             BindingPriority.Inherited, inherited.GetEffectiveBoxedValue(), HasValue: true, InheritedFrom: source));

@@ -66,11 +66,12 @@ public static class ResourceDiagnostics
             return instance.Key;
 
         // Else a style/theme {DynamicResource} setter — but ONLY when a style slot actually owns the effective
-        // value (either lane: a conditional rule at StyleTrigger or a resting rule at Style). A LocalValue (or
-        // Template) literal masking a resource-backed style setter is NOT resource-backed: the winning value is
-        // the literal, so report no key (else this would lie about provenance). Pass the winning lane down so
-        // the key comes from the slot that won, not a masked rule in the other slot.
-        return basePriority is BindingPriority.Style or BindingPriority.StyleTrigger
+        // value (a conditional rule at StyleTrigger, a resting rule at Style, or a base whole-style at
+        // BaseTextStyle). A LocalValue (or Template) literal masking a resource-backed style setter is NOT
+        // resource-backed: the winning value is the literal, so report no key (else this would lie about
+        // provenance). Pass the winning lane down so the key comes from the slot that won, not a masked rule
+        // in another slot.
+        return basePriority is BindingPriority.Style or BindingPriority.StyleTrigger or BindingPriority.BaseTextStyle
             ? element.GetWinningStyleResourceKey(property, basePriority)
             : null;
     }

@@ -100,4 +100,36 @@ public class Section06b_TextStyleFrame
         Assert.Equal(7, leaf.GetValue(Pi));                                       // Style beats base
         Assert.Equal(BindingPriority.Style, leaf.GetValueSource(Pi).Priority);
     }
+
+    [Fact]
+    public void TSF4_ValueDiagnostics_EnumerateTheBaseTextStyleRung()
+    {
+        var host = new Border();
+        host.SetValue(TextElement.BaseTextStyleProperty, new BrushedStyle { Apply = TextAttributes.Inverse });
+
+        // The value-stack enumeration includes the base rung.
+        var stack = host.GetValueDiagnostics(TextElement.InverseProperty);
+        Assert.Contains(stack, d => d.Priority == BindingPriority.BaseTextStyle && d.HasValue);
+
+        // Under an explicit local, the stack shows the LocalValue rung AND still enumerates the base
+        // rung underneath it (shadowed) — strongest-first, the base below local.
+        host.SetValue(TextElement.InverseProperty, false);
+        var shadowed = host.GetValueDiagnostics(TextElement.InverseProperty).ToList();
+        Assert.Contains(shadowed, d => d.Priority == BindingPriority.LocalValue);
+        Assert.Contains(shadowed, d => d.Priority == BindingPriority.BaseTextStyle);
+        Assert.True(shadowed.FindIndex(d => d.Priority == BindingPriority.LocalValue) <
+                    shadowed.FindIndex(d => d.Priority == BindingPriority.BaseTextStyle));
+    }
+
+    [Fact]
+    public void TSF5_Explain_ReportsTheBaseTextStyleSource()
+    {
+        var host = new Border();
+        host.SetValue(TextElement.BaseTextStyleProperty, new BrushedStyle { Apply = TextAttributes.Inverse });
+
+        // A base-style frame is not a selector-matched rule, so Explain reports it on the generic
+        // stronger-lane line ("<- BaseTextStyle") rather than a sort-key contributor breakdown.
+        var explanation = StyleDiagnostics.Explain(host, TextElement.InverseProperty);
+        Assert.Contains("BaseTextStyle", explanation);
+    }
 }

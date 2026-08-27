@@ -23,9 +23,11 @@ internal sealed class TextStyleAxisFrame : ValueFrame
     private readonly IValueEntry[] _entries;
 
     internal TextStyleAxisFrame(in BrushedStyle style)
-        // One frame per element, so within-Style ordering is irrelevant here — a neutral key.
+        // Arbitrates in the BaseTextStyle lane — one tier below the whole style region, so a per-axis
+        // style setter always wins the tie and this still beats inherited/default. One frame per element,
+        // so its SortKey never competes (moot); a neutral key.
         : base(StyleSortKey.Create(StyleLayer.App, names: 0, classLike: 0, types: 0, scopeDepth: 0, order: 0),
-               isActive: true, BindingPriority.Style)
+               isActive: true, BindingPriority.BaseTextStyle)
     {
         _entries = [_weight, _inverse];
         Fold(style); // seed BEFORE install — OnEntryChanged no-ops while Store is null

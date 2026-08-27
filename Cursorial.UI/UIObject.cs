@@ -1425,13 +1425,14 @@ public abstract class UIObject : IInheritanceNode
             case BindingPriority.StyleTrigger:
             case BindingPriority.Template:
             case BindingPriority.Style:
+            case BindingPriority.BaseTextStyle:
             case BindingPriority.Inherited:
             case BindingPriority.Default:
                 return;
 
             default:
                 throw new ArgumentException(
-                    $"maxPriority must be a resolvable lane (Animation, LocalValue, StyleTrigger, Template, Style, Inherited, or Default — PD16); got {maxPriority}.",
+                    $"maxPriority must be a resolvable lane (Animation, LocalValue, StyleTrigger, Template, Style, BaseTextStyle, Inherited, or Default — PD16); got {maxPriority}.",
                     nameof(maxPriority));
         }
     }

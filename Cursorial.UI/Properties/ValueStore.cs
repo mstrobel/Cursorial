@@ -365,6 +365,14 @@ internal sealed class ValueStore
                     return entry.BaseValue; // the maintained resting base (a +cur overwrite included)
                 if (TryResolveStyleValue(property, BindingPriority.Style, out var styleValue, out _))
                     return metadata.Coerce is {} coerce ? coerce(Owner, styleValue) : styleValue;
+                goto case BindingPriority.BaseTextStyle;
+
+            case BindingPriority.BaseTextStyle:
+                // The base whole-style slot — below the whole style region, above inherited/default.
+                if (entry is { BasePriority: BindingPriority.BaseTextStyle })
+                    return entry.BaseValue;
+                if (TryResolveStyleValue(property, BindingPriority.BaseTextStyle, out var baseTextValue, out _))
+                    return metadata.Coerce is {} baseTextCoerce ? baseTextCoerce(Owner, baseTextValue) : baseTextValue;
                 break;
         }
 
@@ -468,6 +476,19 @@ internal sealed class ValueStore
             newBasePriority = BindingPriority.Style;
             newBaseValue = metadata.Coerce is {} coerce ? coerce(Owner, styleRaw) : styleRaw;
             newBaseIsCoerced = metadata.Coerce is not null && !comparer.Equals(styleRaw, newBaseValue);
+
+            if (graftLocal)
+                EvaporateGraft(entry!);
+        }
+        else if (TryResolveStyleValue(property, BindingPriority.BaseTextStyle, out var baseTextRaw, out contributor))
+        {
+            // The BASE whole-style slot: below the entire style region (trigger/template/style), above
+            // Inherited/Default — the structural twin of the Style branch, one tier down. A per-axis
+            // style setter (or any stronger contribution) already won above, so reaching here means none
+            // did and the base drives the axis; and this still beats inheritance/default.
+            newBasePriority = BindingPriority.BaseTextStyle;
+            newBaseValue = metadata.Coerce is {} baseTextCoerce ? baseTextCoerce(Owner, baseTextRaw) : baseTextRaw;
+            newBaseIsCoerced = metadata.Coerce is not null && !comparer.Equals(baseTextRaw, newBaseValue);
 
             if (graftLocal)
                 EvaporateGraft(entry!);
@@ -1017,6 +1038,7 @@ internal sealed class ValueStore
             : ValueSourceKind.TemplateLiteral,
         BindingPriority.StyleTrigger => ResolveWinningStyleKind(entry.PropertyUntyped.Id, BindingPriority.StyleTrigger),
         BindingPriority.Style => ResolveWinningStyleKind(entry.PropertyUntyped.Id, BindingPriority.Style),
+        BindingPriority.BaseTextStyle => ValueSourceKind.BaseTextStyle,
         _ => ValueSourceKind.Default,
     };
 

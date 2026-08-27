@@ -34,15 +34,16 @@ public abstract class ValueFrame
     /// <summary>Creates a frame at <paramref name="sortKey"/>, optionally starting inactive.</summary>
     /// <param name="sortKey">The within-slot ordering key.</param>
     /// <param name="isActive">Whether the frame starts active.</param>
-    /// <param name="priority">The style slot the frame arbitrates in — <see cref="BindingPriority.StyleTrigger"/>
+    /// <param name="priority">The slot the frame arbitrates in — <see cref="BindingPriority.StyleTrigger"/>
     /// for conditional rules (any pseudo-class/class/When condition), <see cref="BindingPriority.Style"/> (the
-    /// default) for resting structural rules. No other value is legal for a frame.</param>
+    /// default) for resting structural rules, or <see cref="BindingPriority.BaseTextStyle"/> for a base
+    /// whole-style bundle that slides under the whole style region. No other value is legal for a frame.</param>
     protected ValueFrame(StyleSortKey sortKey, bool isActive = true, BindingPriority priority = BindingPriority.Style)
     {
-        if (priority is not (BindingPriority.Style or BindingPriority.StyleTrigger))
+        if (priority is not (BindingPriority.Style or BindingPriority.StyleTrigger or BindingPriority.BaseTextStyle))
         {
             throw new ArgumentOutOfRangeException(
-                nameof(priority), priority, "A ValueFrame arbitrates at StyleTrigger or Style only.");
+                nameof(priority), priority, "A ValueFrame arbitrates at StyleTrigger, Style, or BaseTextStyle only.");
         }
 
         SortKey = sortKey;

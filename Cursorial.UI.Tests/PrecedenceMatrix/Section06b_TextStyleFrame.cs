@@ -4,12 +4,14 @@ using Cursorial.Text;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
 
+using static Cursorial.Tests.UI.PrecedenceMatrix.MatrixFixture;
+
 namespace Cursorial.Tests.UI.PrecedenceMatrix;
 
 /// <summary>
 /// TSF1 — the load-bearing arbitration for the "base whole text style" design (design-panel Approach C):
 /// the base style drives the per-axis attached properties from a <see cref="ValueFrame"/> at
-/// <see cref="BindingPriority.Style"/>, so an explicit per-axis <c>LocalValue</c> masks it and clearing
+/// <see cref="BindingPriority.BaseTextStyle"/>, so an explicit per-axis <c>LocalValue</c> masks it and clearing
 /// that local re-promotes the frame's contribution automatically — the two-sided arbitration
 /// <c>SetCurrentValue</c> (M119 clobber) could not deliver.
 /// </summary>
@@ -27,19 +29,19 @@ public class Section06b_TextStyleFrame
         var bundle = new BrushedStyle { Weight = TextWeight.Faint, Apply = TextAttributes.Inverse };
         host.SetValue(TextElement.BaseTextStyleProperty, bundle);
 
-        // The explicit local SURVIVES the base — LocalValue beats the Style frame (the differentiator).
+        // The explicit local SURVIVES the base — LocalValue beats the base frame (the differentiator).
         Assert.Equal(TextWeight.Bold, host.GetValue(TextElement.TextWeightProperty));
         Assert.Equal(BindingPriority.LocalValue, host.GetValueSource(TextElement.TextWeightProperty).Priority);
 
-        // The untouched axis IS driven by the frame, at Style.
+        // The untouched axis IS driven by the frame, at BaseTextStyle.
         Assert.True(host.GetValue(TextElement.InverseProperty));
-        Assert.Equal(BindingPriority.Style, host.GetValueSource(TextElement.InverseProperty).Priority);
+        Assert.Equal(BindingPriority.BaseTextStyle, host.GetValueSource(TextElement.InverseProperty).Priority);
 
         // Clearing the explicit local re-promotes the frame's Faint — automatically, no manual re-sync.
         host.ClearValue(TextElement.TextWeightProperty);
 
         Assert.Equal(TextWeight.Faint, host.GetValue(TextElement.TextWeightProperty)); // ← the load-bearing assertion
-        Assert.Equal(BindingPriority.Style, host.GetValueSource(TextElement.TextWeightProperty).Priority);
+        Assert.Equal(BindingPriority.BaseTextStyle, host.GetValueSource(TextElement.TextWeightProperty).Priority);
     }
 
     [Fact]
@@ -57,5 +59,45 @@ public class Section06b_TextStyleFrame
         Assert.Equal(TextWeight.Normal, host.GetValue(TextElement.TextWeightProperty));
         Assert.Equal(BindingPriority.Default, host.GetValueSource(TextElement.TextWeightProperty).Priority);
         Assert.False(host.GetValue(TextElement.InverseProperty));
+    }
+
+    [Fact]
+    public void TSF2_PerAxisStyleSetter_BeatsTheBase()
+    {
+        // The whole reason for the BaseTextStyle tier: a per-axis STYLE setter wins over the base.
+        var host = new Border();
+
+        // A resting per-axis Style-lane setter: TextWeight = Bold.
+        host.AddFrame(new TestValueFrame(10).With(TextElement.TextWeightProperty, TextWeight.Bold));
+
+        // The base whole-style wants Faint + Inverse.
+        host.SetValue(TextElement.BaseTextStyleProperty,
+                      new BrushedStyle { Weight = TextWeight.Faint, Apply = TextAttributes.Inverse });
+
+        // Style (100) beats BaseTextStyle (150) on the contested axis.
+        Assert.Equal(TextWeight.Bold, host.GetValue(TextElement.TextWeightProperty));
+        Assert.Equal(BindingPriority.Style, host.GetValueSource(TextElement.TextWeightProperty).Priority);
+
+        // The axis the style leaves alone is still driven by the base.
+        Assert.True(host.GetValue(TextElement.InverseProperty));
+        Assert.Equal(BindingPriority.BaseTextStyle, host.GetValueSource(TextElement.InverseProperty).Priority);
+    }
+
+    [Fact]
+    public void TSF3_BaseTextStyleLane_BeatsInherited_LosesToStyle()
+    {
+        // The tier's lane ordering on a generic INHERITING property (the text axes don't inherit, so
+        // this pins BaseTextStyle above Inherited and below Style directly against the store).
+        var (root, _, leaf) = Chain();
+        root.SetValue(Pi, 5);
+        Assert.Equal(BindingPriority.Inherited, leaf.GetValueSource(Pi).Priority);
+
+        leaf.AddFrame(new TestValueFrame(10, priority: BindingPriority.BaseTextStyle).With(Pi, 6));
+        Assert.Equal(6, leaf.GetValue(Pi));                                       // base beats inherited
+        Assert.Equal(BindingPriority.BaseTextStyle, leaf.GetValueSource(Pi).Priority);
+
+        leaf.AddFrame(new TestValueFrame(20).With(Pi, 7));                        // a Style-lane setter
+        Assert.Equal(7, leaf.GetValue(Pi));                                       // Style beats base
+        Assert.Equal(BindingPriority.Style, leaf.GetValueSource(Pi).Priority);
     }
 }

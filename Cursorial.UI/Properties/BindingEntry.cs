@@ -39,6 +39,7 @@ public abstract class BindingEntryBase : IDisposable, IValueEntry
         {
             BindingPriority.Template => ValueSourceKind.TemplateBinding,
             BindingPriority.Style or BindingPriority.StyleTrigger => ValueSourceKind.StyleSetter,
+            BindingPriority.BaseTextStyle => ValueSourceKind.BaseTextStyle,
             _ => ValueSourceKind.Local,
         };
     }

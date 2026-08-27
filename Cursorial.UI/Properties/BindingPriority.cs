@@ -80,6 +80,18 @@ public enum BindingPriority
     Style = 100,
 
     /// <summary>
+    /// The BASE whole-style slot: a value bundle authored on the element as a single "base" style whose
+    /// axes drive per-axis properties, sliding UNDER the entire resting/conditional/template style region
+    /// so a per-axis style setter (or any stronger contribution) always wins the tie by construction —
+    /// yet still ABOVE <see cref="Inherited"/>/<see cref="Default"/>. Frames-only, like the style slots
+    /// (<see cref="ValueFrame"/>). Single tier by design: it need not pair a conditional sibling, because
+    /// <see cref="StyleTrigger"/> is the STRONGER style lane, so one tier below <see cref="Style"/> is
+    /// automatically below every style, trigger, and template contribution. Introduced 2026-08 for
+    /// <c>TextElement.BaseTextStyle</c>.
+    /// </summary>
+    BaseTextStyle = 150,
+
+    /// <summary>
     /// Resolution-only: the walk-up result for an inheriting property. Never assignable.
     /// </summary>
     Inherited = 200,

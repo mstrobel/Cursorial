@@ -37,6 +37,9 @@ public enum ValueSourceKind
     /// <summary>A <c>When</c>-guarded style rule — the data-condition "trigger" equivalent (the <see cref="BindingPriority.Style"/> lane, a conditional rule).</summary>
     StyleWhen,
 
+    /// <summary>A base whole-style bundle authored on the element (the <see cref="BindingPriority.BaseTextStyle"/> lane) — below every style/trigger/template contribution, above inherited/default.</summary>
+    BaseTextStyle,
+
     /// <summary>A storyboard/transition write (the <see cref="BindingPriority.Animation"/> lane).</summary>
     Animation,
 }

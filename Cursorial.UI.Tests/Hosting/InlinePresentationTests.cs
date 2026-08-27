@@ -220,6 +220,24 @@ public sealed class InlinePresentationTests
     }
 
     [Fact]
+    public void Resize_SameSize_DoesNotReanchor()
+    {
+        using var host = CreateInline();
+        host.ShowRoot(new Probe(10, 3) { FillGlyph = "X" });
+        host.RunFrame();
+        ReplyCursorPosition(host, row: 5);
+        Assert.True(host.RunUntilIdle());
+
+        // A resize to the SAME dimensions is a no-op — nothing rewrapped. A spurious same-size
+        // SIGWINCH (kitty emits one at startup) must NOT re-query DSR: the re-anchor's reply, landing
+        // mid-growth, clamps the region origin to `rows - height` and pre-empts the make-room growth
+        // scroll — the region then overpaints shell history instead of scrolling it into scrollback.
+        host.SendResize(40, 12); // identical to the initial 40×12
+        host.RunFrame();
+        Assert.DoesNotContain("\x1b[6n", Frame(host));
+    }
+
+    [Fact]
     public void ExitClear_RewindsToOrigin_AndErasesTheRegion()
     {
         var host = CreateInline();
@@ -496,6 +514,46 @@ public sealed class InlinePresentationTests
         // The row just above the region is scrolled shell history, not region content.
         Assert.DoesNotContain('X', screen.Line(6));
         Assert.Contains("history-", screen.LineTrimmed(0));
+    }
+
+    [Fact]
+    public void RelativeMoves_SpuriousSameSizeResize_StillScrollsAtGrowth()
+    {
+        // The kitty regression: a spurious same-size SIGWINCH between startup and the region growing
+        // past the bottom used to trigger a re-anchor whose reply clamped the origin to `rows - height`,
+        // pre-empting the make-room scroll — the region overpainted shell history in place instead of
+        // scrolling it into scrollback (Ctrl+L then "healed" by overpainting more). With the no-op
+        // resize skipped, the origin stays at the bottom and make-room scrolls as it should.
+        var screen = new VtScreen(40, 12);
+        for (int r = 0; r < 12; r++) { screen.SetCursor(r, 0); screen.Print($"history-{r:00}"); }
+        screen.SetCursor(11, 0); // the shell prompt sits on the LAST row
+
+        using var host = CreateInlineRelative();
+        var probe = new Probe(10, 1) { FillGlyph = "X" };
+        host.ShowRoot(probe);
+        host.RunFrame();
+        ReplyCursorPosition(host, row: screen.CursorRow + 1); // reply with the prompt row (12)
+        host.RunFrame();
+        screen.Feed(host.LastFrameBytes.Span); // first paint — a 1-row region on the bottom line
+
+        // The spurious same-size resize arrives (kitty emits one at startup). Must be a no-op.
+        host.SendResize(40, 12); // identical to the initial 40×12
+        host.RunFrame();
+        screen.Feed(host.LastFrameBytes.Span);
+
+        // The dropdown grows to 5 rows: the region must scroll the history up and land on the bottom
+        // five rows (7..11), full width — NOT clipped, NOT overpainting in place.
+        probe.Natural = new Size(10, 5);
+        probe.InvalidateMeasure();
+        host.RunFrame();
+        screen.Feed(host.LastFrameBytes.Span);
+
+        for (int r = 7; r <= 11; r++)
+            Assert.Equal(new string('X', screen.Cols), screen.Line(r));
+        Assert.DoesNotContain('X', screen.Line(6));
+        // The distinguishing check: the top history rows SCROLLED off into scrollback. Under the bug
+        // (origin clamped, no scroll) history-00 would still sit on row 0, overpainted below.
+        Assert.NotEqual("history-00", screen.LineTrimmed(0));
     }
 
     [Fact]

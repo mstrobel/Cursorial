@@ -811,6 +811,19 @@ public sealed partial class UIApplication
 
     private void ApplyResize(ResizeEvent resize)
     {
+        // A resize to the dimensions we already hold is a no-op: nothing rewrapped, so there is
+        // nothing to re-fit or re-anchor. This guard matters most inline — some terminals (kitty)
+        // emit a spurious same-size SIGWINCH at startup, and letting it drive BeginInlineReanchor
+        // re-queries DSR whose reply, arriving mid-growth, clamps the region origin to
+        // `rows - height` and PRE-EMPTS the make-room growth scroll (the region then overpaints the
+        // shell history instead of scrolling it into the scrollback). The real initial size is
+        // already established from the host in InitializeFromHost, so nothing is lost by skipping.
+        if (resize.Columns == _screenSize.Columns && resize.Rows == _screenSize.Rows)
+        {
+            InlineTrace($"[resize] SKIPPED unchanged {resize.Columns}x{resize.Rows} inline={IsPresentingInline}");
+            return;
+        }
+
         InlineTrace($"[resize] newSize={resize.Columns}x{resize.Rows} inline={IsPresentingInline}");
         if (IsPresentingInline)
         {

@@ -1185,6 +1185,18 @@ public sealed partial class UIApplication
 
         if (scroll > 0)
         {
+            // Normalize the scroll region to the full screen FIRST. An LF scrolls only when the cursor
+            // sits on the bottom margin (kitty's `screen_index`: it scrolls iff `cursor->y ==
+            // margin_bottom`, else it is a positional no-op at the last row). A stale DECSTBM region left
+            // by a prior program (a pager, vim, an alt-screen leave) whose bottom margin is ABOVE the
+            // physical last row would put the cursor BELOW the margin after the CUP below, and every make-
+            // room LF would silently no-op — the region overpaints existing content instead of scrolling
+            // it into scrollback (the kitty symptom; ghostty happens not to carry the region). CSI r resets
+            // region to full-screen (margin_bottom == last row, margin_top == 0 so departing lines still
+            // reach scrollback) and homes the cursor — which the CUP that follows overrides, so this is
+            // position-neutral. A no-op on terminals with no restricted region.
+            ScreenWriter.WriteResetScrollRegion(output);
+
             CursorWriter.WriteMoveTo(output, 0, rows - 1);
 
             var lf = output.GetSpan(scroll);

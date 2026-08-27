@@ -140,7 +140,7 @@ public sealed class InlinePresentationTests
         host.RunFrame();
 
         var frame = Frame(host);
-        Assert.Contains("\x1b[12;1H\n\n", frame);     // make room: CUP bottom + 2 × LF
+        Assert.Contains("\x1b[r\x1b[12;1H\n\n", frame); // make room: DECSTBM reset (so LF scrolls at the true bottom margin — kitty) + CUP bottom + 2 × LF
         Assert.Contains("\x1b[10;1H\x1b[0J", frame);  // then the full repaint at the moved origin (row 9)
         Assert.DoesNotContain("\x1b[2S", frame);      // no SU — those discard the shell history
     }
@@ -443,7 +443,7 @@ public sealed class InlinePresentationTests
         // The host make-room stays absolute — CUP to the physical bottom (always valid) + line feeds; only
         // the RENDER goes relative. So it scrolls with LFs and climbs relatively, and never emits the
         // absolute repaint the absolute path would (CSI 10;1H at the moved origin 9).
-        Assert.Contains("\x1b[12;1H\n\n", frame);   // make room: CUP bottom + 2 × LF
+        Assert.Contains("\x1b[r\x1b[12;1H\n\n", frame); // make room: DECSTBM reset (kitty scrolls only at the bottom margin) + CUP bottom + 2 × LF
         Assert.DoesNotContain("\x1b[10;1H", frame);  // NOT the absolute repaint at the moved origin
         Assert.Matches("\\[[0-9]+A", frame);          // the render climbs relatively from the scrolled bottom
         Assert.Contains("XXXXXXXXXX", frame);

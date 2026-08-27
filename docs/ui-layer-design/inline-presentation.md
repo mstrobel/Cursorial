@@ -60,9 +60,16 @@ The region's absolute top row is discovered, never assumed:
   change. A shrink needs no dedicated wipe: the inline full-redraw erase (CUP top + ED 0) sweeps
   the vacated rows in the same stroke.
 - **Growth past the terminal bottom** (`origin + height > rows`) is made room for *before* the
-  delta, in the same flush: `CUP(bottom row)` + k **literal line feeds** — never SU/SD, because LF
-  pushes the departing top lines into the *scrollback* where the user's shell history belongs,
-  while `CSI S` discards them on most terminals. The origin then moves up by k.
+  delta, in the same flush: **DECSTBM reset (`CSI r`)** + `CUP(bottom row)` + k **literal line feeds**
+  — never SU/SD, because LF pushes the departing top lines into the *scrollback* where the user's
+  shell history belongs, while `CSI S` discards them on most terminals. The origin then moves up by k.
+  The `CSI r` normalizes the scroll region to the full screen first: an LF scrolls only when the
+  cursor is on the bottom margin, so a stale region inherited from a prior program (a pager, vim, an
+  alt-screen leave) whose bottom margin sits above the physical last row would leave the cursor below
+  the margin after the CUP and every make-room LF would silently no-op — the region overpaints in
+  place instead of scrolling (observed on kitty; ghostty's session simply lacks the region). The reset
+  is position-neutral (the CUP overrides its cursor-home) and a no-op where the region is already
+  full-screen.
 
 ## Input
 

@@ -186,8 +186,6 @@ public sealed partial class UIApplication
         _capabilities = host.Capabilities;
         _screenSize = size;
 
-        InlineTrace($"[init] startupSize={size.Columns}x{size.Rows} inline={_options.Inline} relmoves={_options.InlineRelativeMoves} maxHeight={_options.InlineMaxHeight}");
-
         // Inline: the buffer spans the REGION, not the screen — full terminal width, height fitted
         // to content before Phase 5 each frame (1 row until the first fit runs).
         var bufferSize = _options.Inline ? (size.Columns, Rows: 1) : size;
@@ -571,8 +569,6 @@ public sealed partial class UIApplication
                 var maxRows = Math.Clamp(_options.InlineMaxHeight ?? _screenSize.Rows, 1, Math.Max(1, _screenSize.Rows));
                 var fitted = wmInline.MeasureRootContentHeight(_screenSize.Columns, maxRows);
 
-                InlineTrace($"[fit] cols={_screenSize.Columns} believedRows={_screenSize.Rows} maxRows={maxRows} fitted={fitted} curBufRows={_buffer!.Rows}");
-
                 if (fitted != _buffer!.Rows)
                 {
                     _buffer.Resize(_screenSize.Columns, fitted);
@@ -818,12 +814,8 @@ public sealed partial class UIApplication
         // scroll correct — that is ClampOriginOnScreen, which stops the re-anchor from clamping the
         // origin below the make-room scroll threshold. A genuine size change still re-anchors below.
         if (resize.Columns == _screenSize.Columns && resize.Rows == _screenSize.Rows)
-        {
-            InlineTrace($"[resize] SKIPPED unchanged {resize.Columns}x{resize.Rows} inline={IsPresentingInline}");
             return;
-        }
 
-        InlineTrace($"[resize] newSize={resize.Columns}x{resize.Rows} inline={IsPresentingInline}");
         if (IsPresentingInline)
         {
             // The terminal resized under an inline region. Width lands now (height re-fits before
@@ -1095,7 +1087,6 @@ public sealed partial class UIApplication
             // unobserved clear/scroll: refresh the mouse origin AND repaint — the repaint also heals a
             // clearing terminal whose front buffer went stale (plan §4b).
             var polled = ClampOriginOnScreen(row - Math.Max(0, _buffer?.CursorRow ?? 0));
-            InlineTrace($"[dsr-poll] reportedRow={row} caretRow={_buffer?.CursorRow} believedRows={rows} bufRows={_buffer?.Rows} polled={polled} prevOrigin={_inlineOrigin}");
             if (_inlineOrigin != polled)
             {
                 _inlineOrigin = polled;
@@ -1114,8 +1105,6 @@ public sealed partial class UIApplication
             // subtracting its believed region-relative row recovers the region top. Clamp ON-SCREEN
             // only — an origin past `rows - height` is left for make-room to scroll onto the screen.
             : ClampOriginOnScreen(row - Math.Max(0, _buffer?.CursorRow ?? 0));
-
-        InlineTrace($"[dsr-anchor] state={_inlineCpr} reportedRow={row} col={column} believedRows={rows} caretRow={_buffer?.CursorRow} bufRows={_buffer?.Rows} -> origin={_inlineOrigin}");
 
         _inlineCpr = InlineCprState.None;
         RequestFullRedraw(); // the region may have moved — repaint it wholesale at the new origin
@@ -1174,17 +1163,6 @@ public sealed partial class UIApplication
         return true;
     }
 
-    // DIAGNOSTIC (env-gated, removable): CURSORIAL_INLINE_TRACE=<path> logs the inline origin/size/
-    // make-room decisions so a real-terminal repro can be diffed against what the framework believes.
-    private static readonly string? _inlineTracePath =
-        Environment.GetEnvironmentVariable("CURSORIAL_INLINE_TRACE") is { Length: > 0 } p ? p : null;
-
-    private static void InlineTrace(string message)
-    {
-        if (_inlineTracePath is null) return;
-        try { System.IO.File.AppendAllText(_inlineTracePath, message + "\n"); } catch { /* diagnostics never throw */ }
-    }
-
     /// <summary>
     /// Clamps a region origin to the on-screen range [0, rows-1] — and DELIBERATELY NOT to
     /// <c>rows - height</c>. An origin below <c>rows - height</c> is precisely the signal
@@ -1227,8 +1205,6 @@ public sealed partial class UIApplication
         {
             scroll = origin + height - rows;
         }
-
-        InlineTrace($"[make-room] believedRows={rows} regionHeight={height} origin={origin} scroll={scroll} force={_inlineForceBottomScroll} bufRows={_buffer!.Rows} relmoves={_options.InlineRelativeMoves}");
 
         if (scroll > 0)
         {

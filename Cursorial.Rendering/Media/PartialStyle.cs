@@ -130,6 +130,28 @@ public readonly record struct PartialStyle
     /// <summary>Attributes this delta INVERTS — on becomes off, off becomes on.</summary>
     public TextAttributes ToggledAttributes => Xor & ~Clear;
 
+    // ---- XAML authoring: write-only setters over the boolean axes ----
+    //
+    // The read-only projections above report the FULL flag word — Bold/Underline included — because
+    // that is the honest truth of the (Clear, Xor) pair. These write-only companions are the AUTHORING
+    // surface, restricted to `Booleans` via Require: Bold/Faint/Italic/Underline have their own axes
+    // (Weight / Posture / UnderlineShape) and are rejected here, exactly as the factories reject them.
+    // Keeping read and write as SEPARATE members is deliberate — one writeable projection would report
+    // flags its setter throws on. There is no `Ignore`: an unmentioned flag is already ignored (the
+    // default), so it only means something when composing, which markup does not do for a value.
+
+    /// <summary>Write-only (XAML): force these <see cref="Booleans"/> ON, projecting into
+    /// <see cref="AppliedAttributes"/>.</summary>
+    public TextAttributes Apply  { init { var f = Require(value); Clear |= f;  Xor |= f;  } }
+
+    /// <summary>Write-only (XAML): force these <see cref="Booleans"/> OFF, projecting into
+    /// <see cref="RemovedAttributes"/>.</summary>
+    public TextAttributes Remove { init { var f = Require(value); Clear |= f;  Xor &= ~f; } }
+
+    /// <summary>Write-only (XAML): INVERT these <see cref="Booleans"/>, projecting into
+    /// <see cref="ToggledAttributes"/>.</summary>
+    public TextAttributes Toggle { init { var f = Require(value); Clear &= ~f; Xor |= f;  } }
+
     /// <summary>How this delta's colors combine with the base's. <see langword="null"/> replaces.</summary>
     public IBlendingMode? Mode { get; init; }
 
@@ -137,17 +159,44 @@ public readonly record struct PartialStyle
 
     private const TextAttributes WeightMask = TextAttributes.Bold | TextAttributes.Faint;
 
-    /// <summary>The weight this delta imposes, or <see langword="null"/> if it leaves weight alone.</summary>
-    public TextWeight? Weight => (Clear & WeightMask) != WeightMask
-                                     ? null
-                                     : (Xor & TextAttributes.Bold)  != 0 ? TextWeight.Bold
-                                     : (Xor & TextAttributes.Faint) != 0 ? TextWeight.Faint
-                                     : TextWeight.Normal;
+    /// <summary>The weight this delta imposes, or <see langword="null"/> if it leaves weight alone.
+    /// Settable (XAML): a value imposes the weight — Bold ON + Faint OFF, or vice versa, or both off for
+    /// Normal (the shared SGR 22 reset is why one mask covers both); <see langword="null"/> in an
+    /// initializer is a no-op, leaving the axis alone.</summary>
+    public TextWeight? Weight
+    {
+        get => (Clear & WeightMask) != WeightMask
+                   ? null
+                   : (Xor & TextAttributes.Bold)  != 0 ? TextWeight.Bold
+                   : (Xor & TextAttributes.Faint) != 0 ? TextWeight.Faint
+                   : TextWeight.Normal;
+        init
+        {
+            if (value is not { } w) return;
+            Clear |= WeightMask;
+            Xor = (Xor & ~WeightMask) | w switch
+                                        {
+                                            TextWeight.Bold  => TextAttributes.Bold,
+                                            TextWeight.Faint => TextAttributes.Faint,
+                                            _                => 0,
+                                        };
+        }
+    }
 
-    /// <summary>The posture this delta imposes, or <see langword="null"/> if it leaves it alone.</summary>
-    public TextStyle? Posture => (Clear & TextAttributes.Italic) is 0
-                                     ? null
-                                     : (Xor & TextAttributes.Italic) != 0 ? TextStyle.Italic : TextStyle.Normal;
+    /// <summary>The posture this delta imposes, or <see langword="null"/> if it leaves it alone.
+    /// Settable (XAML); <see langword="null"/> in an initializer leaves the axis alone.</summary>
+    public TextStyle? Posture
+    {
+        get => (Clear & TextAttributes.Italic) is 0
+                   ? null
+                   : (Xor & TextAttributes.Italic) != 0 ? TextStyle.Italic : TextStyle.Normal;
+        init
+        {
+            if (value is not { } p) return;
+            Clear |= TextAttributes.Italic;
+            Xor = p is TextStyle.Italic ? Xor | TextAttributes.Italic : Xor & ~TextAttributes.Italic;
+        }
+    }
 
     /// <summary>
     /// Whether this delta REMOVES the underline: it forces the flag off, leaving any provided shape a dead remnant.

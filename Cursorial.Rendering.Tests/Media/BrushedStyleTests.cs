@@ -68,4 +68,84 @@ public class BrushedStyleTests
         Assert.Same(Ink, t.UnderlineColor);
         Assert.True(t.AppliedAttributes.HasFlag(TextAttributes.Underline));
     }
+
+    // ---- XAML-authoring setters: write-only Apply/Remove/Toggle + init Weight/Posture ----
+    // Each mirrors the corresponding fluent method over Identity; the boolean write surface rejects the
+    // axis flags (Bold/Faint/Italic/Underline) exactly as PartialStyle does.
+
+    [Fact]
+    public void Apply_Setter_EquivalentToFluent()
+    {
+        var s = new BrushedStyle { Apply = TextAttributes.Inverse | TextAttributes.Strikethrough };
+        Assert.Equal(TextAttributes.Inverse | TextAttributes.Strikethrough, s.AppliedAttributes);
+        Assert.Equal(BrushedStyle.Identity.Applying(TextAttributes.Inverse | TextAttributes.Strikethrough), s);
+    }
+
+    [Fact]
+    public void Remove_Setter_EquivalentToFluent()
+    {
+        var s = new BrushedStyle { Remove = TextAttributes.Blink };
+        Assert.Equal(TextAttributes.Blink, s.RemovedAttributes);
+        Assert.Equal(BrushedStyle.Identity.Removing(TextAttributes.Blink), s);
+    }
+
+    [Fact]
+    public void Toggle_Setter_EquivalentToFluent()
+    {
+        var s = new BrushedStyle { Toggle = TextAttributes.Inverse };
+        Assert.Equal(TextAttributes.Inverse, s.ToggledAttributes);
+        Assert.Equal(BrushedStyle.Identity.Toggling(TextAttributes.Inverse), s);
+    }
+
+    [Theory]
+    [InlineData(TextWeight.Bold)]
+    [InlineData(TextWeight.Faint)]
+    [InlineData(TextWeight.Normal)]
+    public void Weight_Setter_RoundTrips_EquivalentToFluent(TextWeight w)
+    {
+        var s = new BrushedStyle { Weight = w };
+        Assert.Equal(w, s.Weight);
+        Assert.Equal(BrushedStyle.Identity.Weighing(w), s);
+    }
+
+    [Theory]
+    [InlineData(TextStyle.Italic)]
+    [InlineData(TextStyle.Normal)]
+    public void Posture_Setter_RoundTrips_EquivalentToFluent(TextStyle p)
+    {
+        var s = new BrushedStyle { Posture = p };
+        Assert.Equal(p, s.Posture);
+        Assert.Equal(BrushedStyle.Identity.Posturing(p), s);
+    }
+
+    [Theory]
+    [InlineData(TextAttributes.Bold)]
+    [InlineData(TextAttributes.Faint)]
+    [InlineData(TextAttributes.Italic)]
+    [InlineData(TextAttributes.Underline)]
+    public void AxisFlags_RejectedByTheWriteOnlyBooleanSetters(TextAttributes f)
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() => new BrushedStyle { Apply = f });
+        Assert.Throws<ArgumentOutOfRangeException>(() => new BrushedStyle { Remove = f });
+        Assert.Throws<ArgumentOutOfRangeException>(() => new BrushedStyle { Toggle = f });
+    }
+
+    [Fact]
+    public void Setters_ComposeInOneInitializer_AlongsideBrushChannels()
+    {
+        var s = new BrushedStyle
+                {
+                    Foreground = Ink,
+                    Apply      = TextAttributes.Inverse,
+                    Remove     = TextAttributes.Blink,
+                    Weight     = TextWeight.Bold,
+                    Posture    = TextStyle.Italic,
+                };
+
+        Assert.Same(Ink, s.Foreground);
+        Assert.Equal(TextWeight.Bold, s.Weight);
+        Assert.Equal(TextStyle.Italic, s.Posture);
+        Assert.True(s.AppliedAttributes.HasFlag(TextAttributes.Inverse));
+        Assert.True(s.RemovedAttributes.HasFlag(TextAttributes.Blink));
+    }
 }

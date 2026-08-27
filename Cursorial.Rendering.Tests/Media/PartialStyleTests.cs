@@ -466,4 +466,105 @@ public class PartialStyleTests
         // With nullability there is no second thing to set, so this cannot be written wrong.
         Assert.Equal(c, (PartialStyle.Default with { Foreground = c }).ApplyTo(Busy).Foreground);
     }
+
+    // ---- XAML-authoring setters: write-only Apply/Remove/Toggle + init Weight/Posture ----
+    // The write surface is Booleans-only (Require); the read-only projections keep reporting the full
+    // word. Each setter must be equivalent to the factory/fluent it mirrors, and compose in one initializer.
+
+    [Fact]
+    public void Apply_Setter_ProjectsIntoAppliedAttributes_EquivalentToFactory()
+    {
+        var s = new PartialStyle { Apply = TextAttributes.Inverse | TextAttributes.Strikethrough };
+        Assert.Equal(TextAttributes.Inverse | TextAttributes.Strikethrough, s.AppliedAttributes);
+        Assert.Equal(PartialStyle.WithApplied(TextAttributes.Inverse | TextAttributes.Strikethrough), s);
+    }
+
+    [Fact]
+    public void Remove_Setter_ProjectsIntoRemovedAttributes_EquivalentToFactory()
+    {
+        var s = new PartialStyle { Remove = TextAttributes.Blink };
+        Assert.Equal(TextAttributes.Blink, s.RemovedAttributes);
+        Assert.Equal(PartialStyle.WithRemoved(TextAttributes.Blink), s);
+    }
+
+    [Fact]
+    public void Toggle_Setter_ProjectsIntoToggledAttributes_EquivalentToFactory()
+    {
+        var s = new PartialStyle { Toggle = TextAttributes.Inverse };
+        Assert.Equal(TextAttributes.Inverse, s.ToggledAttributes);
+        Assert.Equal(PartialStyle.WithToggled(TextAttributes.Inverse), s);
+    }
+
+    [Theory]
+    [InlineData(TextWeight.Bold)]
+    [InlineData(TextWeight.Faint)]
+    [InlineData(TextWeight.Normal)]
+    public void Weight_Setter_RoundTrips_EquivalentToFactory(TextWeight w)
+    {
+        var s = new PartialStyle { Weight = w };
+        Assert.Equal(w, s.Weight);
+        Assert.Equal(PartialStyle.Weighted(w), s);
+    }
+
+    [Theory]
+    [InlineData(TextStyle.Italic)]
+    [InlineData(TextStyle.Normal)]
+    public void Posture_Setter_RoundTrips_EquivalentToFactory(TextStyle p)
+    {
+        var s = new PartialStyle { Posture = p };
+        Assert.Equal(p, s.Posture);
+        Assert.Equal(PartialStyle.Postured(p), s);
+    }
+
+    [Fact]
+    public void NullWeightOrPosture_InInitializer_LeavesTheAxisAlone()
+    {
+        var s = new PartialStyle { Apply = TextAttributes.Inverse, Weight = null, Posture = null };
+        Assert.Null(s.Weight);
+        Assert.Null(s.Posture);
+        Assert.Equal(TextAttributes.Inverse, s.AppliedAttributes);
+    }
+
+    [Fact]
+    public void Setters_ComposeInOneInitializer_LikeChainedFactories()
+    {
+        var viaSetters = new PartialStyle
+                         {
+                             Apply   = TextAttributes.Inverse,
+                             Remove  = TextAttributes.Blink,
+                             Toggle  = TextAttributes.Overline,
+                             Weight  = TextWeight.Bold,
+                             Posture = TextStyle.Italic,
+                         };
+
+        var viaFactories = PartialStyle.WithApplied(TextAttributes.Inverse)
+                                       .Removing(TextAttributes.Blink)
+                                       .Toggling(TextAttributes.Overline)
+                                       .Weighing(TextWeight.Bold)
+                                       .Posturing(TextStyle.Italic);
+
+        Assert.Equal(viaFactories, viaSetters);
+
+        // The read-only projections report the FULL word — the boolean axes AND the weight/posture flags:
+        // Weight=Bold and Posture=Italic land in Applied beside the boolean Inverse, and Faint (weight's
+        // cleared half) joins Blink in Removed. This axis "bleed" through the projections is exactly why
+        // the WRITE surface (Apply/Remove/Toggle) is Booleans-only and Weight/Posture are their own axes.
+        Assert.Equal(TextAttributes.Inverse | TextAttributes.Bold | TextAttributes.Italic, viaSetters.AppliedAttributes);
+        Assert.Equal(TextAttributes.Blink | TextAttributes.Faint, viaSetters.RemovedAttributes);
+        Assert.Equal(TextAttributes.Overline, viaSetters.ToggledAttributes);
+        Assert.Equal(TextWeight.Bold, viaSetters.Weight);
+        Assert.Equal(TextStyle.Italic, viaSetters.Posture);
+    }
+
+    [Theory]
+    [InlineData(TextAttributes.Bold)]
+    [InlineData(TextAttributes.Faint)]
+    [InlineData(TextAttributes.Italic)]
+    [InlineData(TextAttributes.Underline)]
+    public void AxisFlags_RejectedByTheWriteOnlyBooleanSetters(TextAttributes f)
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() => new PartialStyle { Apply = f });
+        Assert.Throws<ArgumentOutOfRangeException>(() => new PartialStyle { Remove = f });
+        Assert.Throws<ArgumentOutOfRangeException>(() => new PartialStyle { Toggle = f });
+    }
 }

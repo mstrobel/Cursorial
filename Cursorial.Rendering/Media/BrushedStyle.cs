@@ -46,11 +46,34 @@ public readonly record struct BrushedStyle
     /// <summary>Attributes this style INVERTS — on becomes off, off becomes on.</summary>
     public TextAttributes ToggledAttributes => Xor & ~Clear;
 
+    // ---- XAML authoring: write-only setters over the boolean axes (see PartialStyle) ----
+    //
+    // The read-only projections report the full flag word; these write-only companions are the
+    // Booleans-restricted authoring surface. Kept SEPARATE from the projections so neither member
+    // reports what its counterpart rejects. No `Ignore` — an unmentioned flag is already ignored.
+
+    /// <summary>Write-only (XAML): force these <see cref="PartialStyle.Booleans"/> ON.</summary>
+    public TextAttributes Apply  { init { var f = PartialStyle.Require(value); Clear |= f;  Xor |= f;  } }
+
+    /// <summary>Write-only (XAML): force these <see cref="PartialStyle.Booleans"/> OFF.</summary>
+    public TextAttributes Remove { init { var f = PartialStyle.Require(value); Clear |= f;  Xor &= ~f; } }
+
+    /// <summary>Write-only (XAML): INVERT these <see cref="PartialStyle.Booleans"/>.</summary>
+    public TextAttributes Toggle { init { var f = PartialStyle.Require(value); Clear &= ~f; Xor |= f;  } }
+
     /// <inheritdoc cref="PartialStyle.Weight"/>
-    public TextWeight? Weight => Resolved.Weight;
+    public TextWeight? Weight
+    {
+        get => Resolved.Weight;
+        init { if (value is { } w) { var f = Resolved.Weighing(w); Clear = f.Clear; Xor = f.Xor; } }
+    }
 
     /// <inheritdoc cref="PartialStyle.Posture"/>
-    public TextStyle? Posture => Resolved.Posture;
+    public TextStyle? Posture
+    {
+        get => Resolved.Posture;
+        init { if (value is { } p) { var f = Resolved.Posturing(p); Clear = f.Clear; Xor = f.Xor; } }
+    }
 
     // The attribute half of a style is brush-free, so it can be read through a resolved delta
     // rather than duplicating the projections. Color channels resolve to null here, which the

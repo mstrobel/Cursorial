@@ -1,3 +1,4 @@
+using Cursorial.Media;
 using Cursorial.Output;
 using Cursorial.Rendering.Media;
 using Cursorial.Text;
@@ -131,5 +132,56 @@ public class Section06b_TextStyleFrame
         // stronger-lane line ("<- BaseTextStyle") rather than a sort-key contributor breakdown.
         var explanation = StyleDiagnostics.Explain(host, TextElement.InverseProperty);
         Assert.Contains("BaseTextStyle", explanation);
+    }
+
+    [Fact]
+    public void TSF6_FullFold_DrivesEveryAxis()
+    {
+        var host = new Border();
+        var brush = new SolidColorBrush(Color.FromRgb(1, 2, 3));
+
+        host.SetValue(TextElement.BaseTextStyleProperty, new BrushedStyle
+                                                         {
+                                                             Weight     = TextWeight.Bold,
+                                                             Posture    = TextStyle.Italic,
+                                                             Foreground = brush,
+                                                             Apply      = TextAttributes.Strikethrough | TextAttributes.Overline,
+                                                             Remove     = TextAttributes.Blink,
+                                                         });
+
+        Assert.Equal(TextWeight.Bold, host.GetValue(TextElement.TextWeightProperty));
+        Assert.Equal(TextStyle.Italic, host.GetValue(TextElement.TextStyleProperty));
+        Assert.Same(brush, host.GetValue(TextElement.ForegroundProperty));
+        Assert.True(host.GetValue(TextElement.StrikethroughProperty));
+        Assert.True(host.GetValue(TextElement.OverlineProperty));
+
+        // Removed → a value-bearing false at BaseTextStyle (distinct from the axis's own default false).
+        Assert.False(host.GetValue(TextElement.BlinkProperty));
+        Assert.Equal(BindingPriority.BaseTextStyle, host.GetValueSource(TextElement.BlinkProperty).Priority);
+
+        // Untouched axes carry no opinion — they fall through to their native default.
+        Assert.False(host.GetValue(TextElement.ConcealedProperty));
+        Assert.Equal(BindingPriority.Default, host.GetValueSource(TextElement.ConcealedProperty).Priority);
+        Assert.Null(host.GetValue(TextElement.UnderlineProperty));
+    }
+
+    [Fact]
+    public void TSF7_UnderlineAxis_ShapeApply_BareShape_AndRemoval()
+    {
+        var host = new Border();
+
+        // Applied WITH a shape → underlined in that shape.
+        host.SetValue(TextElement.BaseTextStyleProperty, BrushedStyle.Identity.Underlining(UnderlineStyle.Curly));
+        Assert.Equal(UnderlineStyle.Curly, host.GetValue(TextElement.UnderlineProperty));
+        Assert.Equal(BindingPriority.BaseTextStyle, host.GetValueSource(TextElement.UnderlineProperty).Priority);
+
+        // A bare shape (no explicit Underline flag) → still on with that shape.
+        host.SetValue(TextElement.BaseTextStyleProperty, new BrushedStyle { UnderlineShape = UnderlineStyle.Dotted });
+        Assert.Equal(UnderlineStyle.Dotted, host.GetValue(TextElement.UnderlineProperty));
+
+        // Removed → forced OFF: a value-bearing null at BaseTextStyle, not merely the default.
+        host.SetValue(TextElement.BaseTextStyleProperty, BrushedStyle.Identity.RemovingUnderline());
+        Assert.Null(host.GetValue(TextElement.UnderlineProperty));
+        Assert.Equal(BindingPriority.BaseTextStyle, host.GetValueSource(TextElement.UnderlineProperty).Priority);
     }
 }

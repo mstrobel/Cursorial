@@ -246,6 +246,59 @@ public abstract class TextElement
     public static readonly AttachedProperty<bool> InverseProperty =
         UIProperty.RegisterAttached<TextElement, UIElement, bool>("Inverse");
 
+    // ───────── PROTOTYPE: the "base" whole-style carrier (design panel Approach C / TSF1) ─────────
+    //
+    // A BrushedStyle set on an element whose axes drive the per-axis attached properties from the
+    // Style lane (a TextStyleAxisFrame) — so an explicit per-axis value (LocalValue) still wins, and
+    // clearing it re-promotes this base automatically. Named Base... to avoid the collision with the
+    // TextStyle posture axis above. Two axes wired for the prototype (weight + inverse); the full
+    // 10-axis fold + BrushedStyle projection table follows if TSF1 is green.
+
+    /// <summary>PROTOTYPE. The base whole text style: its axes drive the per-axis attached properties
+    /// from the <see cref="BindingPriority.Style"/> lane, so an explicit per-axis value still wins and
+    /// clearing it re-promotes this base.</summary>
+    public static readonly AttachedProperty<BrushedStyle> BaseTextStyleProperty =
+        UIProperty.RegisterAttached<TextElement, UIElement, BrushedStyle>(
+            "BaseTextStyle",
+            new PropertyMetadata<BrushedStyle>(BrushedStyle.Identity, Changed: OnBaseTextStyleChanged));
+
+    // Per-element storage for the installed frame — non-inheriting, dies with the element (no CWT).
+    private static readonly AttachedProperty<TextStyleAxisFrame?> BaseTextStyleFrameProperty =
+        UIProperty.RegisterAttached<TextElement, UIElement, TextStyleAxisFrame?>("BaseTextStyleFrame");
+
+    public static void SetBaseTextStyle(UIElement element, BrushedStyle value) =>
+        element.SetValue(BaseTextStyleProperty, value);
+
+    public static BrushedStyle GetBaseTextStyle(UIElement element) =>
+        element.GetValue(BaseTextStyleProperty);
+
+    private static void OnBaseTextStyleChanged(UIObject sender, BrushedStyle oldValue, BrushedStyle newValue)
+    {
+        var existing = sender.GetValue(BaseTextStyleFrameProperty);
+
+        if (newValue.IsIdentity)
+        {
+            // Back to "no opinion" — retract the frame (the store promotes the next source).
+            if (existing is not null)
+            {
+                sender.RemoveFrame(existing);
+                sender.ClearValue(BaseTextStyleFrameProperty);
+            }
+            return;
+        }
+
+        if (existing is null)
+        {
+            var frame = new TextStyleAxisFrame(newValue); // seeds its entries before install
+            sender.SetValue(BaseTextStyleFrameProperty, frame);
+            sender.AddFrame(frame);
+        }
+        else
+        {
+            existing.Apply(newValue); // in-place re-fold + per-axis pulses
+        }
+    }
+
     /// <summary>Blink (SGR 5/25). Non-inheriting.</summary>
     public static readonly AttachedProperty<bool> BlinkProperty =
         UIProperty.RegisterAttached<TextElement, UIElement, bool>("Blink");

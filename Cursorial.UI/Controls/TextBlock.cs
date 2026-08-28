@@ -4,6 +4,7 @@ using Cursorial.Rendering.Fonts;
 using Cursorial.Rendering.Media;
 using Cursorial.Rendering.Text;
 using Cursorial.Text;
+using Cursorial.UI.Themes;
 
 namespace Cursorial.UI.Controls;
 
@@ -18,7 +19,7 @@ namespace Cursorial.UI.Controls;
 /// pulses the cache's subscription; <b>no</b> dictionary subscription (sealed dictionaries
 /// never pulse — CD16).
 /// </summary>
-public class TextBlock : UIElement, ITrimmedTextSource
+public class TextBlock : UIElement, ITrimmedTextSource, IRichTextCapable
 {
     // Created lazily so no base-constructor property plumbing can observe a null cache.
     // Internal (not private) so tests can observe the M2 fast-path routing counters.
@@ -38,6 +39,9 @@ public class TextBlock : UIElement, ITrimmedTextSource
     // compositing identity).
     private static readonly BrushedStyle PlainTextDefaultCarrier =
         new() { Background = Brushes.Transparent, UnderlineColor = Brushes.Transparent };
+
+    public static readonly StyledProperty<BrushedStyle> BaseTextStyleProperty =
+        TextElement.BaseTextStyleProperty.AddOwner<TextBlock>();
 
     /// <summary>The literal text content (<c>AffectsMeasure | AffectsRender</c>; never access-key-folded — doc §12.7).</summary>
     public static readonly StyledProperty<string?> TextProperty =
@@ -134,6 +138,9 @@ public class TextBlock : UIElement, ITrimmedTextSource
         Text = text;
     }
 
+    /// <inheritdoc cref="BaseTextStyleProperty"/>
+    public BrushedStyle BaseTextStyle { get => GetValue(BaseTextStyleProperty); set => SetValue(BaseTextStyleProperty, value); }
+    
     /// <inheritdoc cref="TextWeightProperty"/>
     public TextWeight TextWeight { get => GetValue(TextWeightProperty); set => SetValue(TextWeightProperty, value); }
     
@@ -215,10 +222,8 @@ public class TextBlock : UIElement, ITrimmedTextSource
         // paint time — NOT baked into the cached FormattedText (the attribute properties are
         // AffectsRender, so a flip re-paints the cached layout without re-formatting it). The fold is
         // the single composition point (proposal-TextAttributes-decomposition §3.1).
-        var resolved = TextElement.ComposeAttributes(this);
-        context.DrawFormattedText(formatted, context.Bounds,
-                                  new BrushedStyle { Foreground = Foreground }
-                                      .Imposing(resolved.Flags, resolved.UnderlineShape));
+        var resolved = BrushedStyle.FromElement(this) with { Background = null };
+        context.DrawFormattedText(formatted, context.Bounds, resolved);
     }
 
     /// <inheritdoc/>

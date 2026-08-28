@@ -1348,11 +1348,11 @@ internal sealed class XamlParser
     /// <summary>
     /// Produces the value of a markup extension <paramref name="node"/> — the shared core of the curly form
     /// (<c>{DynamicResource X}</c>) and the ELEMENT form (<c>&lt;DynamicResource ResourceKey="X"/&gt;</c>).
-    /// On success returns <see langword="true"/> with <paramref name="folded"/> and <paramref name="valueIndex"/>:
-    /// a FOLDED intrinsic (x:Null/x:Type/x:Static) yields a constant index; a LIVE extension yields an
-    /// <see cref="ExtensionRecord"/> index. Returns <see langword="false"/> when nothing is emitted (a reported
-    /// error, or a <c>{TemplateBinding}</c> outside a template body). <paramref name="member"/> is the target
-    /// member for a member-position extension (bindability is enforced against it), or null in a
+    /// On success returns <see langword="true"/> with <see cref="XamlValueKind.Folded"/> and
+    /// <paramref name="valueIndex"/>: a FOLDED intrinsic (x:Null/x:Type/x:Static) yields a constant index; a LIVE
+    /// extension yields an <see cref="ExtensionRecord"/> index. Returns <see langword="false"/> when nothing is
+    /// emitted (a reported error, or a <c>{TemplateBinding}</c> outside a template body). <paramref name="member"/>
+    /// is the target member for a member-position extension (bindability is enforced against it), or null in a
     /// dictionary/collection-entry position.
     /// </summary>
     private bool BuildExtensionValue(MarkupExtensionNode node, XamlMember? member, bool inDeferred, int line, int column,

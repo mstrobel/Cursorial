@@ -1,3 +1,5 @@
+using Cursorial.Rendering;
+
 namespace Cursorial.UI.Controls;
 
 /// <summary>
@@ -28,6 +30,14 @@ public class Separator : Control
 
     /// <inheritdoc cref="OrientationProperty"/>
     public Orientation Orientation { get => GetValue(OrientationProperty); set => SetValue(OrientationProperty, value); }
+
+    protected override Size MeasureOverride(Size availableSize)
+    {
+        if (Template is not null)
+            return base.MeasureOverride(availableSize);
+
+        return new Size(1, 1).ClampTo(availableSize);
+    }
 
     protected override void Render(RenderContext context)
     {

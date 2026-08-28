@@ -268,18 +268,53 @@ internal static class ControlThemes
                      var border = new Border { Child = scroll };
                      border.SetBinding(Border.BackgroundProperty, TemplateBinding.From(Control.BackgroundProperty));
                      border.SetBinding(Border.BorderPenProperty, TemplateBinding.From(Control.BorderPenProperty));
+                     
                      return border;
                  });
+
+        t.Styles.Add(
+            new Style(":is(ListBox):focus-within")
+            {
+                Children =
+                {
+                    new Style("^ :is(ListBoxItem):selected")
+                       .SetResource(Panel.BackgroundProperty, ThemeKeys.ListItemBackgroundSelected)
+                       .SetResource(TextElement.ForegroundProperty, ThemeKeys.ListItemForegroundSelected),
+                    new Style("^ :is(ListBoxItem):focus-visible:selected")
+                       .SetResource(Panel.BackgroundProperty, ThemeKeys.ListItemBackgroundFocus)
+                       .SetResource(TextElement.ForegroundProperty, ThemeKeys.ListItemForegroundFocus)
+                }
+            }
+        );
 
         return t;
     }
 
     private static Style ListBoxTheme()
-        => new Style { Key = "Theme.ListBox" }
-            .SetResource(Control.BackgroundProperty, ThemeKeys.WellBrush) // a list is a recessed well
-            .SetResource(Control.ForegroundProperty, ThemeKeys.TextBrush)
-            .Set(Control.TemplateProperty, ListBoxTemplate())
-            .Set(ItemsControl.ItemsPanelProperty, VirtualizingItemsPanelTemplate());
+        => new Style
+           {
+               Key = "Theme.ListBox",
+               Children =
+               {
+                   new Style("^:is(ListBox):focus-within")
+                   {
+                       Children =
+                       {
+                           new Style("^ :is(ListBoxItem):selected")
+                              .SetResource(Panel.BackgroundProperty, ThemeKeys.ListItemBackgroundSelected)
+                              .SetResource(TextElement.ForegroundProperty,
+                                           ThemeKeys.ListItemForegroundSelected),
+                           new Style("^ :is(ListBoxItem):focus-visible:selected")
+                              .SetResource(Panel.BackgroundProperty, ThemeKeys.ListItemBackgroundFocus)
+                              .SetResource(TextElement.ForegroundProperty, ThemeKeys.ListItemForegroundFocus)
+                       }
+                   }
+               }
+           }
+          .SetResource(Control.BackgroundProperty, ThemeKeys.WellBrush) // a list is a recessed well
+          .SetResource(Control.ForegroundProperty, ThemeKeys.TextBrush)
+          .Set(Control.TemplateProperty, ListBoxTemplate())
+          .Set(ItemsControl.ItemsPanelProperty, VirtualizingItemsPanelTemplate());
 
     // A list item is a full-width selection bar: a Border filling its row, content at row 0 (no frame). Per the
     // default-theme gallery mockup (.item.sel/.hov/.dis): selected = SelectionBrush fill + TextBrush ink (NOT the
@@ -365,10 +400,28 @@ internal static class ControlThemes
     });
 
     private static Style ListViewTheme()
-        => new Style { Key = "Theme.ListView" }
-            .SetResource(Control.BackgroundProperty, ThemeKeys.WellBrush) // a list is a recessed well
-            .SetResource(Control.ForegroundProperty, ThemeKeys.TextBrush)
-            .Set(Control.TemplateProperty, ListViewTemplate());
+        => new Style
+           {
+               Key = "Theme.ListView",
+               Children =
+               {
+                   new Style("^:focus-within")
+                   {
+                       Children =
+                       {
+                           new Style("^ :is(ListViewItem):selected")
+                              .SetResource(Panel.BackgroundProperty, ThemeKeys.ListItemBackgroundSelected)
+                              .SetResource(TextElement.ForegroundProperty, ThemeKeys.ListItemForegroundSelected),
+                           new Style("^ :is(ListViewItem):focus-visible:selected")
+                              .SetResource(Panel.BackgroundProperty, ThemeKeys.ListItemBackgroundFocus)
+                              .SetResource(TextElement.ForegroundProperty, ThemeKeys.ListItemForegroundFocus)
+                       }
+                   }
+               }
+           }
+          .SetResource(Control.BackgroundProperty, ThemeKeys.WellBrush) // a list is a recessed well
+          .SetResource(Control.ForegroundProperty, ThemeKeys.TextBrush)
+          .Set(Control.TemplateProperty, ListViewTemplate());
 
     // The row face is the ListBoxItem selection bar with the ContentPresenter swapped for PART_Cells: a details
     // row cannot carry the ListBoxItem selection glyph in a gutter, because the gutter would shift every cell out
@@ -889,9 +942,28 @@ internal static class ControlThemes
     });
 
     private static Style TreeViewTheme()
-        => new Style { Key = "Theme.TreeView" }
-            .SetResource(Control.ForegroundProperty, ThemeKeys.TextBrush)
-            .Set(Control.TemplateProperty, TreeViewTemplate());
+        => new Style
+           {
+               Key = "Theme.TreeView",
+               Children =
+               {
+                   new Style("^:focus-within")
+                   {
+                       Children =
+                       {
+                           new Style("^ :is(TreeViewItem):selected")
+                              .SetResource(Panel.BackgroundProperty, ThemeKeys.ListItemBackgroundSelected)
+                              .SetResource(TextElement.ForegroundProperty, ThemeKeys.ListItemForegroundSelected),
+                           new Style("^ :is(TreeViewItem):focus-visible:selected")
+                              .SetResource(Panel.BackgroundProperty, ThemeKeys.ListItemBackgroundFocus)
+                              .SetResource(TextElement.ForegroundProperty, ThemeKeys.ListItemForegroundFocus)
+                       }
+                   }
+
+               }
+           }
+          .SetResource(Control.ForegroundProperty, ThemeKeys.TextBrush)
+          .Set(Control.TemplateProperty, TreeViewTemplate());
 
     // A tree node: a header row [twisty(2) … Header] over the indented PART_ItemsHost (the children). The twisty
     // (PART_Twisty, fixed 2-wide; '>'/'v'/leaf-blank, set by the control) is the expander; the children host is
@@ -2589,8 +2661,6 @@ internal static class ControlThemes
 /// </summary>
 public sealed class ToggleGlyph : UIElement, IValueObserver<bool?>
 {
-    private IDisposable? _checkedObserver;
-
     /// <summary>The <see cref="ThemeKeys"/> glyph-set resource key (the <c>(Unchecked, Checked, Indeterminate)</c> <see cref="GlyphSetCarrier"/> base).</summary>
     public string? GlyphKey { get; set; }
 
@@ -2620,15 +2690,25 @@ public sealed class ToggleGlyph : UIElement, IValueObserver<bool?>
     /// </summary>
     public static readonly StyledProperty<IBrush?> GlyphForegroundProperty =
         UIProperty.Register<ToggleGlyph, IBrush?>(nameof(GlyphForeground));
+
+    public static readonly StyledProperty<bool?> IsCheckedProperty =
+        ToggleButton.IsCheckedProperty.AddOwner<ToggleGlyph>();
     
     static ToggleGlyph()
     {
         AddGlobalEffects(PropertyEffects.AffectsRender, GlyphsProperty);
-        AffectsRender<ToggleGlyph>(GlyphForegroundProperty);
+        AffectsRender<ToggleGlyph>(GlyphForegroundProperty, IsCheckedProperty);
     }
 
     /// <summary>Parameterless constructor for XAML; set <see cref="GlyphKey"/> + the mark keys via properties.</summary>
-    public ToggleGlyph() { }
+    public ToggleGlyph()
+    {
+        this.SetBinding(IsCheckedProperty,
+                        TemplateBinding.From(IsCheckedProperty, mode: BindingMode.OneWay));
+
+        this.SetBinding(GlyphsProperty,
+                        TemplateBinding.From(GlyphsProperty, mode: BindingMode.OneWay));
+    }
 
     /// <summary>
     /// The code-first constructor. <paramref name="checkedMarkKey"/> / <paramref name="indeterminateMarkKey"/>
@@ -2636,7 +2716,7 @@ public sealed class ToggleGlyph : UIElement, IValueObserver<bool?>
     /// (CheckBox ✓ = GreenBrush, ▪ = AmberBrush; RadioButton ● = AccentBrush); null leaves the mark in the
     /// inherited foreground. The brackets always paint in the foreground.
     /// </summary>
-    public ToggleGlyph(string glyphKey, string? checkedMarkKey = null, string? indeterminateMarkKey = null)
+    public ToggleGlyph(string glyphKey, string? checkedMarkKey = null, string? indeterminateMarkKey = null) : this()
     {
         GlyphKey = glyphKey;
         CheckedMarkKey = checkedMarkKey;
@@ -2644,24 +2724,6 @@ public sealed class ToggleGlyph : UIElement, IValueObserver<bool?>
     }
 
     private ToggleButton? Owner => TemplatedParent as ToggleButton;
-
-    /// <inheritdoc/>
-    protected override void OnAttachedToTree(in TreeAttachmentEventArgs e)
-    {
-        base.OnAttachedToTree(in e);
-        // Re-render when the owning toggle's checked state flips (the glyph swap is render-only — the
-        // ASCII triple is equal-width; a Unicode swap that changed width would also need re-measure).
-        if (Owner is {} owner)
-            _checkedObserver = owner.AddObserver(ToggleButton.IsCheckedProperty, this);
-    }
-
-    /// <inheritdoc/>
-    protected override void OnDetachedFromTree(in TreeAttachmentEventArgs e)
-    {
-        _checkedObserver?.Dispose();
-        _checkedObserver = null;
-        base.OnDetachedFromTree(in e);
-    }
 
     /// <inheritdoc/>
     void IValueObserver<bool?>.OnPropertyChanged(UIObject source, UIProperty property, bool? oldValue, bool? newValue, BindingPriority priority)
@@ -2673,22 +2735,25 @@ public sealed class ToggleGlyph : UIElement, IValueObserver<bool?>
         {
             // The .caps-unicode override (set on the Owner by a theme-styles rule) wins; else the glyph-set
             // resource (the ASCII base, themeable at any scope); else the hard ASCII fallback.
-            if (Owner?.GetValue(GlyphsProperty) is { } unicode)
+            if (GetValue(GlyphsProperty) is { } unicode)
                 return unicode;
-            return GlyphKey is { } key && this.TryFindResource(key, out var value) && value is GlyphSetCarrier glyphs
-                ? glyphs
-                : new GlyphSetCarrier("[ ]", "[x]", "[-]");
+
+            return GlyphKey is {} key &&
+                   this.TryFindResource(key, out var value) &&
+                   value is GlyphSetCarrier glyphs
+                       ? glyphs
+                       : new GlyphSetCarrier("[ ]", "[x]", "[-]");
         }
     }
 
     // The owner's checked state, defaulting to unchecked only when there is no owner — a null here is
     // the genuine *indeterminate* value, which the '?? false' coalesce must NOT collapse.
-    private bool? CheckedState => Owner is { } owner ? owner.IsChecked : false;
+    public bool? IsChecked => GetValue(IsCheckedProperty);
 
     /// <inheritdoc/>
     protected override Size MeasureOverride(Size availableSize)
     {
-        var glyph = Glyphs.ForChecked(CheckedState);
+        var glyph = Glyphs.ForChecked(IsChecked);
         return new Size(Text.GraphemeWidth.StringWidth(glyph), 1);
     }
 
@@ -2701,7 +2766,7 @@ public sealed class ToggleGlyph : UIElement, IValueObserver<bool?>
         if (context.Bounds.IsEffectivelyEmpty)
             return;
 
-        var glyph = Glyphs.ForChecked(CheckedState);
+        var glyph = Glyphs.ForChecked(IsChecked);
         var foreground = GlyphForeground ?? Owner?.Foreground;
         // The glyph honors the effective TextElement attributes (None for an ordinary control), so a
         // NoColor disabled check/radio dims with Faint to match its (Faint) content text — the whole control
@@ -2712,7 +2777,7 @@ public sealed class ToggleGlyph : UIElement, IValueObserver<bool?>
         // foreground while the inner mark (✓ / ▪ / ●) takes its state color — but only when a mark color
         // resolves AND the glyph is the canonical open+mark+close triple. Otherwise the whole glyph paints
         // in the foreground (e.g. unchecked, a custom non-triple glyph, or no mark color configured).
-        if (MarkBrush(CheckedState) is { } mark && glyph.Length >= 3)
+        if (MarkBrush(IsChecked) is { } mark && glyph.Length >= 3)
         {
             var open = glyph[..1];
             var inner = glyph[1..^1];

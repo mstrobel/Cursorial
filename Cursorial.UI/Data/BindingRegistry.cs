@@ -65,6 +65,18 @@ internal sealed class BindingRegistry
         return null;
     }
 
+    /// <summary>The any-lane expression for <paramref name="property"/>, or <see langword="null"/> (BD7).</summary>
+    public BindingExpressionBase? GetExpression(UIProperty property)
+    {
+        foreach (var expression in _expressions)
+        {
+            if (expression.TargetProperty.Id == property.Id)
+                return expression;
+        }
+
+        return null;
+    }
+
     /// <summary>
     /// The detach-walk write-back gate: quiesces the reverse lane of every expression on
     /// <paramref name="target"/> (and discards pending flushes) so the severance cascade never writes a

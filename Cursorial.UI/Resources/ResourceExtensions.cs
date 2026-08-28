@@ -1,4 +1,5 @@
 using Cursorial.Media;
+using Cursorial.UI.Controls;
 using Cursorial.UI.Themes;
 
 // ReSharper disable CheckNamespace
@@ -96,6 +97,7 @@ public static class ResourceExtensions
     {
         // 1. element → logical ancestors, with the template-root resource hop (CD11).
         var node = (UIElement?)element;
+
         while (node is not null)
         {
             if (node.HasResources)
@@ -117,23 +119,34 @@ public static class ResourceExtensions
             // templated parent. The template Resources live on the TEMPLATED PARENT (the Control owns
             // the TemplateInstance), not on the part — a part is typically a plain element whose own
             // TemplateResourcesForChainWalk is null.
-            if (node.LogicalParent is null && node.TemplatedParent is { } templatedParent)
+            if (node.LogicalParent is null)
             {
-                if (templatedParent.TemplateResourcesForChainWalk is { } templateResources)
+                if (node.TemplatedParent is {} templatedParent ||
+                    node.VisualParent is ContentPresenter cp && (templatedParent = cp.TemplatedParent) is not null)
                 {
-                    searched?.Add($"template Resources of {Describe(templatedParent)}");
-                    if (templateResources.TryGetResource(key, variant, out value))
+                    if (templatedParent.TemplateResourcesForChainWalk is { } templateResources)
                     {
-                        searched?.Add("  → HIT in template Resources");
-                        return true;
+                        searched?.Add($"template Resources of {Describe(templatedParent)}");
+                        if (templateResources.TryGetResource(key, variant, out value))
+                        {
+                            searched?.Add("  → HIT in template Resources");
+                            return true;
+                        }
                     }
+
+                    node = templatedParent;
+                    continue;
                 }
 
-                node = templatedParent;
-                continue;
+                if (node.VisualParent is {} vp && ItemsControl.IsItemContainer(vp, out var ic))
+                {
+                    node = ic;
+                    continue;
+                }
             }
+            
 
-            node = node.UIParent;
+            node = node.LogicalParent;
         }
 
         // Non-chasing tail: an alias found here bubbles back to Walk's loop, which re-chases from the

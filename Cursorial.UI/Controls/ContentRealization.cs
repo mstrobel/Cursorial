@@ -61,7 +61,18 @@ internal static class ContentRealization
         // ①/② a resolved template builds the data subtree (DataContext = content, TemplatedParent null). The
         // string format applies only to the TEXT fallbacks below — a template owns its own formatting (WPF parity).
         if (template is not null)
-            return ForwardTextAttributeAxes(host, template.Build(content, host));
+        {
+            var templateContent = template.Build(content, host);
+
+            if (host.ForwardTextInverse &&
+                templateContent.IsSet(TextElement.InverseProperty) is false && 
+                BindingOperations.IsDataBound(templateContent, TextElement.InverseProperty) is false)
+            {
+                ForwardInverseOnly(host, template.Build(content, host));
+            }
+
+            return templateContent;
+        }
 
         switch (content)
         {
@@ -69,13 +80,6 @@ internal static class ContentRealization
             {
                 // Null content resolves as null.
                 return null;
-            }
-
-            case DeferredContent dc:
-            {
-                var realized = dc.Realize();
-                AdoptElementContent(host, ForwardTextAttributeAxes(host, realized));
-                return realized;
             }
 
             // ③ a UIElement passes through: it is a logical child of the templated parent (so it
@@ -179,6 +183,7 @@ internal static class ContentRealization
         // LocalValue the forward would occlude even conditional rules (LocalValue > StyleTrigger).
         using (TemplateInstantiationScope.Enter())
         {
+            TextElement.ForwardBaseTextStyle(leaf, source);
             TextElement.ForwardAllAxes(leaf, source, host.ForwardTextInverse);
 
             if (leaf is IRichTextCapable)

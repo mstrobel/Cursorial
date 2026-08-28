@@ -24,6 +24,23 @@ public abstract partial class UIElement : IResourceHost
 
             return _resources;
         }
+        set
+        {
+            VerifyAccess();
+            
+            if (_resources is {} oldResources)
+            {
+                oldResources.Release(this);
+                oldResources.Changed -= OnOwnResourcesChanged;
+            }
+
+            if (value is {} newResources)
+            {
+                _resources = newResources;
+                newResources.Acquire(this);
+                newResources.Changed += OnOwnResourcesChanged;
+            }
+        }
     }
 
     /// <summary>Whether a non-empty dictionary has been allocated — the chain-walk short-circuit (C29/C51).</summary>

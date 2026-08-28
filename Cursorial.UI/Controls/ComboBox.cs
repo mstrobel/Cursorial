@@ -127,7 +127,7 @@ public class ComboBox : SelectingItemsControl
     internal ButtonBase? DropDownPart => _dropDown;
 
     // The editable text box is the typing surface, so the inherited list type-ahead must not also run in editable mode.
-    private protected override bool TextSearchNavigates => !IsEditable;
+    protected override bool TextSearchNavigates => !IsEditable;
 
     /// <inheritdoc/>
     protected override UIElement GetContainerForItemOverride() => new ComboBoxItem();
@@ -232,7 +232,7 @@ public class ComboBox : SelectingItemsControl
     }
 
     /// <inheritdoc/>
-    private protected override void OnTextSearchMatch(int containerIndex)
+    protected override void OnTextSearchMatch(int containerIndex)
     {
         base.OnTextSearchMatch(containerIndex); // selection-follows (the face updates)
         if (_isDropDownOpen) // when open, move the keyboard highlight too, so :focus-visible tracks the match

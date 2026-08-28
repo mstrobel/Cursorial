@@ -74,6 +74,12 @@ public static class ThemeKeys
     /// <summary>Primary text / foreground; also the reverse-video <i>fill</i> on a focused pick control.</summary>
     public const string TextBrush = "Theme.TextBrush";
 
+    /// <summary>Default text base style (foreground, background, weight, posture, etc.).</summary>
+    public const string BaseTextStyle = "Theme.BaseTextStyle";
+
+    /// <summary>Header text base style (foreground, background, weight, posture, etc.).</summary>
+    public const string HeaderTextStyle = "Theme.HeaderTextStyle";
+
     /// <summary>Secondary (de-emphasized) text.</summary>
     public const string TextDimBrush = "Theme.TextDimBrush";
 
@@ -276,12 +282,17 @@ public static class ThemeKeys
     /// takes effect on a caps-ascii terminal (caps-unicode is unconditionally stamped at P5; SD14).
     /// </summary>
     public const string CheckBoxGlyphs = "Theme.CheckBoxGlyphs";
+    public const string UnicodeCheckBoxGlyphs = "Theme.UnicodeCheckBoxGlyphs";
 
     /// <summary>The <see cref="Controls.RadioButton"/> glyph triple (caps-ascii base <c>( ) (*) (-)</c>; caps-unicode opts up to <c>( ) (●) (-)</c> via the attached override — see <see cref="CheckBoxGlyphs"/>; design doc §12.7).</summary>
     public const string RadioGlyphs = "Theme.RadioGlyphs";
+    public const string UnicodeRadioGlyphs = "Theme.UnicodeRadioGlyphs";
 
     /// <summary>The <see cref="Controls.ScrollBar"/> line-button arrow glyphs (the reserved ASCII base <c>^ v</c> / <c>&lt; &gt;</c>). NOTE: the BuiltIn ScrollBar template currently hardcodes Unicode arrows (◀▲▶▼) and does NOT yet read this resource — a caps-ascii opt-down is future work (same caps-ascii deferral as the Unicode check/radio marks; design doc §12.7).</summary>
-    public const string ScrollArrowGlyphs = "Theme.ScrollArrowGlyphs";
+    public const string VerticalScrollArrowGlyphs = "Theme.VerticalScrollArrowGlyphs";
+    public const string HorizontalScrollArrowGlyphs = "Theme.HorizontalScrollArrowGlyphs";
+    public const string UnicodeVerticalScrollArrowGlyphs = "Theme.UnicodeVerticalScrollArrowGlyphs";
+    public const string UnicodeHorizontalScrollArrowGlyphs = "Theme.UnicodeHorizontalScrollArrowGlyphs";
 
     // ───────────────────────────── per-control override keys (style-guide KEYS, §11.4a) ─────────────────────────────
     //
@@ -561,7 +572,7 @@ public static class ThemeKeys
 /// <c>(Unchecked, Checked, Indeterminate)</c> triple, a scroll-bar's arrow pair (design doc §12.7,
 /// spec line 660). Glyphs are theme <b>resources</b> so a variant / capability dictionary can swap
 /// them; the framework keys them under <see cref="ThemeKeys.CheckBoxGlyphs"/> /
-/// <see cref="ThemeKeys.RadioGlyphs"/> / <see cref="ThemeKeys.ScrollArrowGlyphs"/>. The defaults are
+/// <see cref="ThemeKeys.RadioGlyphs"/> / <see cref="ThemeKeys.VerticalScrollArrowGlyphs"/>. The defaults are
 /// true ASCII (zero ambiguous-width risk; cf. the ambiguous-width project memory).
 /// </summary>
 public record GlyphSetCarrier
@@ -570,7 +581,7 @@ public record GlyphSetCarrier
     /// A small immutable carrier for a control's themeable glyph strings, such as a <see cref="Cursorial.UI.Controls.CheckBox"/>'s
     /// <c>(Unchecked, Checked, Indeterminate)</c> triple or a scroll-bar's arrow pair. This allows glyphs to be defined as theme
     /// resources which can be dynamically swapped using a variant or capability dictionary. These glyphs are accessed using keys
-    /// like <see cref="ThemeKeys.CheckBoxGlyphs"/>, <see cref="ThemeKeys.RadioGlyphs"/>, or <see cref="ThemeKeys.ScrollArrowGlyphs"/>.
+    /// like <see cref="ThemeKeys.CheckBoxGlyphs"/>, <see cref="ThemeKeys.RadioGlyphs"/>, or <see cref="ThemeKeys.VerticalScrollArrowGlyphs"/>.
     /// Default glyphs are designed to avoid ambiguous-width risks and typically leverage ASCII.
     /// </summary>
     public GlyphSetCarrier() {}
@@ -580,7 +591,7 @@ public record GlyphSetCarrier
     /// <c>(Unchecked, Checked, Indeterminate)</c> triple, a scroll-bar's arrow pair (design doc §12.7,
     /// spec line 660). Glyphs are theme <b>resources</b> so a variant / capability dictionary can swap
     /// them; the framework keys them under <see cref="ThemeKeys.CheckBoxGlyphs"/> /
-    /// <see cref="ThemeKeys.RadioGlyphs"/> / <see cref="ThemeKeys.ScrollArrowGlyphs"/>. The defaults are
+    /// <see cref="ThemeKeys.RadioGlyphs"/> / <see cref="ThemeKeys.VerticalScrollArrowGlyphs"/>. The defaults are
     /// true ASCII (zero ambiguous-width risk; cf. the ambiguous-width project memory).
     /// </summary>
     /// <param name="unchecked">The first glyph (unchecked box / up-or-left arrow).</param>
@@ -604,7 +615,7 @@ public record GlyphSetCarrier
     public string ForChecked(bool? value) => value switch
                                              {
                                                  true => Checked,
-                                                 null => Indeterminate.Length > 0 ? Indeterminate : Unchecked,
+                                                 null => Indeterminate.Length > 0 ? Indeterminate : "",
                                                  _    => Unchecked
                                              };
 

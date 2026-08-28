@@ -26,8 +26,44 @@ public static class CurioTheme
     public static ResourceDictionary LoadTheme()
     {
         var theme = LoadStyles();                    // ROOT: carries the top-level Styles slot the engine reads
-        theme.MergedDictionaries.Add(LoadPalette());
-        // theme.MergedDictionaries.Add(LoadControls());
+        var palette = LoadPalette();
+        var controls = LoadControls();
+        theme.MergedDictionaries.Add(palette);
+        theme.MergedDictionaries.Add(controls);
+        controls.Seal();
+        palette.Seal();
+        controls.Seal();
+        theme.Seal();
         return theme;
+    }
+
+    public static ResourceDictionary Snapshot
+    {
+        get
+        {
+            var theme = LoadTheme();
+            theme.Seal();
+            return theme;
+        }
+    }
+
+    public static ResourceDictionary Controls
+    {
+        get
+        {
+            var controls = LoadControls();
+            controls.Seal();
+            return controls;
+        }
+    }
+
+    public static ResourceDictionary Styles
+    {
+        get
+        {
+            var styles = LoadStyles();
+            styles.Seal();
+            return styles;
+        }
     }
 }

@@ -358,6 +358,20 @@ public readonly record struct Color : ISpanFormattable
         return FromHsl(h, s, Math.Clamp(l - percentage, 0.0, 1.0), Alpha);
     }
 
+    /// <summary>
+    /// Return the complement to this color.
+    /// </summary>
+    public Color Complement()
+    {
+        if (Kind != ColorKind.Rgb)
+            return this;
+
+        var (h, s, l) = ToHsl();
+        h += 0.5;
+        if (h > 1.0) h -= 1.0;
+        return FromHsl(h, s, l, Alpha);
+    }
+
     public override string ToString()
     {
         return ToString(null);

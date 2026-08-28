@@ -190,6 +190,7 @@ public class TreeViewItem : HeaderedItemsControl
     protected override void OnKeyDown(KeyEventArgs e)
     {
         base.OnKeyDown(e);
+
         if (e.Handled || !IsFocused)
             return; // only the focused node navigates — an unhandled key from a focused descendant bubbles here
                     // (the items are logical descendants); the MenuItem class-handler rule (§12.7)
@@ -236,6 +237,7 @@ public class TreeViewItem : HeaderedItemsControl
     internal void SetIsSelectedFromTree(bool selected)
     {
         _treeDriven = true;
+
         try
         {
             SetCurrentValue(IsSelectedProperty, selected); // SetCurrentValue preserves a two-way IsSelected binding

@@ -1005,6 +1005,7 @@ public sealed class DrawingContext
         var preferenceBrush = preference.Foreground;
         var baseAttributes = ImposedAttributes(preference);
         var baseUnderlineShape = preference.UnderlineShape ?? UnderlineStyle.Single;
+        var baseUnderlineColor = preference.UnderlineColor;
 
         // ReSharper disable once RedundantLambdaParameterType
         return (in BrushedTextContext ctx) =>
@@ -1056,7 +1057,13 @@ public sealed class DrawingContext
                    // the element already carries that flag — so the two agree and the rider adds a shape
                    // rather than an underline.
                    if (baseUnderlineShape != UnderlineStyle.Single && (baseAttributes & TextAttributes.Underline) != 0)
-                       style = style with { UnderlineShape = baseUnderlineShape };
+                   {
+                       style = style with
+                               {
+                                   UnderlineShape = baseUnderlineShape,
+                                   UnderlineColor = baseUnderlineColor ?? style.UnderlineColor
+                               };
+                   }
 
                    return new BrushedTextStyle(style, sampleRect);
                };

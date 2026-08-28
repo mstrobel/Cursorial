@@ -4,6 +4,14 @@ using Cursorial.UI.Input;
 
 namespace Cursorial.UI.Controls;
 
+public enum Direction
+{
+    Up,
+    Down,
+    Left,
+    Right
+}
+
 /// <summary>
 /// A scrollable content host (design doc §12.4/§12.7, CD28; inversion 5 — lands at P5 ahead of
 /// ListBox): a <see cref="ContentControl"/> whose template wraps S1's banded
@@ -86,6 +94,34 @@ public class ScrollViewer : ContentControl
     /// <summary>The visible content size (read-only mirror of the SCP's <c>Viewport</c>).</summary>
     public static readonly DirectProperty<ScrollViewer, Size> ViewportProperty =
         UIProperty.RegisterDirect<ScrollViewer, Size>(nameof(Viewport), static s => s._viewport);
+
+    /// <summary>Indicates whether an attempt to scroll up would actually affect the scroll offset.</summary>
+    public static readonly DirectProperty<ScrollViewer, bool> CanScrollUpProperty =
+        UIProperty.RegisterDirect<ScrollViewer, bool>("CanScrollUp", static s => s.CanScroll(Direction.Up));
+
+    /// <summary>Indicates whether an attempt to scroll down would actually affect the scroll offset.</summary>
+    public static readonly DirectProperty<ScrollViewer, bool> CanScrollDownProperty =
+        UIProperty.RegisterDirect<ScrollViewer, bool>("CanScrollDown", static s => s.CanScroll(Direction.Down));
+
+    /// <summary>Indicates whether an attempt to scroll left would actually affect the scroll offset.</summary>
+    public static readonly DirectProperty<ScrollViewer, bool> CanScrollLeftProperty =
+        UIProperty.RegisterDirect<ScrollViewer, bool>("CanScrollLeft", static s => s.CanScroll(Direction.Left));
+
+    /// <summary>Indicates whether an attempt to scroll right would actually affect the scroll offset.</summary>
+    public static readonly DirectProperty<ScrollViewer, bool> CanScrollRightProperty =
+        UIProperty.RegisterDirect<ScrollViewer, bool>("CanScrollRight", static s => s.CanScroll(Direction.Right));
+
+    private bool CanScroll(Direction d)
+    {
+        return d switch
+               {
+                   Direction.Up    => _verticalOffset > 0,
+                   Direction.Down  => _verticalOffset < _extent.Rows - _viewport.Rows,
+                   Direction.Left  => _horizontalOffset > 0,
+                   Direction.Right => _horizontalOffset < _extent.Columns - _viewport.Columns,
+                   _               => throw new ArgumentOutOfRangeException(nameof(d), d, null)
+               };
+    }
 
     /// <summary>
     /// The bubbling event raised whenever the scroll geometry moves — an offset, extent, or viewport
@@ -294,10 +330,15 @@ public class ScrollViewer : ContentControl
             SetAndRaise(HorizontalOffsetProperty, ref _horizontalOffset, Math.Max(0, value));
     }
 
+    private (bool Up, bool Down, bool Left, bool Right) CanCurrentlyScroll
+        => (CanScroll(Direction.Up), CanScroll(Direction.Down), CanScroll(Direction.Left), CanScroll(Direction.Right));
+    
     private void SyncFromPresenter()
     {
         if (_presenter is not {} presenter)
             return;
+
+        var oldCanScroll = CanCurrentlyScroll;
 
         // Hold the prior offsets for the ScrollChanged deltas before SetAndRaise overwrites the fields.
         var priorVerticalOffset = _verticalOffset;
@@ -310,6 +351,16 @@ public class ScrollViewer : ContentControl
 
         UpdateBars();
 
+        var newCanScroll = CanCurrentlyScroll;
+
+        if (oldCanScroll != newCanScroll)
+        {
+            DispatchCanScrollChanged(CanScrollUpProperty, oldCanScroll.Up, newCanScroll.Up);
+            DispatchCanScrollChanged(CanScrollDownProperty, oldCanScroll.Down, newCanScroll.Down);
+            DispatchCanScrollChanged(CanScrollLeftProperty, oldCanScroll.Left, newCanScroll.Left);
+            DispatchCanScrollChanged(CanScrollRightProperty, oldCanScroll.Right, newCanScroll.Right);
+        }
+        
         // ScrollChanged fires once per sync when any of offset/extent/viewport actually moved (WPF/Avalonia
         // parity): the offsets/sizes are the settled values, the changes are deltas from the pre-sync offsets.
         if (verticalMoved || horizontalMoved || extentMoved || viewportMoved)
@@ -319,6 +370,12 @@ public class ScrollViewer : ContentControl
                                                   _horizontalOffset - priorHorizontalOffset,
                                                   _verticalOffset - priorVerticalOffset));
         }
+    }
+
+    private void DispatchCanScrollChanged(DirectProperty<ScrollViewer, bool> p, bool oldValue, bool newValue)
+    {
+        if (oldValue != newValue)
+            DispatchPropertyChanged(p, null, oldValue, newValue, BindingPriority.LocalValue);
     }
 
     /// <summary>Maps the visibility policies onto the SCP's scroll-axis enables (CD28/C230).</summary>

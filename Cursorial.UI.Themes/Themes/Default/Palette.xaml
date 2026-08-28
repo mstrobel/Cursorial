@@ -119,6 +119,9 @@
       <SolidColorBrush x:Key="{x:Static ThemeKeys.KeyTipMatchedBrush}"             Color="#9d7b3f"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.RibbonContextualFillBrush}"      Color="#2a2440"/>
       <Pen             x:Key="{x:Static ThemeKeys.RibbonContextualUnderlinePen}"   Brush="#bb9af7" Weight="Heavy"/>
+
+      <BrushedStyle    x:Key="{x:Static ThemeKeys.BaseTextStyle}"
+                       Foreground="{StaticResource {x:Static ThemeKeys.TextBrush}}" />
     </ResourceDictionary>
 
     <!-- ───────────────────────────── Light · Ansi256 (RGB) ───────────────────────────── -->
@@ -197,6 +200,9 @@
       <SolidColorBrush x:Key="{x:Static ThemeKeys.KeyTipMatchedBrush}"             Color="#b8935a"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.RibbonContextualFillBrush}"      Color="#e0d8ef"/>
       <Pen             x:Key="{x:Static ThemeKeys.RibbonContextualUnderlinePen}"   Brush="#5a3e8e" Weight="Heavy"/>
+
+      <BrushedStyle    x:Key="{x:Static ThemeKeys.BaseTextStyle}"
+                       Foreground="{StaticResource {x:Static ThemeKeys.TextBrush}}" />
     </ResourceDictionary>
 
     <ResourceDictionary x:Key="Ansi256">
@@ -408,7 +414,10 @@
       <Pen             x:Key="{x:Static ThemeKeys.FocusPen}"                            Brush="Palette(12)" Weight="Double"/>
       <Pen             x:Key="{x:Static ThemeKeys.TabUnderlinePen}"                     Brush="Palette(12)" Weight="Double"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.ObscuredOverlayBrush}"                Color="Transparent"/>
-   </ResourceDictionary>
+
+      <BrushedStyle    x:Key="{x:Static ThemeKeys.BaseTextStyle}"
+                       Foreground="{StaticResource {x:Static ThemeKeys.TextBrush}}" />
+    </ResourceDictionary>
 
     <!-- ───────────────────────────── Light · Ansi16 (palette indices) ───────────────────────────── -->
     <ResourceDictionary x:Key="Light+Ansi16">
@@ -489,6 +498,9 @@
       <Pen             x:Key="{x:Static ThemeKeys.FocusPen}"                            Brush="Palette(4)" Weight="Double"/>
       <Pen             x:Key="{x:Static ThemeKeys.TabUnderlinePen}"                     Brush="Palette(4)" Weight="Double"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.ObscuredOverlayBrush}"                Color="Transparent"/>
+
+      <BrushedStyle    x:Key="{x:Static ThemeKeys.BaseTextStyle}"
+                       Foreground="{StaticResource {x:Static ThemeKeys.TextBrush}}" />
     </ResourceDictionary>
 
     <ResourceDictionary x:Key="Ansi16">
@@ -640,6 +652,8 @@
     
     <!-- ───────────────────────────── NoColor (every color role → Default; ASCII pens) ───────────────────────────── -->
     <ResourceDictionary x:Key="NoColor">
+      <BrushedStyle    x:Key="{x:Static ThemeKeys.BaseTextStyle}"
+                       Foreground="{StaticResource {x:Static ThemeKeys.TextBrush}}" />
       <SolidColorBrush x:Key="{x:Static ThemeKeys.WindowBackground}"        Color="Default"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.SurfaceBrush}"            Color="Default"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.PanelBrush}"              Color="Default"/>

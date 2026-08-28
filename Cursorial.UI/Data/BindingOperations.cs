@@ -103,6 +103,28 @@ public static class BindingOperations
     }
 
     /// <summary>
+    /// Indicates whether the specified <paramref name="target"/> has a data binding installed 
+    /// on the specified <paramref name="property"/>. 
+    /// </summary>
+    public static bool IsDataBound(UIObject target, UIProperty property, bool localOnly = false)
+    {
+        // @formatter:off
+        ArgumentNullException.ThrowIfNull(target);
+        ArgumentNullException.ThrowIfNull(property);
+
+        target.VerifyAccess();
+
+        var registry = BindingRegistry.Get(target);
+        if (registry is null) return false;
+
+        var expression = localOnly ? registry.GetLocalValueExpression(property)
+                                   : registry.GetExpression(property);
+
+        return expression != null;
+        // @formatter:on
+    }
+
+    /// <summary>
     /// The <see cref="BindingBase"/> descriptor of the LocalValue-lane expression for
     /// <c>(target, property)</c>, or <see langword="null"/> (the
     /// <c>System.Windows.Data.BindingOperations.GetBinding</c> analog — useful for cloning/inspecting

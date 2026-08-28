@@ -2,11 +2,11 @@ namespace Cursorial.UI.Controls;
 
 /// <summary>
 /// The container for a <see cref="ListView"/> item (WPF's <c>ListViewItem</c>). Everything about
-/// selection — the two-way <see cref="ListBoxItem.IsSelected"/>, the <c>:selected</c> pseudo-class, the
-/// Ctrl/Shift-aware pointer gesture and the double-click activation — is inherited verbatim from
-/// <see cref="ListBoxItem"/>; the only thing this type adds is the <b>view-mode pseudo-class</b>
-/// (<c>:details</c> / <c>:list</c> / <c>:small-icons</c> / <c>:tiles</c>) that lets a theme give a tile a
-/// different padding than a details row without a second container type.
+/// selection — the two-way <see cref="SelectableItemContainer.IsSelected"/>, the <c>:selected</c>
+/// pseudo-class, the Ctrl/Shift-aware pointer gesture and the double-click activation — is inherited
+/// verbatim from <see cref="ListBoxItem"/>; the only thing this type adds is the <b>view-mode
+/// pseudo-class</b> (<c>:details</c> / <c>:list</c> / <c>:small-icons</c> / <c>:tiles</c>) that lets
+/// a theme give a tile a different padding than a details row without a second container type.
 /// <para>
 /// The visible content is built by the <c>PART_Cells</c> <see cref="ListViewCellsPresenter"/> in the
 /// template, not by a <c>ContentPresenter</c>: one container type has to render four different

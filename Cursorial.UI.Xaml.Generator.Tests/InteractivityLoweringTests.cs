@@ -16,7 +16,7 @@ public class InteractivityLoweringTests
 {
     private const string Ns =
         "xmlns=\"https://cursorial.dev/ui\" xmlns:x=\"https://cursorial.dev/xaml\" " +
-        "xmlns:i=\"clr-namespace:Cursorial.UI.Interactivity;assembly=Cursorial.UI.Interactivity\"";
+        "xmlns:i=\"https://cursorial.dev/ui/interactivity\"";
 
     private static CSharpCompilation WithInteractivity(CSharpCompilation compilation)
         => compilation.AddReferences(MetadataReference.CreateFromFile(typeof(Interaction).Assembly.Location));

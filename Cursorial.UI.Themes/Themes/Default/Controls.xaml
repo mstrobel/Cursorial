@@ -9,7 +9,8 @@
   -->
   <GlyphSetCarrier x:Key="{x:Static ThemeKeys.CheckBoxGlyphs}"    Unchecked="[ ]" Checked="[x]" Indeterminate="[-]"/>
   <GlyphSetCarrier x:Key="{x:Static ThemeKeys.RadioGlyphs}"       Unchecked="( )" Checked="(*)" Indeterminate="(-)"/>
-  <GlyphSetCarrier x:Key="{x:Static ThemeKeys.ScrollArrowGlyphs}" Unchecked="^"   Checked="v"/>
+  <GlyphSetCarrier x:Key="{x:Static ThemeKeys.VerticalScrollArrowGlyphs}" Unchecked="^"   Checked="v"/>
+  <GlyphSetCarrier x:Key="{x:Static ThemeKeys.HorizontalScrollArrowGlyphs}" Unchecked="&lt;"   Checked="&gt;"/>
   <x:String x:Key="{x:Static ThemeKeys.ListItemSelectionGlyph}">*</x:String>
 
   <!--
@@ -919,7 +920,7 @@
 
   <Style x:Key="{x:Type StatusBar}" TargetType="StatusBar">
     <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.StatusBarBackground}}" />
-    <Setter Property="Template"   Value="{StaticResource StatusBarItemTemplate}" />
+    <Setter Property="Template"   Value="{StaticResource StatusBarTemplate}" />
   </Style>
 
   <!-- Image: its template hosts a PART_ImagePresenter with Source/placeholder one-way TemplateBound. The twin of

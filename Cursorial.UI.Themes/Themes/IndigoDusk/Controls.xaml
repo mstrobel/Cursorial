@@ -7,9 +7,15 @@
     GlyphSetCarrier(...). True-ASCII defaults (zero ambiguous-width risk); the caps-unicode opt-up to colored
     Unicode rides BuiltIn's Theme-layer style channel (R2/B13 — app.Theme.Styles is not yet consumed).
   -->
-  <GlyphSetCarrier x:Key="{x:Static ThemeKeys.CheckBoxGlyphs}"    Unchecked="[ ]" Checked="[x]" Indeterminate="[-]"/>
-  <GlyphSetCarrier x:Key="{x:Static ThemeKeys.RadioGlyphs}"       Unchecked="( )" Checked="(*)" Indeterminate="(-)"/>
-  <GlyphSetCarrier x:Key="{x:Static ThemeKeys.ScrollArrowGlyphs}" Unchecked="^"   Checked="v"/>
+  <GlyphSetCarrier x:Key="{x:Static ThemeKeys.CheckBoxGlyphs}"                      Unchecked="[ ]"  Checked="[x]"  Indeterminate="[-]"/>
+  <GlyphSetCarrier x:Key="{x:Static ThemeKeys.RadioGlyphs}"                         Unchecked="( )"  Checked="(*)"  Indeterminate="(-)"/>
+  <GlyphSetCarrier x:Key="{x:Static ThemeKeys.UnicodeCheckBoxGlyphs}"               Unchecked="[ ]"  Checked="[✓]"  Indeterminate="[▪]"/>
+  <GlyphSetCarrier x:Key="{x:Static ThemeKeys.UnicodeRadioGlyphs}"                  Unchecked="( )"  Checked="(●)"  Indeterminate="(-)"/>
+  <GlyphSetCarrier x:Key="{x:Static ThemeKeys.VerticalScrollArrowGlyphs}"           Unchecked="^"    Checked="v"/>
+  <GlyphSetCarrier x:Key="{x:Static ThemeKeys.UnicodeVerticalScrollArrowGlyphs}"    Unchecked="▲" Checked="▼" />
+  <GlyphSetCarrier x:Key="{x:Static ThemeKeys.HorizontalScrollArrowGlyphs}"         Unchecked="&lt;" Checked="&gt;"/>
+  <GlyphSetCarrier x:Key="{x:Static ThemeKeys.UnicodeHorizontalScrollArrowGlyphs}"  Unchecked="◀" Checked="▶" />
+  
   <x:String x:Key="{x:Static ThemeKeys.ListItemSelectionGlyph}">*</x:String>
 
   <!--
@@ -919,7 +925,7 @@
 
   <Style x:Key="{x:Type StatusBar}" TargetType="StatusBar">
     <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.StatusBarBackground}}" />
-    <Setter Property="Template"   Value="{StaticResource StatusBarItemTemplate}" />
+    <Setter Property="Template"   Value="{StaticResource StatusBarTemplate}" />
   </Style>
 
   <!-- Image: its template hosts a PART_ImagePresenter with Source/placeholder one-way TemplateBound. The twin of

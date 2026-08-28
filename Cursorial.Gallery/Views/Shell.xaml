@@ -12,6 +12,7 @@
            xmlns:pages="clr-namespace:Cursorial.Gallery.Pages;assembly=Cursorial.Gallery"
            xmlns:ff="clr-namespace:Cursorial.Rendering.Fonts;assembly=Cursorial.Rendering"
            xmlns:s="clr-namespace:System;assembly=System.Private.CoreLib"
+           xmlns:themes="clr-namespace:Cursorial.UI.Themes;assembly=Cursorial.UI.Themes"
            Background="{DynamicResource {x:Static ThemeKeys.PanelBrush}}"
            TextElement.Foreground="{DynamicResource {x:Static ThemeKeys.TextBrush}}"
            mc:Ignorable="d"
@@ -26,222 +27,221 @@
 
     <!-- Implicit DataTemplates: the ContentControl resolves the selected page view-model's type to its view. -->
     <DockPanel.Resources>
+      <DataTemplate DataType="vm:DialogsViewModel">
+        <DockPanel x:DataType="vm:DialogsViewModel">
+          <Grid>
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="*" />
+              <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <Border Grid.Column="0" Padding="2,1" Title="Task Dialog"
+                    BorderPen="{DynamicResource {x:Static ThemeKeys.BorderPen}}">
+              <StackPanel Orientation="Vertical">
+                <CheckBox IsChecked="{Binding TaskDialogIncludeContent}"         Content="Include Se_condary Message" />
+                <CheckBox IsChecked="{Binding TaskDialogIncludeProgressBar}"     Content="Include _Progress Bar" />
+                <CheckBox IsChecked="{Binding TaskDialogIncludeCommandLinks}"    Content="Include Command _Links" />
+                <CheckBox IsChecked="{Binding TaskDialogIncludeButtons}"         Content="Include _Buttons" />
+                <CheckBox IsChecked="{Binding TaskDialogIncludeVerification}"    Content="Include _Verification" />
+                <CheckBox IsChecked="{Binding TaskDialogIncludeExpandedContent}" Content="Include E_xpanded Content" />
+                <StackPanel Orientation="Horizontal" Spacing="1" Margin="0,1,0,0">
+                  <Label Target="{x:Reference SeveritySelector}" Content="Severit_y:"
+                         Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}"/>
+                  <ComboBox x:Name="SeveritySelector"
+                            MinWidth="18"
+                            ItemsSource="{Binding SeverityLevels}"
+                            SelectedItem="{Binding TaskDialogSeverity, Mode=TwoWay}"/>
+                </StackPanel>
+                <Button Command="{Binding ShowTaskDialogCommand}"
+                        Content="Show Tas_k Dialog"
+                        MaxWidth="24" Margin="0,1,0,0"/>
+              </StackPanel>
+            </Border>
 
-        <DataTemplate DataType="vm:DialogsViewModel">
-          <DockPanel x:DataType="vm:DialogsViewModel">
-            <Grid>
-              <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="*" />
-              </Grid.ColumnDefinitions>
-              <Border Grid.Column="0" Padding="2,1" Title="Task Dialog"
+            <Grid Grid.Column="1">
+              <Grid.RowDefinitions>
+                <RowDefinition Height="*" MinHeight="10" />
+                <RowDefinition Height="2*" MinHeight="15" />
+              </Grid.RowDefinitions>
+              <Border Padding="2,1" Title="Message Box"
                       BorderPen="{DynamicResource {x:Static ThemeKeys.BorderPen}}">
-                <StackPanel Orientation="Vertical">
-                  <CheckBox IsChecked="{Binding TaskDialogIncludeContent}"         Content="Include Se_condary Message" />
-                  <CheckBox IsChecked="{Binding TaskDialogIncludeProgressBar}"     Content="Include _Progress Bar" />
-                  <CheckBox IsChecked="{Binding TaskDialogIncludeCommandLinks}"    Content="Include Command _Links" />
-                  <CheckBox IsChecked="{Binding TaskDialogIncludeButtons}"         Content="Include _Buttons" />
-                  <CheckBox IsChecked="{Binding TaskDialogIncludeVerification}"    Content="Include _Verification" />
-                  <CheckBox IsChecked="{Binding TaskDialogIncludeExpandedContent}" Content="Include E_xpanded Content" />
-                  <StackPanel Orientation="Horizontal" Spacing="1" Margin="0,1,0,0">
-                    <Label Target="{x:Reference SeveritySelector}" Content="Severit_y:"
-                           Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}"/>
-                    <ComboBox x:Name="SeveritySelector"
-                              MinWidth="18"
-                              ItemsSource="{Binding SeverityLevels}"
-                              SelectedItem="{Binding TaskDialogSeverity, Mode=TwoWay}"/>
-                  </StackPanel>
-                  <Button Command="{Binding ShowTaskDialogCommand}"
-                          Content="Show Tas_k Dialog"
-                          MaxWidth="24" Margin="0,1,0,0"/>
+                <StackPanel Spacing="1" Orientation="Vertical">
+                  <UniformWrapPanel Orientation="Horizontal">
+                    <RadioButton GroupName="MessageBoxButtonsGroup" Content="{Binding RelativeSource={RelativeSource Self}, Path='CommandParameter.(ICheckableCommandParameter.Tag)', Converter={EnumDisplayConverterExtension EnumType={x:Type MessageBoxButton}}}" Command="{Binding ToggleMessageBoxButtonCommand}">
+                      <RadioButton.CommandParameter>
+                        <CheckableCommandParameter Tag="{x:Static MessageBoxButton.Ok}" />
+                      </RadioButton.CommandParameter>
+                    </RadioButton>
+                    <RadioButton GroupName="MessageBoxButtonsGroup" Content="{Binding RelativeSource={RelativeSource Self}, Path='CommandParameter.(ICheckableCommandParameter.Tag)', Converter={EnumDisplayConverterExtension EnumType={x:Type MessageBoxButton}}}" Command="{Binding ToggleMessageBoxButtonCommand}">
+                      <RadioButton.CommandParameter>
+                        <CheckableCommandParameter Tag="{x:Static MessageBoxButton.OkCancel}" />
+                      </RadioButton.CommandParameter>
+                    </RadioButton>
+                    <RadioButton GroupName="MessageBoxButtonsGroup" Content="{Binding RelativeSource={RelativeSource Self}, Path='CommandParameter.(ICheckableCommandParameter.Tag)', Converter={EnumDisplayConverterExtension EnumType={x:Type MessageBoxButton}}}" Command="{Binding ToggleMessageBoxButtonCommand}">
+                      <RadioButton.CommandParameter>
+                        <CheckableCommandParameter Tag="{x:Static MessageBoxButton.YesNo}" />
+                      </RadioButton.CommandParameter>
+                    </RadioButton>
+                    <RadioButton GroupName="MessageBoxButtonsGroup" Content="{Binding RelativeSource={RelativeSource Self}, Path='CommandParameter.(ICheckableCommandParameter.Tag)', Converter={EnumDisplayConverterExtension EnumType={x:Type MessageBoxButton}}}" Command="{Binding ToggleMessageBoxButtonCommand}">
+                      <RadioButton.CommandParameter>
+                        <CheckableCommandParameter Tag="{x:Static MessageBoxButton.SaveDontSave}" />
+                      </RadioButton.CommandParameter>
+                    </RadioButton>
+                  </UniformWrapPanel>
+                  <Button Command="{Binding ShowMessageDialogCommand}" Content="Show _Message Dialog" MaxWidth="24" />
                 </StackPanel>
               </Border>
-              
-              <Grid Grid.Column="1">
-                <Grid.RowDefinitions>
-                  <RowDefinition Height="*" MinHeight="10" />
-                  <RowDefinition Height="2*" MinHeight="15" />
-                </Grid.RowDefinitions>
-                <Border Padding="2,1" Title="Message Box"
-                        BorderPen="{DynamicResource {x:Static ThemeKeys.BorderPen}}">
-                  <StackPanel Spacing="1" Orientation="Vertical">
-                    <UniformWrapPanel Orientation="Horizontal">
-                      <RadioButton GroupName="MessageBoxButtonsGroup" Content="{Binding RelativeSource={RelativeSource Self}, Path='CommandParameter.(ICheckableCommandParameter.Tag)', Converter={EnumDisplayConverterExtension EnumType={x:Type MessageBoxButton}}}" Command="{Binding ToggleMessageBoxButtonCommand}">
-                        <RadioButton.CommandParameter>
-                          <CheckableCommandParameter Tag="{x:Static MessageBoxButton.Ok}" />
-                        </RadioButton.CommandParameter>
-                      </RadioButton>
-                      <RadioButton GroupName="MessageBoxButtonsGroup" Content="{Binding RelativeSource={RelativeSource Self}, Path='CommandParameter.(ICheckableCommandParameter.Tag)', Converter={EnumDisplayConverterExtension EnumType={x:Type MessageBoxButton}}}" Command="{Binding ToggleMessageBoxButtonCommand}">
-                        <RadioButton.CommandParameter>
-                          <CheckableCommandParameter Tag="{x:Static MessageBoxButton.OkCancel}" />
-                        </RadioButton.CommandParameter>
-                      </RadioButton>
-                      <RadioButton GroupName="MessageBoxButtonsGroup" Content="{Binding RelativeSource={RelativeSource Self}, Path='CommandParameter.(ICheckableCommandParameter.Tag)', Converter={EnumDisplayConverterExtension EnumType={x:Type MessageBoxButton}}}" Command="{Binding ToggleMessageBoxButtonCommand}">
-                        <RadioButton.CommandParameter>
-                          <CheckableCommandParameter Tag="{x:Static MessageBoxButton.YesNo}" />
-                        </RadioButton.CommandParameter>
-                      </RadioButton>
-                      <RadioButton GroupName="MessageBoxButtonsGroup" Content="{Binding RelativeSource={RelativeSource Self}, Path='CommandParameter.(ICheckableCommandParameter.Tag)', Converter={EnumDisplayConverterExtension EnumType={x:Type MessageBoxButton}}}" Command="{Binding ToggleMessageBoxButtonCommand}">
-                        <RadioButton.CommandParameter>
-                          <CheckableCommandParameter Tag="{x:Static MessageBoxButton.SaveDontSave}" />
-                        </RadioButton.CommandParameter>
-                      </RadioButton>
-                    </UniformWrapPanel>
-                    <Button Command="{Binding ShowMessageDialogCommand}" Content="Show _Message Dialog" MaxWidth="24" />
-                  </StackPanel>
-                </Border>
-                <Border Grid.Row="1"
-                        Padding="2,1" Title="File Dialogs"
-                        BorderPen="{DynamicResource {x:Static ThemeKeys.BorderPen}}">
-                  <StackPanel Spacing="0" Orientation="Vertical">
-                    <CheckBox IsChecked="{Binding FileDialogUseRealFileSystem}"    Content="Use _Real File System" />
-                    <CheckBox IsChecked="{Binding FileDialogShowHidden}"           Content="Show _Hidden Entries" />
-                    <CheckBox IsChecked="{Binding FileDialogConfirmOverwrite}"     Content="Confirm Over_write" />
-                    <CheckBox IsChecked="{Binding FileDialogCanCreateDirectories}" Content="Can Create _Directories" />
-                    <CheckBox IsChecked="{Binding FileDialogFileMustExist}"        Content="File must e_xist to open" />
+              <Border Grid.Row="1"
+                      Padding="2,1" Title="File Dialogs"
+                      BorderPen="{DynamicResource {x:Static ThemeKeys.BorderPen}}">
+                <StackPanel Spacing="0" Orientation="Vertical">
+                  <CheckBox IsChecked="{Binding FileDialogUseRealFileSystem}"    Content="Use _Real File System" />
+                  <CheckBox IsChecked="{Binding FileDialogShowHidden}"           Content="Show _Hidden Entries" />
+                  <CheckBox IsChecked="{Binding FileDialogConfirmOverwrite}"     Content="Confirm Over_write" />
+                  <CheckBox IsChecked="{Binding FileDialogCanCreateDirectories}" Content="Can Create _Directories" />
+                  <CheckBox IsChecked="{Binding FileDialogFileMustExist}"        Content="File must e_xist to open" />
 
-                    <UniformWrapPanel Orientation="Horizontal" HorizontalAlignment="Center">
-                      <Button Command="{Binding ShowFileOpenDialogCommand}" Content="_Open File" Width="11" Margin="0,1,1,0" />
-                      <Button Command="{Binding ShowFileSaveDialogCommand}" Content="_Save File" Width="11" Margin="1,1,0,0" />
-                    </UniformWrapPanel>
-                  </StackPanel>
-                </Border>
+                  <UniformWrapPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                    <Button Command="{Binding ShowFileOpenDialogCommand}" Content="_Open File" Width="11" Margin="0,1,1,0" />
+                    <Button Command="{Binding ShowFileSaveDialogCommand}" Content="_Save File" Width="11" Margin="1,1,0,0" />
+                  </UniformWrapPanel>
+                </StackPanel>
+              </Border>
 
-              </Grid>
             </Grid>
-          </DockPanel>
+          </Grid>
+        </DockPanel>
+
+      </DataTemplate>
+
+      <DataTemplate DataType="vm:WelcomeViewModel">
+        <DockPanel x:DataType="vm:WelcomeViewModel">
+          <DockPanel.Resources>
+            <PhaseShiftedBrush x:Key="WelcomeBrush">
+              <PhaseShiftedBrush.Brush>
+                <LinearGradientBrush StartPoint="0,0"
+                                     EndPoint="1,1"
+                                     Spread="Reflect">
+                  <GradientStop Offset="0" Color="#ff5495" />
+                  <GradientStop Offset="1" Color="#feeb84" />
+                </LinearGradientBrush>
+              </PhaseShiftedBrush.Brush>
+            </PhaseShiftedBrush>
+          </DockPanel.Resources>
+          <StackPanel VerticalAlignment="Center"
+                      Margin="8,1">
+            <RichTextPresenter Source="{Binding WelcomeTextPreamble}"
+                               HorizontalAlignment="Center"
+                               TextAlignment="Center"
+                               Foreground="{DynamicResource {x:Static ThemeKeys.PurpleBrush}}"
+                               TextElement.TextStyle="Italic"/>
+
+            <ImagePresenter SourceUri="embedded://Cursorial.Gallery/cursorial_banner.png"
+                            MaxHeight="8"
+                            HorizontalAlignment="Center">
+              <ImagePresenter.PlaceholderContent>
+                <RichTextPresenter Source="{Binding WelcomeText}"
+                                   HorizontalAlignment="Center"
+                                   TextAlignment="Center"
+                                   TextElement.TextStyle="Italic">
+                  <RichTextPresenter.Foreground>
+                    <LinearGradientBrush StartPoint="0,1" EndPoint="1,0">
+                      <GradientStop Color="#2c83b7" Offset="0"/>
+                      <GradientStop Color="#73c6e7" Offset="1 "/>
+                    </LinearGradientBrush>
+                  </RichTextPresenter.Foreground>
+                </RichTextPresenter>
+              </ImagePresenter.PlaceholderContent>
+            </ImagePresenter>
+
+            <GlyphPresenter x:Name="GradientSweep" Glyph="&#x2571;" Fill="True" Margin="0,2,0,0">
+              <GlyphPresenter.Foreground>
+                <PhaseShiftedBrush x:Key="WelcomeBrush">
+                  <PhaseShiftedBrush.Brush>
+                    <LinearGradientBrush StartPoint="0,0"
+                                         EndPoint="1,1"
+                                         Spread="Reflect">
+                      <GradientStop Offset="0" Color="#ff5495" />
+                      <GradientStop Offset="1" Color="#feeb84" />
+                    </LinearGradientBrush>
+                  </PhaseShiftedBrush.Brush>
+                </PhaseShiftedBrush>
+              </GlyphPresenter.Foreground>
+              <GlyphPresenter.Style>
+                <Style RequiresCapabilities="Local, Truecolor">
+                  <Style.Enter>
+                    <BeginStoryboard>
+                      <BeginStoryboard.Storyboard>
+                        <Storyboard>
+                          <Storyboard.Children>
+                            <DoubleTrack Target="{x:Reference GradientSweep}"
+                                         TargetPath="(GlyphPresenter.Foreground).(PhaseShiftedBrush.Phase)"
+                                         From="0.0" To="2.0" Duration="0:0:1"
+                                         Repeat="{x:Static RepeatBehavior.Forever}" />
+                          </Storyboard.Children>
+                        </Storyboard>
+                      </BeginStoryboard.Storyboard>
+                    </BeginStoryboard>
+                  </Style.Enter>
+                </Style>
+              </GlyphPresenter.Style>
+            </GlyphPresenter>
+
+            <RichTextPresenter TextAlignment="Center"
+                               Margin="0,2,0,0"
+                               Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}"
+                               Source="{Binding EpilogueText}"/>
             
-        </DataTemplate>
+            <Button Command="{Binding ShowUserOptionsCommand}"
+                    CommandParameter="SkipFirstRunWizardCheck"
+                    Margin="0,2,0,0"
+                    HorizontalAlignment="Center"
+                    Content="Show User _Options"/>
 
-        <DataTemplate DataType="vm:WelcomeViewModel">
-          <DockPanel x:DataType="vm:WelcomeViewModel">
-            <DockPanel.Resources>
-              <PhaseShiftedBrush x:Key="WelcomeBrush">
-                <PhaseShiftedBrush.Brush>
-                  <LinearGradientBrush StartPoint="0,0"
-                                       EndPoint="1,1"
-                                       Spread="Reflect">
-                    <GradientStop Offset="0" Color="#ff5495" />
-                    <GradientStop Offset="1" Color="#feeb84" />
-                  </LinearGradientBrush>
-                </PhaseShiftedBrush.Brush>
-              </PhaseShiftedBrush>
-            </DockPanel.Resources>
-            <StackPanel VerticalAlignment="Center"
-                        Margin="8,1">
-              <RichTextPresenter Source="{Binding WelcomeTextPreamble}"
-                                 HorizontalAlignment="Center"
-                                 TextAlignment="Center"
-                                 Foreground="{DynamicResource {x:Static ThemeKeys.PurpleBrush}}"
-                                 TextElement.TextStyle="Italic"/>
+          </StackPanel>
+        </DockPanel>
+      </DataTemplate>
 
-              <ImagePresenter SourceUri="embedded://Cursorial.Gallery/cursorial_banner.png"
-                              MaxHeight="8"
-                              HorizontalAlignment="Center">
-                <ImagePresenter.PlaceholderContent>
-                  <RichTextPresenter Source="{Binding WelcomeText}"
-                                     HorizontalAlignment="Center"
-                                     TextAlignment="Center"
-                                     TextElement.TextStyle="Italic">
-                    <RichTextPresenter.Foreground>
-                      <LinearGradientBrush StartPoint="0,1" EndPoint="1,0">
-                        <GradientStop Color="#2c83b7" Offset="0"/>
-                        <GradientStop Color="#73c6e7" Offset="1 "/>
-                      </LinearGradientBrush>
-                    </RichTextPresenter.Foreground>
-                  </RichTextPresenter>
-                </ImagePresenter.PlaceholderContent>
-              </ImagePresenter>
+      <DataTemplate DataType="vm:ScrollViewerPageViewModel">
+        <TabControl x:DataType="vm:ScrollViewerPageViewModel" Margin="0,1,0,0">
+          <TabItem Header="_Normal Scrolling">
+            <DockPanel>
+              <Border  DockPanel.Dock="Top" Background="{DynamicResource {x:Static ThemeKeys.ElevationHighest}}" Padding="1,0">
+                <StackPanel Orientation="Vertical">
+                  <WrapPanel>
+                    <Button Margin="1,0" Content="Cycle _V-bar" Command="{Binding CycleVerticalCommand}"/>
+                    <Button Margin="1,0" Content="Cycle _H-bar" Command="{Binding CycleHorizontalCommand}"/>
+                    <Button Margin="1,0" Content="Toggle heigh_t" Command="{Binding ToggleHeightCommand}"/>
+                    <Button Margin="1,0" Content="Toggle _width" Command="{Binding ToggleWidthCommand}"/>
+                  </WrapPanel>
+                </StackPanel>
+              </Border>
 
-              <GlyphPresenter x:Name="GradientSweep" Glyph="&#x2571;" Fill="True" Margin="0,2,0,0">
-                <GlyphPresenter.Foreground>
-                  <PhaseShiftedBrush x:Key="WelcomeBrush">
-                    <PhaseShiftedBrush.Brush>
-                      <LinearGradientBrush StartPoint="0,0"
-                                           EndPoint="1,1"
-                                           Spread="Reflect">
-                        <GradientStop Offset="0" Color="#ff5495" />
-                        <GradientStop Offset="1" Color="#feeb84" />
-                      </LinearGradientBrush>
-                    </PhaseShiftedBrush.Brush>
-                  </PhaseShiftedBrush>
-                </GlyphPresenter.Foreground>
-                <GlyphPresenter.Style>
-                  <Style RequiresCapabilities="Local, Truecolor">
-                    <Style.Enter>
-                      <BeginStoryboard>
-                        <BeginStoryboard.Storyboard>
-                          <Storyboard>
-                            <Storyboard.Children>
-                              <DoubleTrack Target="{x:Reference GradientSweep}"
-                                           TargetPath="(GlyphPresenter.Foreground).(PhaseShiftedBrush.Phase)"
-                                           From="0.0" To="2.0" Duration="0:0:1"
-                                           Repeat="{x:Static RepeatBehavior.Forever}" />
-                            </Storyboard.Children>
-                          </Storyboard>
-                        </BeginStoryboard.Storyboard>
-                      </BeginStoryboard>
-                    </Style.Enter>
-                  </Style>
-                </GlyphPresenter.Style>
-              </GlyphPresenter>
-
-              <RichTextPresenter TextAlignment="Center"
-                                 Margin="0,2,0,0"
-                                 Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}"
-                                 Source="{Binding EpilogueText}"/>
-
-              <Button Command="{Binding ShowUserOptionsCommand}"
-                      CommandParameter="SkipFirstRunWizardCheck"
-                      Margin="0,2,0,0"
-                      HorizontalAlignment="Center"
-                      Content="Show User _Options"/>
-
-            </StackPanel>
-          </DockPanel>
-        </DataTemplate>
-
-        <DataTemplate DataType="vm:ScrollViewerPageViewModel">
-          <TabControl x:DataType="vm:ScrollViewerPageViewModel" Margin="0,1,0,0">
-            <TabItem Header="_Normal Scrolling">
-              <DockPanel>
-                <Border  DockPanel.Dock="Top" Background="{DynamicResource {x:Static ThemeKeys.ElevationHighest}}" Padding="1,0">
-                  <StackPanel Orientation="Vertical">
-                    <WrapPanel>
-                      <Button Margin="1,0" Content="Cycle _V-bar" Command="{Binding CycleVerticalCommand}"/>
-                      <Button Margin="1,0" Content="Cycle _H-bar" Command="{Binding CycleHorizontalCommand}"/>
-                      <Button Margin="1,0" Content="Toggle heigh_t" Command="{Binding ToggleHeightCommand}"/>
-                      <Button Margin="1,0" Content="Toggle _width" Command="{Binding ToggleWidthCommand}"/>
-                    </WrapPanel>
-                  </StackPanel>
-                </Border>
-
-                <ScrollViewer VerticalScrollBarVisibility="{Binding VerticalScrollBarVisibility}"
-                              HorizontalScrollBarVisibility="{Binding HorizontalScrollBarVisibility}"
-                              Focusable="True">
-                  <ItemsControl ItemsSource="{Binding Rows}" Width="{Binding ContentWidth}">
-                    <ItemsControl.ItemTemplate>
-                      <DataTemplate DataType="vm:RowViewModel" x:DataType="vm:RowViewModel">
-                        <TextBlock x:DataType="vm:RowViewModel" Text="{Binding Label}" Foreground="{DynamicResource {x:Static ThemeKeys.TextDimBrush}}"/>
-                      </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                  </ItemsControl>
-                </ScrollViewer>
-              </DockPanel>
-            </TabItem>
-            <TabItem Header="Content-_Assisted Scrolling">
-              <DockPanel>
-                <Border DockPanel.Dock="Top" Margin="0,0,0,1">
-                  <TextBlock Markup="When [fg=Theme.TextDimBrush]ScrollViewer[/fg] content implements the [fg=Theme.TextDimBrush]IScrollContentHost[/fg] interface, it automatically takes control of line and page-level scrolling. The chessboard pattern below snaps to whole squares when scrolling with the keyboard." />
-                </Border>
-                <ScrollViewer HorizontalScrollBarVisibility="Visible"
-                              VerticalScrollBarVisibility="Visible">
-                  <pages:Chessboard Focusable="True" IsTabStop="True"/>
-                </ScrollViewer>
-              </DockPanel>
-            </TabItem>
-          </TabControl>
-        </DataTemplate>
+              <ScrollViewer VerticalScrollBarVisibility="{Binding VerticalScrollBarVisibility}"
+                            HorizontalScrollBarVisibility="{Binding HorizontalScrollBarVisibility}"
+                            Focusable="True">
+                <ItemsControl ItemsSource="{Binding Rows}" Width="{Binding ContentWidth}">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate DataType="vm:RowViewModel" x:DataType="vm:RowViewModel">
+                      <TextBlock x:DataType="vm:RowViewModel" Text="{Binding Label}" Foreground="{DynamicResource {x:Static ThemeKeys.TextDimBrush}}"/>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </ScrollViewer>
+            </DockPanel>
+          </TabItem>
+          <TabItem Header="Content-_Assisted Scrolling">
+            <DockPanel>
+              <Border DockPanel.Dock="Top" Margin="0,0,0,1">
+                <TextBlock Markup="When [fg=Theme.TextDimBrush]ScrollViewer[/fg] content implements the [fg=Theme.TextDimBrush]IScrollContentHost[/fg] interface, it automatically takes control of line and page-level scrolling. The chessboard pattern below snaps to whole squares when scrolling with the keyboard." />
+              </Border>
+              <ScrollViewer HorizontalScrollBarVisibility="Visible"
+                            VerticalScrollBarVisibility="Visible">
+                <pages:Chessboard Focusable="True" IsTabStop="True"/>
+              </ScrollViewer>
+            </DockPanel>
+          </TabItem>
+        </TabControl>
+      </DataTemplate>
 
       <DataTemplate DataType="vm:EventRoutingViewModel">
         <DockPanel LastChildFill="True" x:DataType="vm:EventRoutingViewModel">
@@ -300,7 +300,7 @@
                 </DataTemplate>
               </ComboBox.ItemTemplate>
             </ComboBox>
-            
+
             <TextBlock Grid.Column="6" Grid.Row="1"
                        Foreground="{DynamicResource {x:Static ThemeKeys.FaintBrush}}"
                        Text="{Binding Source={x:Reference ColorSelector}, Path=SelectionBoxItem.(vm:ColorInfo.Name), TargetNullValue='No Selection', StringFormat='Selected: {0}'}"/>
@@ -322,7 +322,7 @@
               <Slider x:Name="VolumeSlider" Minimum="0" Maximum="100"
                       Value="{Binding Volume, Mode=TwoWay}" TabIndex="6" />
             </DockPanel>
-            
+
             <!-- Journal: the multi-line editing + undo/redo canary. The editor passes itself as the command
                  parameter (x:Reference), so Undo/Redo stay in the view-model; the field's own Ctrl+Z / Ctrl+Y work too. -->
             <DockPanel Grid.Column="0" Grid.Row="7" Grid.ColumnSpan="8" Margin="0,1,0,0" LastChildFill="True">
@@ -390,7 +390,7 @@
               <MenuItem Header="Hide _Diagnostics" InputGestureText="Shift+F3" IsCheckable="True" />
             </MenuItem>
           </Menu>
-          
+
           <Border VerticalAlignment="Center" HorizontalAlignment="Center" MaxWidth="60" MaxHeight="30">
             <Grid>
               <Grid.ColumnDefinitions>
@@ -495,7 +495,7 @@
                 <bars:BarToggleButton Command="{Binding AlignRight}" />
               </bars:MiniToolbar>
             </bars:MiniToolbar.Bar>
-            
+
             <StackPanel Orientation="Vertical" VerticalAlignment="Center" HorizontalAlignment="Center">
               <TextBlock Text="Right-click in the open space to open a MiniToolbar." TextAlignment="Center"
                          Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}" />
@@ -516,16 +516,16 @@
                customize ▾ toggles membership, and the ⌃ pin (or double-clicking a tab) minimizes the ribbon. -->
           <gallery:GalleryRibbon DockPanel.Dock="Top" Margin="2,1" LayoutMode="{Binding LayoutMode}">
             <bars:RibbonTab IsFileTab="True">
-            <bars:RibbonTab.Header>
-              <StackPanel x:Name="FileTabContent"
-                          Orientation="Horizontal"
-                          TextElement.Inverse="{Binding (TextElement.Inverse), RelativeSource={RelativeSource FindAncestor, AncestorType={x:Type bars:RibbonTab}}}">
-                <Icon Glyph="&#xf035c;" Text="≡" Margin="0,0,1,0"
-                      TextElement.Inverse="{Binding (TextElement.Inverse), ElementName=FileTabContent}" />
-                <ContentPresenter Content="_File" RecognizesAccessKey="True"
-                                  TextElement.Inverse="{Binding (TextElement.Inverse), ElementName=FileTabContent}" />
-              </StackPanel>
-            </bars:RibbonTab.Header>
+              <bars:RibbonTab.Header>
+                <StackPanel x:Name="FileTabContent"
+                            Orientation="Horizontal"
+                            TextElement.Inverse="{Binding (TextElement.Inverse), RelativeSource={RelativeSource FindAncestor, AncestorType={x:Type bars:RibbonTab}}}">
+                  <Icon Glyph="&#xf035c;" Text="≡" Margin="0,0,1,0"
+                        TextElement.Inverse="{Binding (TextElement.Inverse), ElementName=FileTabContent}" />
+                  <ContentPresenter Content="_File" RecognizesAccessKey="True"
+                                    TextElement.Inverse="{Binding (TextElement.Inverse), ElementName=FileTabContent}" />
+                </StackPanel>
+              </bars:RibbonTab.Header>
             </bars:RibbonTab>
             <bars:RibbonTab Header="_Home">
               <bars:RibbonGroup Header="Clipboard" HasDialogLauncher="True">
@@ -755,7 +755,7 @@
           </ItemsControl>
 
           <Grid Grid.Column="1"
-                Grid.Row="0" 
+                Grid.Row="0"
                 Margin="4,0,0,0"
                 VerticalAlignment="Top">
             <Grid.ColumnDefinitions>
@@ -1032,6 +1032,99 @@
       <DataTemplate DataType="vm:ChartsPageViewModel">
         <pages:ChartsView />
       </DataTemplate>
+
+      <DataTemplate DataType="vm:ThemesViewModel">
+        <DockPanel x:Name="TemplateRoot" Margin="4,2">
+          <Grid DockPanel.Dock="Top" HorizontalAlignment="Center" VerticalAlignment="Top">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="Auto" />
+              <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <Label Content="Select _Theme:" Margin="0,0,1,0" Target="{x:Reference ThemeSelector}" />
+            <ComboBox x:Name="ThemeSelector" Grid.Column="1" MinWidth="24" Margin="0,0,1,0"
+                      ItemsSource="{Binding Themes}" SelectedItem="{Binding SelectedTheme, Mode=TwoWay}" />
+          </Grid>
+
+          <ItemsControl Margin="0,1,0,0" ItemsSource="{Binding Entries}" Background="{DynamicResource {x:Static ThemeKeys.ElevationWell}}">
+            <ItemsControl.Resources>
+              <DataTemplate DataType="Pen">
+                <Border Width="6" Height="2" BorderPen="{Binding}" TextElement.Inverse="True" Background="{x:Null}" />
+              </DataTemplate>
+              <DataTemplate DataType="SolidColorBrush">
+                <Border Width="6" Height="2" Background="{Binding}" />
+              </DataTemplate>
+              <DataTemplate DataType="GradientBrush">
+                <Border Width="6" Height="2" Background="{Binding}" BorderPen="{Binding Converter={x:Static vm:ComplementConverter.Instance}}" />
+              </DataTemplate>
+              <DataTemplate DataType="TextWeight">
+                <TextBlock Text="{Binding}" TextWeight="{Binding}" />
+              </DataTemplate>
+              <DataTemplate DataType="TextStyle">
+                <TextBlock Text="{Binding}" TextStyle="{Binding}" />
+              </DataTemplate>
+              <DataTemplate DataType="UnderlineStyle">
+                <TextBlock Text="Ab xy" Underline="{Binding}" />
+              </DataTemplate>
+              <DataTemplate DataType="BrushedStyle">
+                <TextBlock Text="Ab, xy" BaseTextStyle="{Binding}" />
+              </DataTemplate>
+              <DataTemplate DataType="x:Boolean">
+                <TextBlock Text="{Binding Converter={BooleanConverter TrueValue='Y', FalseValue='N'}}" />
+              </DataTemplate>
+              <DataTemplate DataType="GlyphSetCarrier">
+                <WrapPanel Orientation="Vertical">
+                  <ToggleGlyph x:DataType="GlyphSetCarrier" CheckedMarkKey="{x:Static ThemeKeys.AccentBrush}"
+                               IndeterminateMarkKey="{x:Static ThemeKeys.AmberBrush}" ToggleGlyph.Glyphs="{Binding}"
+                               GlyphForeground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}"
+                               IsChecked="true" />
+                  <ToggleGlyph x:DataType="GlyphSetCarrier" CheckedMarkKey="{x:Static ThemeKeys.AccentBrush}"
+                               IndeterminateMarkKey="{x:Static ThemeKeys.AmberBrush}" ToggleGlyph.Glyphs="{Binding}"
+                               GlyphForeground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}"
+                               IsChecked="false" />
+                  <ToggleGlyph x:DataType="GlyphSetCarrier" CheckedMarkKey="{x:Static ThemeKeys.AccentBrush}"
+                               IndeterminateMarkKey="{x:Static ThemeKeys.AmberBrush}" ToggleGlyph.Glyphs="{Binding}"
+                               GlyphForeground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}"
+                               IsChecked="{x:Null}" />
+                </WrapPanel>
+              </DataTemplate>
+              <DataTemplate DataType="vm:ThemeEntry">
+                <DockPanel x:Name="TemplateRoot">
+                  <Border DockPanel.Dock="Left" Width="6" Height="2">
+                    <ContentPresenter Content="{Binding Resource, TargetNullValue='(none)'}"
+                                      VerticalAlignment="Center" HorizontalAlignment="Center" />
+                  </Border>
+                  <StackPanel Margin="2,0,0,0" Orientation="Vertical" VerticalAlignment="Center" HorizontalAlignment="Left"
+                              Background="{x:Null}">
+                    <ContentPresenter Content="{Binding ResourceKey}"
+                                      ForwardTextInverse="True"
+                                      HorizontalAlignment="Center"
+                                      VerticalAlignment="Center"
+                                      TextElement.Inverse="{Binding Source={x:Reference TemplateRoot}, Path=(TextElement.Inverse)}"/>
+                    <ContentPresenter Content="{Binding Description}"
+                                      ForwardTextInverse="True"
+                                      TextElement.Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}"
+                                      TextElement.Inverse="{Binding Source={x:Reference TemplateRoot}, Path=(TextElement.Inverse)}" />
+                  </StackPanel>
+                </DockPanel>
+              </DataTemplate>
+            </ItemsControl.Resources>
+            <ItemsControl.ItemsPanel>
+              <ItemsPanelTemplate>
+                <UniformWrapPanel Orientation="Horizontal" IsItemsHost="True" />
+              </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+              <ItemsControl.Template>
+                <ControlTemplate TargetType="ItemsControl">
+                  <Border Background="{TemplateBinding Background}">
+                    <ScrollViewer>
+                      <ItemsPresenter/>
+                    </ScrollViewer>
+                  </Border>
+                </ControlTemplate>
+              </ItemsControl.Template>
+          </ItemsControl>
+        </DockPanel>
+      </DataTemplate>
     </DockPanel.Resources>
   
     <!-- Title bar -->
@@ -1062,7 +1155,8 @@
                Target="{x:Reference PageList}" />
            <!--Background="{DynamicResource {x:Static ThemeKeys.ElevationRaised}}"-->
 
-        <ListBox x:Name="PageList"
+         <ListBox x:Name="PageList"
+                 Classes="chooser"
                  Width="22"
                  ItemsSource="{Binding Pages}"
                  SelectedItem="{Binding SelectedPage, Mode=TwoWay}"

@@ -71,7 +71,7 @@ public static class CursorialTheme
         ThemeKeys.ScrollBarTrackBrush, ThemeKeys.ScrollBarThumbNormalBrush, ThemeKeys.ScrollBarThumbHoverBrush,
         ThemeKeys.ScrollBarThumbDragBrush, ThemeKeys.ElevationPopup, ThemeKeys.ElevationDesktop,
         ThemeKeys.ElevationDialog, ThemeKeys.ElevationHighest, ThemeKeys.ElevationRaised, ThemeKeys.ElevationWell,
-        ThemeKeys.ElevationWindow
+        ThemeKeys.ElevationWindow, ThemeKeys.BaseTextStyle
     ];
 
     private static readonly ResourceDictionary BuiltInDictionary = CreateSealed();
@@ -115,10 +115,15 @@ public static class CursorialTheme
         // attached property (the genuinely capability-gated swap); a caps-ascii terminal keeps these. Keyed
         // at the dictionary top level (capability-driven, not color-tier-driven).
         dict[ThemeKeys.CheckBoxGlyphs] = new GlyphSetCarrier("[ ]", "[x]", "[-]");
+        dict[ThemeKeys.UnicodeCheckBoxGlyphs] = new GlyphSetCarrier("[ ]", "[✓]", "[▪]");
         // The indeterminate "(-)" is distinct from unchecked "( )" so an explicitly-set IsChecked=null
         // radio is visually distinguishable (doc §12.7 — only an explicit set reaches indeterminate).
         dict[ThemeKeys.RadioGlyphs] = new GlyphSetCarrier("( )", "(*)", "(-)");
-        dict[ThemeKeys.ScrollArrowGlyphs] = new GlyphSetCarrier("^", "v");
+        dict[ThemeKeys.UnicodeRadioGlyphs] = new GlyphSetCarrier("( )", "(●)", "(-)");
+        dict[ThemeKeys.VerticalScrollArrowGlyphs] = new GlyphSetCarrier("^", "v");
+        dict[ThemeKeys.HorizontalScrollArrowGlyphs] = new GlyphSetCarrier("<", ">");
+        dict[ThemeKeys.UnicodeVerticalScrollArrowGlyphs] = new GlyphSetCarrier("▲", "▼");
+        dict[ThemeKeys.UnicodeHorizontalScrollArrowGlyphs] = new GlyphSetCarrier("◀", "▶");
         dict[ThemeKeys.ListItemSelectionGlyph] = ">";
 
         // The per-control override keys (style-guide KEYS; design doc §11.4a): variant-agnostic LIVE
@@ -176,7 +181,9 @@ public static class CursorialTheme
             CursorialThemeStyles.CoolStyle(),
             CursorialThemeStyles.WarningStyle(),
             CursorialThemeStyles.DangerStyle(),
-            CursorialThemeStyles.SuccessStyle()
+            CursorialThemeStyles.SuccessStyle(),
+            
+            CursorialThemeStyles.HeaderTextStyle()
         ];
 
         // (·,NoColor): every fill/foreground role token resolves to Colors.Default — no stranded RGB. State
@@ -227,6 +234,10 @@ public static class CursorialTheme
         noColor[ThemeKeys.InteractiveCueWeight] = TextWeight.Normal;
         noColor[ThemeKeys.InteractiveCueUnderline] = null;
 
+        noColor[ThemeKeys.BaseTextStyle] = BrushedStyle.Identity
+                                                       .WithForeground(Brushes.Default)
+                                                       .WithBackground(Brushes.Default);
+        
         dict.ThemeDictionaries[new ThemeVariantKey(null, ColorDepth.NoColor)] = noColor;
 
         // The color-tier floor for the cue pair. The CD8 probe DESCENDS tiers
@@ -400,6 +411,8 @@ public static class CursorialTheme
         Alias(ThemeKeys.WarningDarkBrush, ThemeKeys.WarningInverseBrush);
         Alias(ThemeKeys.Info2Brush, ThemeKeys.InfoBrush);
         Alias(ThemeKeys.InfoDarkBrush, ThemeKeys.InfoInverseBrush);
+
+        Alias(ThemeKeys.HeaderTextStyle, ThemeKeys.BaseTextStyle);
     }
 
     private static void AddTierPalette(ResourceDictionary dict, ThemeBase @base)
@@ -549,6 +562,13 @@ public static class CursorialTheme
 
         rgb[ThemeKeys.KeyTipTextWeight] = TextWeight.Normal;
 
+        rgb[ThemeKeys.BaseTextStyle] = BrushedStyle.Identity
+                                                   .WithForeground((IBrush)rgb[ThemeKeys.TextBrush]!);
+
+        rgb[ThemeKeys.HeaderTextStyle] = BrushedStyle.Identity
+                                                     .WithForeground((IBrush) rgb[ThemeKeys.AccentBrush]!)
+                                                     .Weighing(TextWeight.Bold);
+
         rgb[ThemeKeys.AnsiBlack] = SolidColorBrush.FromPalette(234);
         rgb[ThemeKeys.AnsiRed] = SolidColorBrush.FromPalette(167);
         rgb[ThemeKeys.AnsiGreen] = SolidColorBrush.FromPalette(71);
@@ -669,6 +689,12 @@ public static class CursorialTheme
         ansi16[ThemeKeys.InteractiveCueInverse] = false;
         ansi16[ThemeKeys.InteractiveCueWeight] = TextWeight.Bold;
         ansi16[ThemeKeys.InteractiveCueUnderline] = UnderlineStyle.Single;
+
+        ansi16[ThemeKeys.BaseTextStyle] = BrushedStyle.Identity.WithForeground((IBrush)ansi16[ThemeKeys.TextBrush]!);
+
+        ansi16[ThemeKeys.HeaderTextStyle] = BrushedStyle.Identity
+                                                        .WithForeground((IBrush) ansi16[ThemeKeys.AccentBrush]!)
+                                                        .Weighing(TextWeight.Bold);
 
         ansi16[ThemeKeys.AnsiBlack] = Palette(Ansi.Black);
         ansi16[ThemeKeys.AnsiRed] = Palette(Ansi.Red);

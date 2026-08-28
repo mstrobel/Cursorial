@@ -1,4 +1,76 @@
 <ResourceDictionary xmlns="https://cursorial.dev/ui" xmlns:x="https://cursorial.dev/xaml"
                     xmlns:input="using:Cursorial.UI.Input">
 
+  <!--<ControlTemplate x:Key="ListBoxChooserItemTemplate" TargetType="ListBoxItem">
+    <DockPanel>
+&lt;!&ndash;
+      <GlyphPresenter DockPanel.Dock="Left" Glyph="◆" Margin="0,0,1,0" VerticalAlignment="Top"
+                      Foreground="{StaticResource {x:Static ThemeKeys.AccentBrush}}"
+                      Visibility="{TemplateBinding IsSelected, Converter={x:Static BooleanToVisibilityConverter.Instance}}"/>
+&ndash;&gt;
+      <GlyphPresenter x:Name="SelectionIndicator" DockPanel.Dock="Left" Glyph="" Margin="1,0" VerticalAlignment="Top"
+                      Foreground="{DynamicResource {x:Static ThemeKeys.CoolBrush}}" Visibility="Hidden" />
+      <ContentPresenter x:Name="PART_ContentPresenter" VerticalAlignment="Bottom" ShowTrimmedContentInToolTip="True"/>
+    </DockPanel>
+    <ControlTemplate.Styles>
+      <Style Selector="ListBoxItem:selected /template/ #SelectionIndicator,
+                       ListBoxItem:focus /template/ #SelectionIndicator"
+             TargetType="ListBoxItem">
+        <Setter Property="Visibility" Value="Visible" />
+      </Style>
+    </ControlTemplate.Styles>
+  </ControlTemplate>
+
+  <ControlTemplate x:Key="ListBoxChooserTemplate" TargetType="ListBox">
+    <DockPanel>
+      <Grid DockPanel.Dock="Left" VerticalAlignment="Stretch">
+        <TextBlock VerticalAlignment="Top"
+                   Text="↑&#13;󰇙"
+                   MinWidth="1"
+                   Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}"
+                   Visibility="{Binding ElementName=PART_ScrollViewer, Path=(ScrollViewer.CanScrollUp), Converter={x:Static BooleanToVisibilityConverter.Instance}}" />
+        <TextBlock VerticalAlignment="Bottom"
+                   Text="󰇙&#13;↓"
+                   MinWidth="1"
+                   Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}"
+                   Visibility="{Binding ElementName=PART_ScrollViewer, Path=(ScrollViewer.CanScrollDown), Converter={x:Static BooleanToVisibilityConverter.Instance}}" />
+      </Grid>
+      <ScrollViewer x:Name="PART_ScrollViewer"
+                    HorizontalScrollBarVisibility="Hidden"
+                    VerticalScrollBarVisibility="Hidden">
+        <ItemsPresenter x:Name="PART_ItemsHost"/>
+      </ScrollViewer>
+    </DockPanel>
+  </ControlTemplate>
+
+  <Style x:Key="ListBoxChooserItemStyle" Selector="^">
+    <Setter Property="ListBox.Foreground" Value="{DynamicResource {x:Static ThemeKeys.TextBrush}}"/>
+    <Setter Property="ListBox.Template"   Value="{DynamicResource ListBoxChooserItemTemplate}"/>
+    <Style.Children>
+      <Style Selector="^:pointerover, ^:selected, ^:focus" TargetType="ListBoxItem">
+        <Setter Property="ListBox.Foreground" Value="{DynamicResource {x:Static ThemeKeys.TextDimBrush}}"/>
+      </Style>
+      <Style Selector="^:disabled" TargetType="ListBoxItem">
+        <Setter Property="TextElement.TextWeight" Value="Faint"/>
+      </Style>
+    </Style.Children>
+  </Style>
+
+  <Style x:Key="{x:Type ListBox}"         TargetType="ListBox">
+    <Setter Property="Background"         Value="Transparent"/>
+    <Setter Property="Foreground"         Value="{DynamicResource {x:Static ThemeKeys.TextBrush}}"/>
+    <Setter Property="Template"           Value="{DynamicResource ListBoxChooserTemplate}"/>
+    <Setter Property="ItemContainerStyle" Value="{DynamicResource ListBoxChooserItemStyle}"/>
+    <Setter Property="ItemsPanel">
+      <ItemsPanelTemplate>
+        <VirtualizingStackPanel IsItemsHost="True"
+                                KeyboardNavigation.TabNavigation="Once"
+                                ScrollViewer.VerticalScrollBarVisibility="Hidden"
+                                IsVirtualizing="{Binding Path=(VirtualizingPanel.IsVirtualizing), RelativeSource={RelativeSource TemplatedParent}}"
+                                VirtualizationMode="{Binding Path=(VirtualizingPanel.VirtualizationMode), RelativeSource={RelativeSource TemplatedParent}}"
+                                ScrollUnit="{Binding Path=(VirtualizingPanel.ScrollUnit), RelativeSource={RelativeSource TemplatedParent}}"/>
+      </ItemsPanelTemplate>
+    </Setter>
+  </Style>-->
+
 </ResourceDictionary>

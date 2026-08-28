@@ -66,6 +66,7 @@
     <File Path="docs\ui-layer-design\aurora-fall.html" />
     <File Path="docs\ui-layer-design\bars-nav-subsystem.md" />
     <File Path="docs\ui-layer-design\dataviews-design.md" />
+    <File Path="docs\ui-layer-design\inline-relative-move-plan.md" />
     <File Path="docs\ui-layer-design\judgment-textattributes-decomposition.md" />
     <File Path="docs\ui-layer-design\keytips-design.md" />
     <File Path="docs\ui-layer-design\proposal-fragment-opacity.md" />
@@ -97,7 +98,6 @@
   </Folder>
   <Folder Name="/Tests/">
     <Project Path="Cursorial.Animation.Tests/Cursorial.Animation.Tests.csproj" />
-    <Project Path="Cursorial.CLI.Tests/Cursorial.CLI.Tests.csproj" />
     <Project Path="Cursorial.Core.Tests/Cursorial.Core.Tests.csproj" />
     <Project Path="Cursorial.Drawing.Tests/Cursorial.Drawing.Tests.csproj" />
     <Project Path="Cursorial.Rendering.Tests/Cursorial.Rendering.Tests.csproj" />
@@ -116,9 +116,7 @@
   <Folder Name="/Templates/">
     <Project Path="Cursorial.Templates/Cursorial.Templates.csproj" />
   </Folder>
-  <Folder Name="/Tools/">
-    <Project Path="Cursorial.CLI/Cursorial.CLI.csproj" />
-  </Folder>
+  <Folder Name="/Tools/" />
   <Project Path="Cursorial.Animation/Cursorial.Animation.csproj" />
   <Project Path="Cursorial.Core/Cursorial.Core.csproj" />
   <Project Path="Cursorial.Drawing/Cursorial.Drawing.csproj" />

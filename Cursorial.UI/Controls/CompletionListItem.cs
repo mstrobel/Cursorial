@@ -11,7 +11,7 @@ namespace Cursorial.UI.Controls;
 /// It is a <see cref="ListBoxItem"/> with two deliberate departures. First it is <b>not focusable</b>
 /// and not a tab stop: the completion popup is a hint overlay, keyboard focus never leaves the text
 /// field it decorates, and a row that could take focus would break that the moment the user clicked
-/// one. (<see cref="ListBoxItem.OnMouseDown"/> still calls <c>Focus()</c>; with
+/// one. (<see cref="SelectableItemContainer.OnMouseDown"/> still calls <c>Focus()</c>; with
 /// <see cref="UIElement.Focusable"/> false that call is a no-op, which is exactly the behaviour we
 /// want and why it does not need suppressing.) Second, a left press <em>accepts</em> the row rather
 /// than merely selecting it — a completion list has no notion of a highlighted-but-uncommitted pick

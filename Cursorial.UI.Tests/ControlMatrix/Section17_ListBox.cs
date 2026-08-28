@@ -418,4 +418,58 @@ public sealed class Section17_ListBox
         host.RunUntilIdle();
         Assert.Equal(-1, lb.SelectedIndex); // cleared, NOT spuriously re-targeted to 0
     }
+    
+    [Fact] // C4.x: a Ctrl+click that DESELECTS clears that container without desyncing from the model
+    //        (the ApplySelection toggle-off path — the bug forced the container back to :selected).
+    public void C4_CtrlClickDeselect_Multiple_ClearsContainer()
+    {
+        var (host, lb) = Show(new ListBox { SelectionMode = SelectionMode.Multiple, ItemsSource = new[] { "a", "b", "c" } });
+        using var _ = host;
+
+        Click(lb, 0, KeyModifiers.Control);   // select a
+        Click(lb, 1, KeyModifiers.Control);   // + select b  → {0,1}
+        host.RunUntilIdle();
+        Assert.True(Item(lb, 0).IsSelected);
+        Assert.True(Item(lb, 1).IsSelected);
+
+        Click(lb, 1, KeyModifiers.Control);   // Ctrl+click b again → toggle OFF
+        host.RunUntilIdle();
+
+        Assert.True(Item(lb, 0).IsSelected);                          // a stays selected
+        Assert.False(Item(lb, 1).IsSelected);                         // b's container cleared (was forced back to true)
+        Assert.False(Item(lb, 1).HasCustomPseudoClass(":selected")); // …and :selected is off
+    }
+
+    [Fact] // C4.23b: setting SelectedIndex out-of-range from a LIVE selection clamps to none
+    //        (C4.23 only ever clamped from the default -1, so it never exercised clear-from-a-selection).
+    public void C4_23b_OutOfRangeSelectedIndex_ClearsLiveSelection()
+    {
+        var (host, lb) = Show(new ListBox { ItemsSource = new[] { "a", "b", "c" } });
+        using var _ = host;
+
+        lb.SelectedIndex = 1;                 // a live selection
+        host.RunUntilIdle();
+        Assert.Equal("b", lb.SelectedItem);
+
+        lb.SelectedIndex = 99;                // out of range → clamp to no selection
+        host.RunUntilIdle();
+        Assert.Equal(-1, lb.SelectedIndex);
+        Assert.Null(lb.SelectedItem);
+        Assert.False(Item(lb, 1).IsSelected); // the previously-selected container cleared too
+    }
+
+    [Fact] // C4.23c: SelectedItem set to a non-member from a live selection also clears (two-way-binding safety).
+    public void C4_23c_NonMemberSelectedItem_ClearsLiveSelection()
+    {
+        var (host, lb) = Show(new ListBox { ItemsSource = new[] { "a", "b", "c" } });
+        using var _ = host;
+
+        lb.SelectedIndex = 1;
+        host.RunUntilIdle();
+
+        lb.SelectedItem = "zzz";              // not in Items
+        host.RunUntilIdle();
+        Assert.Equal(-1, lb.SelectedIndex);
+        Assert.Null(lb.SelectedItem);
+    }
 }

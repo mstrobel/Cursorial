@@ -509,11 +509,13 @@ public class ScrollContentPresenter : UIElement
     internal bool TryGetContentRect(UIElement descendant, out Rect rect)
     {
         rect = default;
+
         if (_content is null)
             return false;
 
         var column = 0;
         var row = 0;
+
         for (UIElement? node = descendant; node is not null; node = node.VisualParent)
         {
             if (ReferenceEquals(node, _content))

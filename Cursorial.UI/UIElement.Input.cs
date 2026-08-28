@@ -421,7 +421,7 @@ public abstract partial class UIElement : IInteractionStateSink
     /// completion; raising it twice throws in DEBUG builds. Handlers must copy values out rather
     /// than retain the instance.
     /// </summary>
-    protected TArgs RentEvent<TArgs>(RoutedEvent<TArgs> routedEvent)
+    protected internal TArgs RentEvent<TArgs>(RoutedEvent<TArgs> routedEvent)
         where TArgs : RoutedEventArgs, new()
     {
         ArgumentNullException.ThrowIfNull(routedEvent);

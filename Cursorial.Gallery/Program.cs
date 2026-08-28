@@ -16,7 +16,7 @@ UIApplication app = UIApplication.DefaultBuilder()
                                  .Build();
 
 // app.NerdFontAvailable = true;
-// app.Theme = Cursorial.UI.Themes.IndigoDusk.IndigoDuskTheme.LoadTheme();
+// app.Theme = Cursorial.UI.Themes.CurioTheme.Snapshot;
 
 // KeyTips (#145): arm the Bars Alt-overlay accelerator over the ribbon. On a terminal that passes the ND23 gate
 // (a Kitty-keyboard / Win32 terminal with color), holding Alt shows amber badges over the tabs; letters drill

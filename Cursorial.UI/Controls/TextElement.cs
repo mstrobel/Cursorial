@@ -5,6 +5,7 @@ using Cursorial.Rendering.Media;
 using Cursorial.Rendering.Text;
 using Cursorial.Text;
 using Cursorial.UI.Data;
+using Cursorial.UI.Themes;
 
 namespace Cursorial.UI.Controls;
 
@@ -56,6 +57,8 @@ public abstract class TextElement
         // effects lane (A1) — not a per-owner-type registration. (Foreground fans out to
         // descendants via inheritance; the per-axis attribute properties are non-inheriting and
         // re-render only their own element — proposal-TextAttributes-decomposition §2.1.)
+        UIObject.AddGlobalEffects(PropertyEffects.AffectsRender, BaseTextStyleProperty);
+
         UIObject.AddGlobalEffects(PropertyEffects.AffectsRender, ForegroundProperty);
         UIObject.AddGlobalEffects(PropertyEffects.AffectsRender, TextWeightProperty);
         UIObject.AddGlobalEffects(PropertyEffects.AffectsRender, TextStyleProperty);
@@ -260,11 +263,15 @@ public abstract class TextElement
     public static readonly AttachedProperty<BrushedStyle> BaseTextStyleProperty =
         UIProperty.RegisterAttached<TextElement, UIElement, BrushedStyle>(
             "BaseTextStyle",
-            new PropertyMetadata<BrushedStyle>(BrushedStyle.Identity, Changed: OnBaseTextStyleChanged));
+            new PropertyMetadata<BrushedStyle>(BrushedStyle.Identity.WithForeground(Brushes.Default),
+                                               Changed: OnBaseTextStyleChanged)
+            {
+                DefaultResourceKey = ThemeKeys.BaseTextStyle
+            });
 
     // Per-element storage for the installed frame — non-inheriting, dies with the element (no CWT).
-    private static readonly AttachedProperty<TextStyleAxisFrame?> BaseTextStyleFrameProperty =
-        UIProperty.RegisterAttached<TextElement, UIElement, TextStyleAxisFrame?>("BaseTextStyleFrame");
+    private static readonly UIPropertyKey<TextStyleAxisFrame?> BaseTextStyleFramePropertyKey =
+        UIProperty.RegisterAttachedReadOnly<TextElement, UIElement, TextStyleAxisFrame?>("BaseTextStyleFrame");
 
     public static void SetBaseTextStyle(UIElement element, BrushedStyle value) =>
         element.SetValue(BaseTextStyleProperty, value);
@@ -274,7 +281,7 @@ public abstract class TextElement
 
     private static void OnBaseTextStyleChanged(UIObject sender, BrushedStyle oldValue, BrushedStyle newValue)
     {
-        var existing = sender.GetValue(BaseTextStyleFrameProperty);
+        var existing = sender.GetValue(BaseTextStyleFramePropertyKey.Property);
 
         if (newValue.IsIdentity)
         {
@@ -282,7 +289,7 @@ public abstract class TextElement
             if (existing is not null)
             {
                 sender.RemoveFrame(existing);
-                sender.ClearValue(BaseTextStyleFrameProperty);
+                sender.ClearValue(BaseTextStyleFramePropertyKey);
             }
             return;
         }
@@ -290,7 +297,7 @@ public abstract class TextElement
         if (existing is null)
         {
             var frame = new TextStyleAxisFrame(newValue); // seeds its entries before install
-            sender.SetValue(BaseTextStyleFrameProperty, frame);
+            sender.SetValue(BaseTextStyleFramePropertyKey, frame);
             sender.AddFrame(frame);
         }
         else
@@ -584,8 +591,6 @@ public abstract class TextElement
     {
         ArgumentNullException.ThrowIfNull(part);
 
-        ArgumentNullException.ThrowIfNull(part);
-
         var relativeSource = source is null ? RelativeSource.TemplatedParent : null;
 
 #if DEBUG
@@ -603,6 +608,26 @@ public abstract class TextElement
             CompiledBinding.For(SizingProperty,
                                 source: source,
                                 relativeSource: relativeSource));
+    }
+
+    /// <summary>
+    /// Forwards the <see cref="BaseTextStyleProperty">base text style</see> of a template's templated
+    /// parent onto a text-rendering <paramref name="part"/> (a caret/glyph/icon leaf), via
+    /// <c>TemplateBinding</c>. Values with a binding priority of Style or lower will forward. 
+    /// </summary>
+    public static void ForwardBaseTextStyle(UIObject part, UIObject? source = null)
+    {
+        ArgumentNullException.ThrowIfNull(part);
+
+        var relativeSource = source is null ? RelativeSource.TemplatedParent : null;
+
+        var binding = CompiledBinding.For(BaseTextStyleProperty,
+                                          source: source,
+                                          relativeSource: relativeSource);
+
+        binding.OpinionGateFloor = BindingPriority.Style;
+
+        part.SetBinding(BaseTextStyleProperty, binding);
     }
 
     /// <summary>Forwards <see cref="InverseProperty"/> alone from the templated parent onto a face part (the fill's one flag).</summary>

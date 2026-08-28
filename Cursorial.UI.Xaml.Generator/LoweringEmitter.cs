@@ -3546,12 +3546,21 @@ internal static class LoweringEmitter
         }
         var keyId = ResourceKeyArgExpr(c, in ext, canonical: true) ?? keyExpr;
 
-        // A {StaticResource} on a NON-UIElement object (a brush inside another resource) may target an
-        // init-only slot (SolidColorBrush.Color) that must be set in the object initializer — the eager-assign
-        // form here would be CS8852. Fence (the object-initializer routing is a later phase).
+        // Reaching here for a NON-UIElement target means EmitObject's init-only initializer route
+        // (InitOnlyStaticResourceExpr) declined this {StaticResource} — the object-initializer routing
+        // EXISTS, it just didn't apply. For a set-blocked slot — an init-only member of a
+        // readonly-record-struct (BrushedStyle.Foreground) or a read-only one — a post-construction assign
+        // would be CS8852, so it can only go through the initializer, and that route declines ONLY when the
+        // key can't be resolved at CONSTRUCTION (a forward reference, or a merged / enclosing / app-scope
+        // key the eager route can't reach) or the object carries its own <Resources> (own-scope shadowing).
+        // Report THAT — a blanket "non-UIElement" fence sent the author hunting the wrong problem. A
+        // settable non-UIElement slot is the one genuine gap (the post-construction resolved-resource assign).
         if (!XamlDataTypeScope.IsUIElement(c.CurrentObjectType))
         {
-            c.Todo($"{{StaticResource}} on a non-UIElement target ('{xm.Name}') not yet lowered");
+            var setBlocked = RegisteredOwner(xm) is null && ClrSetBlocked(c, xm.Name);
+            c.Todo(setBlocked
+                ? $"{{StaticResource}} for the init-only/read-only member '{xm.Name}' could not be resolved at construction — a forward reference, a key in a merged / enclosing / app scope the object-initializer route can't reach, or the object carries its own <Resources> — not yet lowered"
+                : $"{{StaticResource}} on a non-UIElement target ('{xm.Name}') is not yet lowered (post-construction assign of a resolved resource)");
             return;
         }
 

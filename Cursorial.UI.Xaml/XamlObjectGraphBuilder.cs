@@ -1287,6 +1287,18 @@ internal sealed class XamlObjectGraphBuilder
     /// </summary>
     private void FillResourceDictionaryMembers(int objectIndex, in ObjectRecord record, ResourceDictionary dict, int line, int column)
     {
+        // Two passes, and Styles goes LAST. FillStyles instantiates each <Style> eagerly, so a setter's
+        // {StaticResource K} is resolved right then against the ambient scope stack — which includes THIS
+        // dictionary (pushed in LoadResourceDictionary / ApplyResourcesFirst). But the frontend parser
+        // always emits the implicit keyed-entry content member AFTER property-element members like
+        // <ResourceDictionary.Styles> (XamlParser.ParseElementBody appends property elements inline as read
+        // and commits content children only in the post-loop epilogue), independent of document order. A
+        // single ordered pass would therefore realize the styles before any sibling key was authored via
+        // SetDeferred, and the eager StaticResource lookup (dict.TryGetValue) would MISS its own dictionary's
+        // key — CUR2103 at load. Author every non-Styles member first (Source / Merged / Theme dictionaries
+        // and the DEFERRED keyed slots), THEN the Styles. Keyed entries are deferred slots, so "first" only
+        // registers slots — it imposes no eager-instantiation ordering among them (they still realize
+        // lazily, and forward references between them keep working via the per-slot Realizing guard).
         for (int i = 0; i < record.MemberCount; i++)
         {
             var member = _doc.Members[record.MemberStart + i];
@@ -1311,7 +1323,7 @@ internal sealed class XamlObjectGraphBuilder
                     break;
 
                 case "Styles":
-                    FillStyles(dict, in member, mLine, mColumn);
+                    // Deferred to the second pass so it sees every sibling keyed slot (see the note above).
                     break;
 
                 default:
@@ -1328,6 +1340,17 @@ internal sealed class XamlObjectGraphBuilder
                     }
                     break;
             }
+        }
+
+        // Second pass: realize <ResourceDictionary.Styles> now that all sibling keyed slots exist.
+        for (int i = 0; i < record.MemberCount; i++)
+        {
+            var member = _doc.Members[record.MemberStart + i];
+            var resolved = member.MemberId >= 0 ? _doc.ResolvedMembers[member.MemberId] : null;
+            if (resolved?.Name != "Styles")
+                continue;
+
+            FillStyles(dict, in member, LineInfo.Line(member.PackedLineInfo), LineInfo.Column(member.PackedLineInfo));
         }
     }
 

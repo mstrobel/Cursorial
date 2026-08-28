@@ -265,11 +265,11 @@ public sealed class Section22_AnimationMarkup : LoaderTestBase
         Assert.NotNull(rung);
 
         var ctx = default(XamlValueContext);
-        var first = (Cursorial.UI.Optional<RegisterProbeInner>)rung!.ConvertFromString("x", in ctx);
+        var first = (Cursorial.UI.Optional<RegisterProbeInner>)rung!.ConvertFromString("x", in ctx)!;
         Assert.Equal(1, first.Value.Value);
 
         XamlConverters.Register(typeof(RegisterProbeInner), new RegisterProbeConverter(2)); // late override
-        var second = (Cursorial.UI.Optional<RegisterProbeInner>)rung.ConvertFromString("x", in ctx);
+        var second = (Cursorial.UI.Optional<RegisterProbeInner>)rung.ConvertFromString("x", in ctx)!;
         Assert.Equal(2, second.Value.Value); // the rung consulted the LIVE ladder, not a snapshot
     }
 }

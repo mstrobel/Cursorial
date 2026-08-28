@@ -1,5 +1,7 @@
 using System.Collections;
 using System.Collections.ObjectModel;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 
 using Cursorial.Markup;
 using Cursorial.UI.Input;
@@ -138,14 +140,14 @@ public class ItemsControl : Control
 
     /// <summary>Whether this control actually moves a current item on a type-ahead match. Off for a plain
     /// <see cref="ItemsControl"/> / <c>Menu</c> (so they never swallow a printable key); selectors + the tree opt in.</summary>
-    private protected virtual bool TextSearchNavigates => false;
+    protected virtual bool TextSearchNavigates => false;
 
     /// <summary>The current item index type-ahead cycles from (default −1 = none). Overridden by selectors to the selection.</summary>
-    private protected virtual int CurrentTextSearchIndex => -1;
+    protected virtual int CurrentTextSearchIndex => -1;
 
     /// <summary>The match text for the item at <paramref name="index"/>: per-item <see cref="TextSearch.TextProperty"/>, else
     /// the control's <see cref="TextSearch.TextPathProperty"/> evaluated against the item, else the item's <c>ToString()</c>.</summary>
-    private protected virtual string? GetTextSearchText(int index)
+    protected virtual string? GetTextSearchText(int index)
     {
         if (ItemContainerGenerator.ContainerFromIndex(index) is not { } container)
             return null;
@@ -171,7 +173,7 @@ public class ItemsControl : Control
     }
 
     /// <summary>Reacts to a type-ahead match (default: nothing). Selectors select it; the tree focuses + selects the node.</summary>
-    private protected virtual void OnTextSearchMatch(int containerIndex)
+    protected virtual void OnTextSearchMatch(int containerIndex)
     {
     }
 
@@ -315,7 +317,32 @@ public class ItemsControl : Control
     protected override void OnApplyTemplate()
     {
         base.OnApplyTemplate();
-        ItemsHost = GetTemplatePart<ItemsPresenter>("PART_ItemsHost");
+        ItemsHost = FindItemsPresenter();
+    }
+
+    protected internal ItemsPresenter? FindItemsPresenter()
+        => GetTemplatePart<ItemsPresenter>("PART_ItemsHost") ?? FindItemsPresenter(this, VisualChildrenList);
+
+    private static ItemsPresenter? FindItemsPresenter(UIElement element, List<UIElement>? children)
+    {
+        if (children is null) return element as ItemsPresenter;
+
+        foreach (var child in children)
+        {
+            if (child is ItemsPresenter presenter)
+                return presenter;
+
+            if (FindItemsPresenter(child, child.VisualChildrenList) is {} childResult)
+                return childResult;
+        }
+
+        foreach (var child in children)
+        {
+            if (FindItemsPresenter(child, child.LogicalChildrenList) is {} childResult)
+                return childResult;
+        }
+
+        return null;
     }
 
     // ── keyboard paging support (the Control.HandlesScrolling selectors) ──────────────────────────────
@@ -327,7 +354,9 @@ public class ItemsControl : Control
     /// is visible and a "page" is the whole list.</summary>
     internal ScrollViewer? FindItemsScrollViewer()
     {
-        for (UIElement? node = ItemsHost; node is not null; node = node.VisualParent)
+        for (UIElement? node = (UIElement?)ItemsHost ?? ItemsPanelFromItemsControl(this);
+             node is not null;
+             node = node.VisualParent)
         {
             if (node is ScrollViewer scroll)
                 return scroll;
@@ -379,6 +408,44 @@ public class ItemsControl : Control
         }
 
         return null;
+    }
+
+    private static readonly AttachedProperty<object?> ItemForItemContainerProperty =
+        ItemContainerGenerator.ItemForItemContainerProperty;
+    private static readonly AttachedProperty<ItemsControl?> ItemsControlForItemContainerProperty =
+        ItemContainerGenerator.ItemsControlForItemContainerProperty;
+
+    /// <summary>
+    /// Retrieves the items control that owns an item container.
+    /// </summary>
+    /// <param name="container">The item container whose owner is to be obtained.</param>
+    /// <returns>The items control that owns the given container, or null if no owner is found.</returns>
+    public static ItemsControl? ItemsControlForItemContainer(UIElement? container)
+        => container?.GetValue(ItemContainerGenerator.ItemsControlForItemContainerProperty);
+
+    /// <summary>Indicates whether a given UI element is a item container for an <see cref="ItemsControl"/>.</summary>
+    public static bool IsItemContainer([NotNullWhen(true)] UIElement? container)
+        => container?.GetValueSource(ItemForItemContainerProperty) is { Kind: ValueSourceKind.Local };
+
+    /// <summary>
+    /// Indicates whether a given UI element is a item container for an <see cref="ItemsControl"/> and attempts
+    /// to locate the <see cref="ItemsControl"/> to which the container belongs. While failure to locate the
+    /// <see cref="ItemsControl"/> is unlikely, it is possible.
+    /// </summary>
+    public static bool IsItemContainer(UIElement? container, out ItemsControl? itemsControl)
+    {
+        itemsControl = null;
+
+        if (IsItemContainer(container))
+        {
+            if (container.LogicalParent is ItemsControl lp)
+                itemsControl = lp;
+            else if (container.VisualParent is Panel { IsItemsHost: true, UIParent: ItemsControl ic })
+                itemsControl = ic;
+            return true;
+        }
+
+        return false;
     }
 }
 

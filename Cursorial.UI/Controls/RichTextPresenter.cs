@@ -1,5 +1,4 @@
 using Cursorial.Media;
-using Cursorial.Output;
 using Cursorial.Output.Capabilities;
 using Cursorial.Rendering;
 using Cursorial.Rendering.Fonts;
@@ -13,7 +12,7 @@ namespace Cursorial.UI.Controls;
 /// A primitive (design doc §12 / CD-P2L-1) that hosts <see cref="RichText"/>, painted via
 /// <see cref="RenderContext.DrawFormattedText(FormattedText, in Rect, in BrushedStyle)"/>.
 /// </summary>
-public sealed class RichTextPresenter : DrawnContentPresenter, ITrimmedTextSource
+public sealed class RichTextPresenter : DrawnContentPresenter, ITrimmedTextSource, IRichTextCapable
 {
     /// <summary>The <see cref="RichText">rich text</see> to render or <see cref="TextMarkup.Parse(string)">markup
     /// to parse</see>; (<see langword="null"/> = none ⇒ the placeholder shows).</summary>
@@ -52,6 +51,10 @@ public sealed class RichTextPresenter : DrawnContentPresenter, ITrimmedTextSourc
     public static readonly StyledProperty<IBrush?> ForegroundProperty =
         TextElement.ForegroundProperty.AddOwner<RichTextPresenter>();
 
+    /// <inheritdoc cref="TextElement.BaseTextStyleProperty"/>
+    public static readonly StyledProperty<BrushedStyle> BaseTextStyleProperty =
+        TextElement.BaseTextStyleProperty.AddOwner<RichTextPresenter>();
+
     // The shared parse/format cache (UNIFIED-TEXT-SCOPING Scope A): it owns the cache slots, the
     // freshness key — including the (ResourceVersion, ActualThemeVariant) parse terms parsing a
     // string Source through ResourceBrushResolver requires (resolution is static-per-parse and the
@@ -65,6 +68,10 @@ public sealed class RichTextPresenter : DrawnContentPresenter, ITrimmedTextSourc
 
     static RichTextPresenter()
     {
+        BaseTextStyleProperty.OverrideMetadata<RichTextPresenter>(
+            new PropertyMetadata<BrushedStyle>(Changed: OnRenderAffectingPropertyChanged)
+        );
+
         ForegroundProperty.OverrideMetadata<RichTextPresenter>(
             new PropertyMetadata<IBrush?>(Changed: OnRenderAffectingPropertyChanged)
         );
@@ -98,6 +105,12 @@ public sealed class RichTextPresenter : DrawnContentPresenter, ITrimmedTextSourc
     }
 
     /// <inheritdoc cref="TextTrimmingProperty"/>
+    public BrushedStyle? BaseTextStyle
+    {
+        get => GetValue(BaseTextStyleProperty);
+        set => SetValue(BaseTextStyleProperty, value);
+    }
+
     public TextTrimming TextTrimming
     {
         get => GetValue(TextTrimmingProperty);
@@ -210,13 +223,14 @@ public sealed class RichTextPresenter : DrawnContentPresenter, ITrimmedTextSourc
             // M3: a null resolved foreground paints with Brushes.Default (the terminal-default
             // ink) instead of skipping the draw — the default is theme-key-backed, so a null only
             // arises when an application states one, and "text vanishes" was never the intent.
-            var fg = TextElement.GetForeground(this) ?? Brushes.Default;
             var bounds = context.Bounds;
-            var attributes = TextElement.ComposeAttributes(this);
 
-            context.DrawFormattedText(ft, bounds,
-                                      new BrushedStyle { Foreground = fg }
-                                          .Imposing(attributes.Flags, attributes.UnderlineShape));
+            var style = BrushedStyle.FromElement(this);
+
+            if (style.Foreground is null)
+                style = style with { Foreground = Brushes.Default };
+
+            context.DrawFormattedText(ft, bounds, style);
         }
     }
 

@@ -71,13 +71,6 @@ internal static class ContentRealization
                 return null;
             }
 
-            case DeferredContent dc:
-            {
-                var realized = dc.Realize();
-                AdoptElementContent(host, ForwardTextAttributeAxes(host, realized));
-                return realized;
-            }
-
             // ③ a UIElement passes through: it is a logical child of the templated parent (so it
             // inherits the host's DataContext) and a visual child of the presenter. When the presenter
             // is a template part, the templated parent owns the logical adoption (the ContentControl);
@@ -179,6 +172,7 @@ internal static class ContentRealization
         // LocalValue the forward would occlude even conditional rules (LocalValue > StyleTrigger).
         using (TemplateInstantiationScope.Enter())
         {
+            TextElement.ForwardBaseTextStyle(leaf, source);
             TextElement.ForwardAllAxes(leaf, source, host.ForwardTextInverse);
 
             if (leaf is IRichTextCapable)

@@ -34,9 +34,9 @@ public class BasedOnSkipSelfLoweringTests
 
         var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(lowered)));
         var root = (StackPanel)System.Activator.CreateInstance(assembly.GetType("GenApp.BoView")!)!;
-        var outer = (Style)root.Resources["K"];
+        var outer = (Style)root.Resources["K"]!;
         var button = (Button)root.Children[0];
-        var derived = (Style)button.Resources["K"];
+        var derived = (Style)button.Resources["K"]!;
 
         Assert.NotSame(outer, derived);
         Assert.Same(outer, derived.BasedOn); // BasedOn skipped self, resolved the OUTER K (parity with the loader)

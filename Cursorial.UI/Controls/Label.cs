@@ -9,7 +9,7 @@ namespace Cursorial.UI.Controls;
 /// <c>Target ?? FocusManager.FindNext(this)</c>. A <see cref="Label"/> is never focusable / never a
 /// tab stop.
 /// </summary>
-public class Label : ContentControl, IAccessKeyTarget
+public class Label : ContentControl, IAccessKeyTarget, IRichTextCapable
 {
     /// <summary>The element focused on access-key activation; <see langword="null"/> ⇒ <c>FocusManager.FindNext(this)</c> (doc §12.7).</summary>
     public static readonly StyledProperty<UIElement?> TargetProperty =

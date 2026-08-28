@@ -112,7 +112,7 @@ public static class NameScope
 
         for (UIElement? a = element; a is not null; a = a.LogicalParent)
         {
-            if (ReferenceEquals(element.TemplatedParent, a) && GetTemplateNameScope(a) is { } templateScope)
+            if (ReferenceEquals(element.TemplatedParent, a) && GetTemplateNameScope(a) is {} templateScope)
                 return templateScope;
 
             if (GetNameScope(a) is { } documentScope)

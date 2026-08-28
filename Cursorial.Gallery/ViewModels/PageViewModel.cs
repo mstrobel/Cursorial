@@ -33,4 +33,7 @@ public abstract class PageViewModel : ViewModelBase
         // ReSharper disable once ValueParameterNotUsed
         protected set {}
     }
+
+    protected internal virtual void OnAppStarted() {}
+    protected internal virtual void OnThemeChanged() {}
 }

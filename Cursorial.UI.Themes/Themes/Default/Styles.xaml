@@ -54,11 +54,11 @@
          attached override to colored Unicode marks; a caps-ascii terminal never matches and keeps the ASCII base.
          The glyph triple is the '|'-separated "unchecked|checked|indeterminate" GlyphSetCarrier form. -->
     <Style Selector="CheckBox" RequiresCapabilities="Unicode">
-      <Setter Property="ToggleGlyph.Glyphs" Value="[ ]|[✓]|[▪]"/>
+      <Setter Property="ToggleGlyph.Glyphs" Value="{DynamicResource {x:Static ThemeKeys.UnicodeCheckBoxGlyphs}}"/>
     </Style>
 
     <Style Selector="RadioButton" RequiresCapabilities="Unicode">
-      <Setter Property="ToggleGlyph.Glyphs" Value="( )|(●)|(-)"/>
+      <Setter Property="ToggleGlyph.Glyphs" Value="{DynamicResource {x:Static ThemeKeys.UnicodeRadioGlyphs}}"/>
     </Style>
 
     <!-- caps-nocolor interactive-state layer (design doc §11.8a): colors collapse to Default under NoColor, so the
@@ -301,6 +301,10 @@
           <Setter Property="Panel.Background" Value="#d11f5e"/>
         </Style>
       </Style.Children>
+    </Style>
+
+    <Style x:Key="Theme.Header.HeaderTextStyle" Selector="TextBlock.header, Label.header, AccessTextPresenter.header, RichTextPresenter.header">
+      <Setter Property="TextElement.BaseTextStyle" Value="{DynamicResource {x:Static ThemeKeys.HeaderTextStyle}}"/>
     </Style>
 
   </ResourceDictionary.Styles>

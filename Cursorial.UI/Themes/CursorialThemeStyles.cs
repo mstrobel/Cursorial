@@ -49,16 +49,16 @@ internal static class CursorialThemeStyles
                    Key = "Theme.ActiveSelectionStyle",
                    Children =
                    {
-                       new Style("^ :is(ListBoxItem):selected, " +
-                                 "^ :is(TreeViewItem):selected, " +
-                                 "^ :is(ListViewItem):selected")
-                          .SetResource(Panel.BackgroundProperty, ThemeKeys.ListItemBackgroundSelected)
-                          .SetResource(TextElement.ForegroundProperty, ThemeKeys.ListItemForegroundSelected),
-                       new Style("^ :is(ListBoxItem):focus-visible:selected, " +
-                                 "^ :is(TreeViewItem):focus-visible:selected, " +
-                                 "^ :is(ListViewItem):focus-visible:selected")
-                          .SetResource(Panel.BackgroundProperty, ThemeKeys.ListItemBackgroundFocus)
-                          .SetResource(TextElement.ForegroundProperty, ThemeKeys.ListItemForegroundFocus)
+                       // new Style("^ :is(ListBoxItem):selected, " +
+                       //           "^ :is(TreeViewItem):selected, " +
+                       //           "^ :is(ListViewItem):selected")
+                       //    .SetResource(Panel.BackgroundProperty, ThemeKeys.ListItemBackgroundSelected)
+                       //    .SetResource(TextElement.ForegroundProperty, ThemeKeys.ListItemForegroundSelected),
+                       // new Style("^ :is(ListBoxItem):focus-visible:selected, " +
+                       //           "^ :is(TreeViewItem):focus-visible:selected, " +
+                       //           "^ :is(ListViewItem):focus-visible:selected")
+                       //    .SetResource(Panel.BackgroundProperty, ThemeKeys.ListItemBackgroundFocus)
+                       //    .SetResource(TextElement.ForegroundProperty, ThemeKeys.ListItemForegroundFocus)
                    }
                };
     }
@@ -79,7 +79,7 @@ internal static class CursorialThemeStyles
     internal static Style CapsUnicodeCheckBoxGlyphs()
     {
         var style = new Style("CheckBox") { Key = "Theme.CapsUnicode.CheckBox", RequiresCapabilities = StyleCapabilities.Unicode };
-        style.Setters.Add(new Setter(ToggleGlyph.GlyphsProperty, (GlyphSetCarrier?)new GlyphSetCarrier("[ ]", "[✓]", "[▪]")));
+        style.Setters.Add(new Setter(ToggleGlyph.GlyphsProperty, new ResourceReference(ThemeKeys.UnicodeCheckBoxGlyphs)));
         return style;
     }
 
@@ -87,7 +87,7 @@ internal static class CursorialThemeStyles
     internal static Style CapsUnicodeRadioGlyphs()
     {
         var style = new Style("RadioButton") { Key = "Theme.CapsUnicode.RadioButton", RequiresCapabilities = StyleCapabilities.Unicode };
-        style.Setters.Add(new Setter(ToggleGlyph.GlyphsProperty, (GlyphSetCarrier?)new GlyphSetCarrier("( )", "(●)", "(-)")));
+        style.Setters.Add(new Setter(ToggleGlyph.GlyphsProperty, new ResourceReference(ThemeKeys.UnicodeRadioGlyphs)));
         return style;
     }
 
@@ -625,5 +625,16 @@ internal static class CursorialThemeStyles
                           .SetResource(Control.BorderPenProperty, ThemeKeys.DangerBorderPen),
                    }
                };
+    }
+
+    internal static Style HeaderTextStyle()
+    {
+        // Owner-anchor FIDELITY (review): the template legs keep develop's owner shapes — Border chrome of
+        // ANY owner, Panel chrome only of PANEL owners or the SURFACE ROOT (the root-owner legs ride the
+        // still-stamped back-compat caps-* classes; "owner is a surface root" has no class-free selector).
+        return new Style("TextBlock.header, AccessTextPresenter.header, RichTextPresenter.header")
+               {
+                   Key = "Theme.HeaderTextStyle"
+               }.SetResource(TextElement.BaseTextStyleProperty, ThemeKeys.HeaderTextStyle);
     }
 }

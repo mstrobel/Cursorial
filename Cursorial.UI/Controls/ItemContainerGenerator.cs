@@ -35,6 +35,10 @@ public sealed class ItemContainerGenerator
     internal static readonly AttachedProperty<object?> ItemForItemContainerProperty =
         UIProperty.RegisterAttached<ItemContainerGenerator, UIElement, object?>("ItemForItemContainer");
 
+    /// <summary>Stamps each container with the items control that currently owns it (internal — the item↔container back-link).</summary>
+    internal static readonly AttachedProperty<ItemsControl?> ItemsControlForItemContainerProperty =
+        UIProperty.RegisterAttached<ItemContainerGenerator, UIElement, ItemsControl?>("ItemsControlForItemContainer");
+
     private readonly ItemsControl _owner;
     private readonly List<UIElement> _containers = []; // EAGER: index-aligned with the current source (ordering; item is the stamp)
     private ItemsSourceView? _view;
@@ -67,7 +71,7 @@ public sealed class ItemContainerGenerator
 
     /// <summary>The number of containers held in the recycle pool (test hook — pins the recycle push-guards).</summary>
     internal int PooledCount => _recyclePool.Count;
-
+    
     /// <summary>The realized container for <paramref name="index"/>, or null if out of range OR (virtualizing)
     /// not currently materialized.</summary>
     public UIElement? ContainerFromIndex(int index)
@@ -94,6 +98,9 @@ public sealed class ItemContainerGenerator
     /// <see cref="ContainerFromIndex"/>. Equals the item count in BOTH modes (virtualizing keeps selection/keyboard
     /// nav item-indexed; <see cref="ContainerFromIndex"/> is null for an unrealized index).</summary>
     public int ContainerCount => _virtualizing ? _itemCount : _containers.Count;
+
+    /// <summary>The total number of items in the items source.</summary>
+    internal int ItemCount => _virtualizing ? _itemCount : _containers.Count;
 
     /// <summary>Swaps the items source (control's ItemsSource/Items change): unrealizes the old, realizes the new
     /// (eager) or resets the sparse store realizing nothing (virtualizing), fires Reset.</summary>
@@ -259,6 +266,7 @@ public sealed class ItemContainerGenerator
         var item = _view![index];
         var container = _owner.CreateContainer(item, out var isOwnContainer);
         container.SetValue(ItemForItemContainerProperty, item); // the item↔container back-link (own-container ⇒ stamp == container)
+        container.SetValue(ItemsControlForItemContainerProperty, _owner); // the item↔container back-link (own-container ⇒ stamp == container)
         _owner.AddContainerLogical(container); // logical child of the ItemsControl ⇒ inheritance flows from the control
         _owner.PrepareContainerForItem(container, item, isOwnContainer);
         return container;
@@ -273,6 +281,7 @@ public sealed class ItemContainerGenerator
         if (!ReferenceEquals(container, item))
             container.ClearValue(UIElement.DataContextProperty);
         container.ClearValue(ItemForItemContainerProperty);
+        container.ClearValue(ItemsControlForItemContainerProperty);
     }
 
     /// <summary>Releases the source subscription on owner teardown — unhooks the view's
@@ -487,6 +496,7 @@ public sealed class ItemContainerGenerator
         }
 
         container.SetValue(ItemForItemContainerProperty, item);
+        container.SetValue(ItemsControlForItemContainerProperty, _owner);
         _owner.AddContainerLogical(container);
         _owner.PrepareContainerForItem(container, item, isOwn);
         container.SetPseudoClassFromMapping(":alternate", (index & 1) == 1); // item-indexed parity (VV0.7)

@@ -2,25 +2,43 @@
                     xmlns:x="https://cursorial.dev/xaml">
 
   <ResourceDictionary.ThemeDictionaries>
-    <!-- ──────────────────────────── Dark · TrueColor (RGB, Tokyo Night) ──────────────────────────── -->
-    <ResourceDictionary x:Key="Dark+Truecolor"></ResourceDictionary>
 
-    <!-- ──────────────────────────── Light · TrueColor (RGB, Tokyo Night) ─────────────────────────── -->
-    <ResourceDictionary x:Key="Light+Truecolor"></ResourceDictionary>
+    <!-- Dark · Ansi256 (RGB) -->
+    <ResourceDictionary x:Key="Dark+Ansi256">
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.TextBrush}"                      Color="Default"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.TextDimBrush}"                   Color="{x:Static ColorPalette.Ansi256[68]}"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.AccentBrush}"                    Color="{x:Static ColorPalette.Ansi256[33]}"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.Accent2Brush}"                   Color="{x:Static ColorPalette.Ansi256[39]}"/>
+    </ResourceDictionary>
 
-    <!-- ───────────────────────────── Dark · Ansi256 (RGB, Tokyo Night) ───────────────────────────── -->
-    <ResourceDictionary x:Key="Dark+Ansi256"></ResourceDictionary>
+    <!-- Light · Ansi256 (RGB) -->
+    <ResourceDictionary x:Key="Light+Ansi256">
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.TextBrush}"                      Color="Default"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.TextDimBrush}"                   Color="{x:Static ColorPalette.Ansi256[26]}"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.AccentBrush}"                    Color="{x:Static ColorPalette.Ansi256[27]}"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.Accent2Brush}"                   Color="{x:Static ColorPalette.Ansi256[25]}"/>
+    </ResourceDictionary>
 
-    <!-- ───────────────────────────── Light · Ansi256 (RGB) ───────────────────────────── -->
-    <ResourceDictionary x:Key="Light+Ansi256"></ResourceDictionary>
+    <!-- Shared · Ansi256 (RGB) -->
+    <ResourceDictionary x:Key="Ansi256">
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.CoolBrush}"                      Color="{x:Static ColorPalette.Ansi256[198]}"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.Cool2Brush}"                     Color="{x:Static ColorPalette.Ansi256[198]}"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.CoolDarkBrush}"                  Color="{x:Static ColorPalette.Ansi256[162]}"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.CoolInverseBrush}"               Color="{x:Static ColorPalette.Ansi256[162]}"/>
+    </ResourceDictionary>
 
-    <!-- ───────────────────────────── Dark · Ansi16 (palette indices) ───────────────────────────── -->
-    <ResourceDictionary x:Key="Dark+Ansi16"></ResourceDictionary>
+    <!-- Dark · Ansi16 (Palette Indexes) -->
+    <ResourceDictionary x:Key="Dark+Ansi16">
+    </ResourceDictionary>
 
-    <!-- ───────────────────────────── Light · Ansi16 (palette indices) ───────────────────────────── -->
-    <ResourceDictionary x:Key="Light+Ansi16"></ResourceDictionary>
+    <!-- Light · Ansi16 (Palette Indexes) -->
+    <ResourceDictionary x:Key="Light+Ansi16">
+    </ResourceDictionary>
 
-    <!-- ───────────────────────────── NoColor (every color role → Default; ASCII pens) ───────────────────────────── -->
-    <ResourceDictionary x:Key="NoColor"></ResourceDictionary>
+    <!-- NoColor (every color role → Default; ASCII pens) -->
+    <ResourceDictionary x:Key="NoColor">
+      <x:Null x:Key="{x:Static ThemeKeys.ElevationPopup}" />
+    </ResourceDictionary>
+
   </ResourceDictionary.ThemeDictionaries>
 </ResourceDictionary>

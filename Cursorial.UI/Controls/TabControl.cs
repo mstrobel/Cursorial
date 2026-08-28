@@ -62,7 +62,7 @@ public class TabControl : SelectingItemsControl
     // No type-ahead: a TabControl's content lives in its visual subtree, so unhandled typing in the content would
     // bubble up and switch tabs. (WPF scopes tab type-ahead to the header strip; that header-scoped form is a
     // possible refinement — for now type-ahead is off so content typing is never hijacked.)
-    private protected override bool TextSearchNavigates => false;
+    protected override bool TextSearchNavigates => false;
 
     /// <inheritdoc/>
     protected override UIElement GetContainerForItemOverride() => new TabItem();
@@ -72,8 +72,12 @@ public class TabControl : SelectingItemsControl
 
     // A command tab (IsSelectable=false — the Ribbon's File tab) is focusable but never the selected tab; the base
     // model consults this on EVERY selection path (auto-select, programmatic, IsSelected fold, gesture, type-ahead).
-    private protected override bool IsIndexSelectable(int index)
-        => ItemContainerGenerator.ContainerFromIndex(index) is not TabItem { IsSelectable: false };
+    protected override bool IsContainerSelectable(UIElement container)
+        => container switch
+           {
+               TabItem { IsSelectable: false } => false,
+               _                               => base.IsContainerSelectable(container)
+           };
 
     // Auto-select the first SELECTABLE, non-Collapsed tab when nothing is selected (a tab control with content but no
     // selection is useless). A command tab (File) or a hidden tab is skipped; if none qualifies, selection stays -1.

@@ -144,9 +144,6 @@ public class ListView : SelectingItemsControl
     private ListViewHeaderPresenter? _headerPart;
     private int _columnStructureVersion;
     private bool _sorting; // suppresses the removal re-select while the built-in sort permutes the list
-    private int? _pendingFocusRepairIndex;
-    private object? _pendingFocusRepairItem;
-    private bool _pendingFocusRepairScheduled;
 
     /// <summary>Creates a list view (Details, single selection; the list itself is not a tab stop — its items host is).</summary>
     public ListView()
@@ -338,8 +335,6 @@ public class ListView : SelectingItemsControl
         if (details && _columnLayout.Reconcile(Columns, ColumnSpacing))
             InvalidateColumnConsumers();
 
-        ScheduleFocusRepair();
-
         return size;
     }
 
@@ -362,7 +357,7 @@ public class ListView : SelectingItemsControl
         listView.ApplyViewToTemplate();
         listView.PushViewToContainers();
         listView.InvalidateColumnStructure();
-        listView.RepairFocusedIndex(oldFocusIndex, oldFocusItem);
+        listView.RepairFocus(oldFocusIndex, oldFocusItem);
     }
 
     private static ItemsPanelTemplate PanelTemplateFor(ListViewViewMode view)
@@ -407,82 +402,10 @@ public class ListView : SelectingItemsControl
         }
     }
 
-    protected override void OnLostFocus(FocusChangedEventArgs e)
-    {
-        base.OnLostFocus(e);
-
-        if (_pendingFocusRepairIndex >= 0 && (IsKeyboardFocusWithin is false || e.Method.IsUserInitiated()))
-            ClearPendingFocus();
-    }
-
     protected override void OnDetachedFromTree(in TreeAttachmentEventArgs e)
     {
-        ClearPendingFocus();
+        ClearPendingFocusRepair();
         base.OnDetachedFromTree(in e);
-    }
-
-    private void RepairFocusedIndex(int focusIndex, object? item)
-    {
-        ClearPendingFocus();
-
-        _pendingFocusRepairIndex = focusIndex;
-        _pendingFocusRepairItem = item;
-
-        ScheduleFocusRepair();
-    }
-
-    private void ClearPendingFocus()
-    {
-        _pendingFocusRepairIndex = null;
-        _pendingFocusRepairItem = null;
-        _pendingFocusRepairScheduled = false;
-    }
-
-    private void ScheduleFocusRepair()
-    {
-        if (_pendingFocusRepairScheduled || _pendingFocusRepairIndex is not >= 0)
-            return;
-
-        _pendingFocusRepairScheduled = true;
-        UIApplication.Current?.Dispatcher.Post(TryRestorePendingFocus);
-    }
-
-    private void TryRestorePendingFocus()
-    {
-        _pendingFocusRepairScheduled = false;
-
-        if (GetLayoutManager()?.HasQueuedWork is true) return;
-
-        if (_pendingFocusRepairIndex is {} focusIndex and >= 0 &&
-            IsAttachedToTree &&
-            ItemContainerGenerator is { ContainerCount: var cc and > 0 } cg &&
-            focusIndex < cc &&
-            cg.ContainerFromIndex(focusIndex) is {} restoredFocus &&
-            cg.ItemFromContainer(restoredFocus) is var restoredItem &&
-            ItemsPanelFromItemsControl(this) is {} itemsPanel &&
-            UIApplication.Current?.FocusManager.FocusedElement is var focused)
-        {
-            if (_pendingFocusRepairItem is null || Equals(_pendingFocusRepairItem, restoredItem))
-            {
-                if (itemsPanel.IsKeyboardFocusWithin ||
-                    focused is null ||
-                    FocusManager.GetFocusScope(focused) is {} fs && FocusManager.GetRetainsFocus(fs) is false)
-                {
-                    restoredFocus.Focus(FocusNavigationMethod.Restore);
-                }
-                else
-                {
-                    if (FindItemsScrollViewer() is { Presenter: {} scp } sv &&
-                        scp.TryGetContentRect(restoredFocus, out var rect))
-                    {
-                        sv.EnsureVisible(rect);
-                    }
-                    itemsPanel.SetValue(FocusManager.FocusedElementProperty, restoredFocus);
-                }
-            }
-
-            ClearPendingFocus();
-        }
     }
 
     private static void OnColumnLayoutAffectingChanged(UIObject sender, int oldValue, int newValue)
@@ -848,23 +771,8 @@ public class ListView : SelectingItemsControl
     private static bool IsSpace(KeyEventArgs e)
         => e.Key == Key.Space || (e is { Key: Key.Character, Text.Length: 1 } && e.Text.Span[0] == ' ');
 
-    private void MoveCurrent(int target, KeyModifiers modifiers)
-    {
-        ItemContainerGenerator.ContainerFromIndex(target)?.Focus(FocusNavigationMethod.Directional); // ⇒ :focus-visible
-
-        // ReSharper disable once RedundantJumpStatement
-        if (SelectionMode == SelectionMode.Single)
-            Selection.Select(target); // selection-follows-focus
-        else if ((modifiers & KeyModifiers.Control) != 0)
-            return; // Ctrl+arrow: move focus only, leave the selection alone
-        else if ((modifiers & KeyModifiers.Shift) != 0)
-            Selection.SelectRangeFromAnchor(target);
-        else
-            Selection.Select(target);
-    }
-
     /// <inheritdoc/>
-    private protected override void OnTextSearchMatch(int containerIndex)
+    protected override void OnTextSearchMatch(int containerIndex)
     {
         base.OnTextSearchMatch(containerIndex); // selection-follows
         ItemContainerGenerator.ContainerFromIndex(containerIndex)?.Focus(FocusNavigationMethod.Directional);
@@ -872,7 +780,7 @@ public class ListView : SelectingItemsControl
 
     /// <summary>Type-ahead matches the same text the non-Details views display, so
     /// <see cref="DisplayMemberPath"/> is honored before falling back to the shared item rules.</summary>
-    private protected override string? GetTextSearchText(int index)
+    protected override string? GetTextSearchText(int index)
     {
         if (DisplayMemberPath is { Length: > 0 } path && ItemFromIndex(index) is { } item)
             return TextSearch.EvaluatePath(item, path);
@@ -881,7 +789,7 @@ public class ListView : SelectingItemsControl
     }
 
     /// <inheritdoc/>
-    private protected override void OnSelectionEmptiedByRemoval(int removalIndex)
+    protected override void OnSelectionEmptiedByRemoval(int removalIndex)
     {
         if (_sorting)
             return; // a sort permutation removes-and-reinserts; RestoreSelection has the real answer

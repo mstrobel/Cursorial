@@ -2,8 +2,30 @@ using System.Collections;
 
 namespace Cursorial.Media;
 
+public enum Ansi16Color
+{
+    Black = 0,
+    Red = 1,
+    Green = 2,
+    Yellow = 3,
+    Blue = 4,
+    Magenta = 5,
+    Cyan = 6,
+    White = 7,
+    LightBlack = 8,
+    LightRed = 9,
+    LightGreen = 10,
+    LightYellow = 11,
+    LightBlue = 12,
+    LightMagenta = 13,
+    LightCyan = 14,
+    LightWhite = 15
+}
+
 public interface IColorPalette : IReadOnlyList<Color>
 {
+    Color this[Ansi16Color color] { get; }
+
     static IColorPalette Empty { get; } = new ColorPalette(Array.Empty<Color>());
 }
 
@@ -84,4 +106,14 @@ public sealed class ColorPalette : IColorPalette
     public int Count => _colors.Count;
 
     public Color this[int index] => _colors[index];
+
+    public Color this[Ansi16Color color]
+    {
+        get
+        {
+            if (Enum.IsDefined(color))
+                return _colors[(int) color];
+            throw new ArgumentOutOfRangeException(nameof(color));
+        }
+    }
 }

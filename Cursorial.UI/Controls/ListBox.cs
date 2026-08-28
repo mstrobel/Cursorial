@@ -11,21 +11,10 @@ namespace Cursorial.UI.Controls;
 /// </summary>
 public class ListBox : SelectingItemsControl
 {
-    private int _pendingFocusIndex = -1; // a keyboard-nav focus parked until its (virtualized) container materializes
-
     /// <summary>Creates a list box (not itself a tab stop; the items host is the single tab stop).</summary>
-    public ListBox()
+    static ListBox()
     {
-        IsTabStop = false;
-        // ItemsPanel = new FuncTemplateContent(static _ =>
-        // {
-        //     var panel = new StackPanel();
-        //     KeyboardNavigation.SetTabNavigation(panel, KeyboardNavigationMode.Once); // the group is one tab stop
-        //     return panel;
-        // });
-
-        // Completes a parked keyboard-nav focus once the scrolled-to container materializes (virtualizing mode).
-        ItemContainerGenerator.ContainersRealizedChanged += OnContainersRealizedForPendingFocus;
+        IsTabStopProperty.OverrideDefaultValue<ListBox>(false);
     }
 
     /// <inheritdoc/>
@@ -38,14 +27,14 @@ public class ListBox : SelectingItemsControl
     protected override bool IsItemItsOwnContainer(object? item) => item is ListBoxItem;
 
     /// <inheritdoc/>
-    private protected override void OnTextSearchMatch(int containerIndex)
+    protected override void OnTextSearchMatch(int containerIndex)
     {
         base.OnTextSearchMatch(containerIndex); // selection-follows
         ItemContainerGenerator.ContainerFromIndex(containerIndex)?.Focus(FocusNavigationMethod.Directional); // ⇒ :focus-visible
     }
 
     /// <inheritdoc/>
-    private protected override void OnSelectionEmptiedByRemoval(int removalIndex)
+    protected override void OnSelectionEmptiedByRemoval(int removalIndex)
     {
         // CD-P9-9: a removal dropped the whole selection — re-select the nearest surviving item (the item that
         // slid into the removed slot, clamped to the end).
@@ -131,66 +120,4 @@ public class ListBox : SelectingItemsControl
     // is allowed (toggle), so the only excluded combos are other modifiers — but for a list, treat any Space-ish as toggle.
     private static bool IsSpace(KeyEventArgs e)
         => e.Key == Key.Space || (e is { Key: Key.Character, Text.Length: 1 } && e.Text.Span[0] == ' ');
-
-    private void MoveCurrent(int target, KeyModifiers modifiers)
-    {
-        BringTargetIntoFocus(target); // ⇒ :focus-visible (realized now, or scrolled-then-focused when virtualized)
-
-        // ReSharper disable once RedundantJumpStatement
-        if (SelectionMode == SelectionMode.Single)
-            Selection.Select(target); // selection-follows-focus
-        else if ((modifiers & KeyModifiers.Control) != 0)
-            return; // Ctrl+arrow: move focus only, leave the selection alone
-        else if ((modifiers & KeyModifiers.Shift) != 0)
-            Selection.SelectRangeFromAnchor(target);
-        else
-            Selection.Select(target);
-    }
-
-    // Realized ⇒ focus immediately (its GotFocus brings it into view through the ScrollViewer). Virtualized +
-    // off-band (the container is not materialized) ⇒ scroll its ESTIMATED position into the realization window,
-    // then focus it the moment it materializes (OnContainersRealizedForPendingFocus) — keyboard nav reaches an
-    // item that does not exist yet.
-    private void BringTargetIntoFocus(int target)
-    {
-        if (ItemContainerGenerator.ContainerFromIndex(target) is { } container)
-        {
-            _pendingFocusIndex = -1; // a realized target supersedes any parked focus
-            container.Focus(FocusNavigationMethod.Directional);
-            return;
-        }
-
-        _pendingFocusIndex = target;
-        if (ItemsHost is ILogicalScrollHost logical && FindItemsScrollViewer() is { } scroll)
-            scroll.EnsureVisible(logical.BringItemIntoView(target)); // scroll the estimate in ⇒ the panel realizes it
-    }
-
-    // Completes a parked keyboard-nav focus: when the scrolled-to container materializes, focus it. Deferred via
-    // the dispatcher because the realize channel fires DURING the panel's measure pass — focusing synchronously
-    // there would re-enter layout (focus raises routed events + restyles). Re-resolves the container by index at
-    // post time so a recycle between realization and the post can't focus a stale container.
-    private void OnContainersRealizedForPendingFocus(object? sender, ContainersChangedEventArgs e)
-    {
-        if (_pendingFocusIndex < 0 || e.Action != ContainersChangedAction.Realized)
-            return;
-
-        if (ItemContainerGenerator.ContainerFromIndex(_pendingFocusIndex) is not { } container)
-            return; // the target is still outside the realized window — stay parked for the next realize pass
-
-        var index = _pendingFocusIndex;
-        _pendingFocusIndex = -1;
-
-        if (UIApplication.Current?.Dispatcher is { } dispatcher)
-        {
-            dispatcher.Post(() =>
-                            {
-                                if (ItemContainerGenerator.ContainerFromIndex(index) is { IsAttachedToTree: true } c)
-                                    c.Focus(FocusNavigationMethod.Directional);
-                            });
-        }
-        else if (container.IsAttachedToTree)
-        {
-            container.Focus(FocusNavigationMethod.Directional); // no dispatcher (BYO host) — best-effort synchronous
-        }
-    }
 }

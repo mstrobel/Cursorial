@@ -84,11 +84,11 @@ public class TreeView : ItemsControl
 
     // Type-ahead over the TOP-LEVEL nodes (the tree's own generator). Matching against each node's Header; full
     // visible-subtree search is a follow-on. Cycles from the selected node when it is a top-level node.
-    private protected override bool TextSearchNavigates => true;
+    protected override bool TextSearchNavigates => true;
 
     // Cycle from the selected node's TOP-LEVEL ancestor (a nested node isn't in the tree's own generator, so its
     // IndexFromContainer is −1 — walk up to the ancestor that is, instead of silently re-anchoring at index 0).
-    private protected override int CurrentTextSearchIndex
+    protected override int CurrentTextSearchIndex
     {
         get
         {
@@ -100,7 +100,7 @@ public class TreeView : ItemsControl
     }
 
     /// <inheritdoc/>
-    private protected override string? GetTextSearchText(int index)
+    protected override string? GetTextSearchText(int index)
     {
         if (ItemContainerGenerator.ContainerFromIndex(index) is not { } container)
             return null;
@@ -112,7 +112,7 @@ public class TreeView : ItemsControl
     }
 
     /// <inheritdoc/>
-    private protected override void OnTextSearchMatch(int containerIndex)
+    protected override void OnTextSearchMatch(int containerIndex)
     {
         if (ItemContainerGenerator.ContainerFromIndex(containerIndex) is not TreeViewItem node)
             return;
@@ -127,12 +127,15 @@ public class TreeView : ItemsControl
             return;
 
         var old = _selectedContainer;
+
         _selectedContainer = item;
+
         old?.SetIsSelectedFromTree(false);
         item?.SetIsSelectedFromTree(true);
 
         var oldItem = _selectedItem;
         var newItem = item is null ? null : ResolveDataItem(item);
+
         if (SetAndRaise(SelectedItemProperty, ref _selectedItem, newItem))
             SelectionChanged?.Invoke(this, new TreeViewSelectionChangedEventArgs(oldItem, newItem));
     }
@@ -146,11 +149,14 @@ public class TreeView : ItemsControl
 
     // The data item a container was realized for (an own-container's stamp is the container itself); the direct
     // owner is the container's logical-parent ItemsControl (this tree for a top node, or a parent TreeViewItem).
-    private static object? ResolveDataItem(TreeViewItem container)
+    private static object ResolveDataItem(TreeViewItem container)
     {
         for (UIElement? node = container.LogicalParent; node is not null; node = node.LogicalParent)
+        {
             if (node is ItemsControl owner)
                 return owner.ItemContainerGenerator.ItemFromContainer(container) ?? container;
+        }
+
         return container;
     }
 }

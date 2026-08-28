@@ -46,7 +46,7 @@ namespace GenApp
 
         var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(lowered)));
         var loaded = (StackPanel)System.Activator.CreateInstance(assembly.GetType("GenApp.SetView1")!)!;
-        var style = (Cursorial.UI.Style)loaded.Resources["Style:Border"];
+        var style = (Cursorial.UI.Style)loaded.Resources["Style:Border"]!;
         Assert.Equal(true, Assert.Single(style.Setters).Value);        // the primitive lowered to boxed true
     }
 

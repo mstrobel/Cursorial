@@ -7,6 +7,8 @@ namespace Cursorial.Rendering.Media;
 public interface IBrushPalette : IReadOnlyList<IBrush>
 {
     static IBrushPalette Empty { get; } = new BrushPalette(Array.Empty<IBrush>());
+
+    IBrush this[Ansi16Color color] { get; }
 }
 
 public sealed class BrushPalette : IBrushPalette
@@ -52,4 +54,14 @@ public sealed class BrushPalette : IBrushPalette
     public int Count => _colors.Count;
 
     public IBrush this[int index] => _colors[index];
+
+    public IBrush this[Ansi16Color color]
+    {
+        get
+        {
+            if (Enum.IsDefined(color))
+                return _colors[(int) color];
+            throw new ArgumentOutOfRangeException(nameof(color));
+        }
+    }
 }

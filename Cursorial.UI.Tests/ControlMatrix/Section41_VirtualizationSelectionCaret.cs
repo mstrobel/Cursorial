@@ -48,12 +48,10 @@ public sealed class Section41_VirtualizationSelectionCaret
         var gen = lb.ItemContainerGenerator;
 
         lb.SelectedIndex = 700;
-        host.RunUntilIdle();
         Assert.Equal(700, lb.SelectedIndex);
         Assert.Null(gen.ContainerFromIndex(700)); // off-screen — not realized, so nothing visually shows selected yet
-
-        var scroll = FindDescendant<ScrollViewer>(lb)!;
-        scroll.VerticalOffset = 700;
+        
+        // Wait for automatic scroll-into-view
         host.RunUntilIdle();
 
         var c = (ListBoxItem)gen.ContainerFromIndex(700)!;
@@ -152,5 +150,33 @@ public sealed class Section41_VirtualizationSelectionCaret
         host.RunUntilIdle();
         Assert.Equal(page, lb.SelectedIndex);          // paged down by one viewport
         Assert.NotNull(gen.ContainerFromIndex(page));  // the landed item is realized
+    }
+    
+    [Fact] // VV3.4: programmatic SelectedItem focuses the off-band container IDENTICALLY to SelectedIndex —
+    //        the item→index resolution must not drop the focus attempt (regression: a stale isValidIndex short-circuited it).
+    public void VV3_4_ProgrammaticSelectedItem_FocusesLikeSelectedIndex()
+    {
+        static bool TargetFocused(bool byItem)
+        {
+            var (host, lb) = MakeVirtual(1000);
+            using var _ = host;
+            var gen = lb.ItemContainerGenerator;
+
+            gen.ContainerFromIndex(0)!.Focus();   // keyboard focus is within the list's scope
+            host.RunUntilIdle();
+
+            if (byItem) lb.SelectedItem  = "item0700";   // MakeVirtual formats items as $"item{i:0000}"
+            else        lb.SelectedIndex = 700;
+            host.RunUntilIdle();
+
+            Assert.Equal(700, lb.SelectedIndex);          // both resolve to the same selection
+            var c = gen.ContainerFromIndex(700);
+            Assert.NotNull(c);                            // off-band target scrolled in + realized
+            return ((ListBoxItem)c!).IsFocused;
+        }
+
+        Assert.True(TargetFocused(byItem: false), "SelectedIndex should focus the realized off-band container");
+        Assert.True(TargetFocused(byItem: true),
+                    "SelectedItem must focus identically to SelectedIndex (regression: item→index resolution dropped focus)");
     }
 }

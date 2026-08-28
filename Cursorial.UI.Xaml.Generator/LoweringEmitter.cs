@@ -2535,7 +2535,8 @@ internal static class LoweringEmitter
         // ResolveDeferredReferences point (forward references included).
         if (c.References.Count > savedReferences || c.DeferredScopeLines.Count > savedScopeLines)
         {
-            c.Line("// {x:Reference} — resolve against this template build's now-complete name scope.");
+            if (c.References.Count > savedReferences)
+                c.Line("// {x:Reference} — resolve against this template build's now-complete name scope.");
             EmitReferenceResolutions(c, savedReferences, "__ctx.NameScope");
             c.References.RemoveRange(savedReferences, c.References.Count - savedReferences);
             FlushDeferredScopeLines(c, savedScopeLines);

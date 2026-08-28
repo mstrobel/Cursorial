@@ -379,6 +379,10 @@ public sealed class ContentPresenter : UIElement
 
         var content = EffectiveContent;
         var explicitTemplate = EffectiveContentTemplate;
+
+        if (content is DeferredContent dc)
+            content = dc.Realize();
+
         var resolvedTemplate = explicitTemplate ?? ContentRealization.FindImplicitTemplate(this, content);
         var stringFormat = EffectiveContentStringFormat;
 

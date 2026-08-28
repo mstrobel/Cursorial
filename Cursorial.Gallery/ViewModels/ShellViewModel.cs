@@ -38,7 +38,8 @@ public sealed class ShellViewModel : ViewModelBase
             new ListViewPageViewModel(),
             new TabControlViewModel(),
             new TreeViewModel(),
-            new ScrollViewerPageViewModel()
+            new ScrollViewerPageViewModel(),
+            new ThemesViewModel(),
         ];
 
         CycleThemeVariant = new RelayCommand(ExecuteCycleThemeVariant);
@@ -46,6 +47,33 @@ public sealed class ShellViewModel : ViewModelBase
         Quit = new RelayCommand<string?>(ExecuteQuit);
         
         _selectedPage = Pages[0];
+
+        app ??= UIApplication.Current;
+
+        app?.Started += OnAppStarted;
+        app?.BeginShutdown += OnAppBeginShutdown;
+        app?.ActualThemeVariantChanged += OnAppActualThemeVariantChanged;
+
+        void OnAppStarted(object? sender, EventArgs e)
+        {
+            app.Started -= OnAppStarted;
+
+            foreach (var page in Pages)
+                page.OnAppStarted();
+        }
+
+        void OnAppBeginShutdown(object? sender, EventArgs e)
+        {
+            app.Started -= OnAppStarted;
+            app.BeginShutdown -= OnAppBeginShutdown;
+            app.ActualThemeVariantChanged -= OnAppActualThemeVariantChanged;
+        }
+
+        void OnAppActualThemeVariantChanged(object? sender, EventArgs e)
+        {
+            foreach (var page in Pages)
+                page.OnThemeChanged();
+        }
     }
 
     public string ThemeDescription => $"{UIApplication.Current?.ActualThemeVariant.ToString().ToLowerInvariant()}" +
@@ -99,7 +127,7 @@ public sealed class ShellViewModel : ViewModelBase
                                                    }
                                       });
 
-            Raise(nameof(ThemeDescription));
+            RefreshTheme();
         }
     }
 

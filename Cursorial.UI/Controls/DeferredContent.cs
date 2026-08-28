@@ -1,8 +1,12 @@
 namespace Cursorial.UI.Controls;
 
-public sealed class DeferredContent(Func<UIElement> factory)
+public sealed class DeferredContent(Func<object?> factory, bool cache = true)
 {
-    private UIElement? _cachedRealization;
+    private object? _cachedRealization;
 
-    public UIElement Realize() => _cachedRealization ??= factory();
+    public object? Realize()
+    {
+        if (cache is false) return factory();
+        return _cachedRealization ??= factory();
+    }
 }

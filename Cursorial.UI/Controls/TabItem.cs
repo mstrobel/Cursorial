@@ -25,7 +25,7 @@ public class TabItem : HeaderedContentControl, ISelectableContainer, IAccessKeyT
     /// <summary>Whether this tab is selected. Two-way bindable; <c>:selected</c> mirrors it. Setting it from outside
     /// the owner folds into the owner's single-selection model.</summary>
     public static readonly StyledProperty<bool> IsSelectedProperty =
-        UIProperty.Register<TabItem, bool>(nameof(IsSelected), defaultValue: false, changed: OnIsSelectedChanged);
+        SelectableItemContainer.IsSelectedProperty.AddOwner<TabItem>();
 
     /// <summary>Whether this tab can be SELECTED (default true). A non-selectable tab still participates in the strip's
     /// focus/arrow navigation (it is reachable and highlights when focused) but is never made the selected tab — a
@@ -52,10 +52,13 @@ public class TabItem : HeaderedContentControl, ISelectableContainer, IAccessKeyT
 
     static TabItem()
     {
+        IsSelectedProperty.OverrideMetadata<TabItem>(
+            new PropertyMetadata<bool>(DefaultValue: false, Changed: OnIsSelectedChanged)
+        );
         PseudoClassMapping.Register<TabItem>(IsSelectedProperty, ":selected");
         HeaderProperty.OverrideMetadata<TabItem>(new PropertyMetadata<object?>() { ParsesAccessKeyLiterals = true });
     }
-
+    
     /// <summary>Creates a tab (focusable — the tab strip is a single tab stop and arrows move among the tabs).</summary>
     public TabItem() => Focusable = true;
 

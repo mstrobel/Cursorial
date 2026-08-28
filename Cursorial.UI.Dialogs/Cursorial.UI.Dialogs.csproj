@@ -11,6 +11,11 @@
     <TargetFramework>net10.0</TargetFramework>
     <RootNamespace>Cursorial.UI.Dialogs</RootNamespace>
     <Nullable>enable</Nullable>
+    <!-- Full lowering: each Themes/*.xaml (a no-x:Class <ResourceDictionary>) compiles to a reflection-free
+         GeneratedXamlLoaders.Build…() builder that CursorialXamlTheme calls — no runtime parse, no provider. -->
+    <CursorialXamlLowering>full</CursorialXamlLowering>
+    <CursorialXamlEmbedResources>true</CursorialXamlEmbedResources>
+    <EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
   </PropertyGroup>
 
   <!-- NuGet packaging. Shared metadata lives in ../Directory.Build.props; this carries per-package fields only. -->
@@ -22,18 +27,25 @@
     <PackageTags>terminal;tui;drawing;scene;compositor;brush;gradient;charts;crossplatform</PackageTags>
   </PropertyGroup>
 
+  <!-- Generator consumer props: the CompilerVisibleItemMetadata + the CursorialXamlEmbedResources default
+     (a ProjectReference doesn't auto-import an analyzer's build/ assets, so import them explicitly). -->
+  <Import Project="..\Cursorial.UI.Xaml.Generator\build\Cursorial.UI.Xaml.Generator.props" />
+
   <ItemGroup>
     <ProjectReference Include="..\Cursorial.UI.Bars\Cursorial.UI.Bars.csproj" />
     <ProjectReference Include="..\Cursorial.UI\Cursorial.UI.csproj" />
     <ProjectReference Include="..\Cursorial.UI.Xaml\Cursorial.UI.Xaml.csproj" />
+    <!-- The X4 generator as an analyzer (validates the theme XAML; deps flow via its analyzer-deps target). -->
+    <ProjectReference Include="..\Cursorial.UI.Xaml.Generator\Cursorial.UI.Xaml.Generator.csproj"
+                      OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
   </ItemGroup>
 
   <ItemGroup>
     <InternalsVisibleTo Include="Cursorial.UI.Tests" />
   </ItemGroup>
-
-  <ItemGroup>
-    <Folder Include="Calculator\" />
-  </ItemGroup>
+  
+  <!-- Generator consumer targets: maps <CursorialXaml> → AdditionalFiles (generator input) + EmbeddedResource
+     (runtime load). Imported after the items above so @(CursorialXaml) is populated. -->
+  <Import Project="..\Cursorial.UI.Xaml.Generator\build\Cursorial.UI.Xaml.Generator.targets" />
 
 </Project>

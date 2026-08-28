@@ -99,7 +99,8 @@ public sealed class ArchOneXamlThemeTests
 
         AssertGlyphs(dict, ThemeKeys.CheckBoxGlyphs, "[ ]", "[x]", "[-]");
         AssertGlyphs(dict, ThemeKeys.RadioGlyphs, "( )", "(*)", "(-)");
-        AssertGlyphs(dict, ThemeKeys.ScrollArrowGlyphs, "^", "v", ""); // arrow pair: empty Indeterminate default
+        AssertGlyphs(dict, ThemeKeys.VerticalScrollArrowGlyphs, "^", "v", ""); // arrow pair: empty Indeterminate default
+        AssertGlyphs(dict, ThemeKeys.HorizontalScrollArrowGlyphs, "<", ">", ""); // arrow pair: empty Indeterminate default
 
         static void AssertGlyphs(ResourceDictionary dict, string key, string @unchecked, string @checked, string indeterminate)
         {

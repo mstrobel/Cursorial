@@ -420,6 +420,17 @@ public sealed class CompiledBinding<TSource, TValue> : AnchoredBinding
     /// <summary>The converter parameter.</summary>
     public object? ConverterParameter { get; init; }
 
+    /// <summary>
+    /// When set, this binding is an OPINION-GATED forward: on each produce it retracts (produces
+    /// <see cref="UIProperty.UnsetValue"/>, so weaker value-store lanes promote) UNLESS the source has a real
+    /// contribution for the bound property at this priority strength or STRONGER (<see cref="UIObject.HasValue{T}"/>).
+    /// The per-axis text forwards (<see cref="Cursorial.UI.Controls.TextElement.ForwardAllAxes"/>) set it to
+    /// <see cref="BindingPriority.BaseTextStyle"/> so a source with no axis opinion does not shadow the target's
+    /// own base look with a forwarded DEFAULT. <see langword="null"/> ⇒ an ordinary always-producing binding.
+    /// Set once immediately after construction by the forward helpers (the descriptor is freshly built per forward).
+    /// </summary>
+    internal BindingPriority? OpinionGateFloor { get; set; }
+
     internal override BindingExpressionBase CreateExpression(in BindingActivationContext context)
     {
         ValidateAnchors();

@@ -164,6 +164,18 @@ internal sealed class CompiledBindingExpression<TSource, TValue> : BindingExpres
         if (IsDisposed)
             return;
 
+        // Opinion gate (the per-axis text forward — TextElement.ForwardAllAxes): retract when the SOURCE has no
+        // real contribution at/above the floor, so the target's own base look (a BaseTextStyle at 150) promotes
+        // instead of a forwarded DEFAULT (e.g. a null UnderlineBrush / Normal weight) winning at this stronger
+        // lane and shadowing it. The forward's source property IS the bound (target) property, so _typedProperty
+        // is the axis to probe on the source.
+        if (_compiled.OpinionGateFloor is { } gateFloor && _typedProperty is { } gateProperty &&
+            _root is UIObject gateSource && !gateSource.HasValue(gateProperty, gateFloor))
+        {
+            ProduceUnsetOrFallback();
+            return;
+        }
+
         if (_typedPath)
         {
             _typedEntry ??= MaterializeTypedEntry();

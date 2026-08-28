@@ -520,62 +520,28 @@ public abstract class TextElement
                                         $"{nameof(AllAxisProperties)} was updated without updating ForwardAllAxes!");
         #endif
 
-        part.SetBinding(
-            TextWeightProperty,
-            CompiledBinding.For(TextWeightProperty,
-                                source: source,
-                                relativeSource: relativeSource));
+        // Each axis forward is OPINION-GATED at the BaseTextStyle floor: it retracts (contributes nothing) when
+        // the source has no opinion on the axis, so the part's OWN base look (a BaseTextStyle at 150) promotes
+        // rather than a forwarded DEFAULT (e.g. a null UnderlineBrush / Normal weight) shadowing it from a
+        // stronger lane. A real source opinion (LocalValue…BaseTextStyle) still forwards and wins as before.
+        void ForwardAxis<T>(StyledProperty<T> axis)
+        {
+            var forward = CompiledBinding.For(axis, source: source, relativeSource: relativeSource);
+            forward.OpinionGateFloor = BindingPriority.BaseTextStyle;
+            part.SetBinding(axis, forward);
+        }
 
-        part.SetBinding(
-            TextStyleProperty,
-            CompiledBinding.For(TextStyleProperty,
-                                source: source,
-                                relativeSource: relativeSource));
-
-        part.SetBinding(
-            UnderlineProperty,
-            CompiledBinding.For(UnderlineProperty,
-                                source: source,
-                                relativeSource: relativeSource));
-
-        part.SetBinding(
-            StrikethroughProperty,
-            CompiledBinding.For(StrikethroughProperty,
-                                source: source,
-                                relativeSource: relativeSource));
-
-        part.SetBinding(
-            OverlineProperty,
-            CompiledBinding.For(OverlineProperty,
-                                source: source,
-                                relativeSource: relativeSource));
-
-        part.SetBinding(
-            BlinkProperty,
-            CompiledBinding.For(BlinkProperty,
-                                source: source,
-                                relativeSource: relativeSource));
-
-        part.SetBinding(
-            ConcealedProperty,
-            CompiledBinding.For(ConcealedProperty,
-                                source: source,
-                                relativeSource: relativeSource));
-
-        part.SetBinding(
-            UnderlineBrushProperty,
-            CompiledBinding.For(UnderlineBrushProperty,
-                                source: source,
-                                relativeSource: relativeSource));
+        ForwardAxis(TextWeightProperty);
+        ForwardAxis(TextStyleProperty);
+        ForwardAxis(UnderlineProperty);
+        ForwardAxis(StrikethroughProperty);
+        ForwardAxis(OverlineProperty);
+        ForwardAxis(BlinkProperty);
+        ForwardAxis(ConcealedProperty);
+        ForwardAxis(UnderlineBrushProperty);
 
         if (forwardInverse)
-        {
-            part.SetBinding(
-                InverseProperty,
-                CompiledBinding.For(InverseProperty,
-                                    source: source,
-                                    relativeSource: relativeSource));
-        }
+            ForwardAxis(InverseProperty);
     }
 
     /// <summary>
@@ -644,10 +610,12 @@ public abstract class TextElement
     {
         ArgumentNullException.ThrowIfNull(part);
 
-        return part.SetBinding(
-            InverseProperty,
-            CompiledBinding.For(InverseProperty,
-                                source: source,
-                                relativeSource: source is null ? RelativeSource.TemplatedParent : null));
+        // Gated at the BaseTextStyle floor too: a face's Inverse is a BaseTextStyle axis, so a no-opinion source
+        // must not shadow a BaseTextStyle-imposed Inverse on the face.
+        var forward = CompiledBinding.For(InverseProperty,
+                                          source: source,
+                                          relativeSource: source is null ? RelativeSource.TemplatedParent : null);
+        forward.OpinionGateFloor = BindingPriority.BaseTextStyle;
+        return part.SetBinding(InverseProperty, forward);
     }
 }

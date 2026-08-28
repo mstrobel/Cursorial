@@ -163,6 +163,27 @@ public abstract class UIObject : IInheritanceNode
     public T GetBaseValue<T>(StyledProperty<T> property) => GetValue(property, BindingPriority.LocalValue);
 
     /// <summary>
+    /// Whether a real contribution for <paramref name="property"/> exists at <paramref name="priority"/>
+    /// strength or STRONGER — the opinion probe (see <see cref="ValueStore.HasValue{T}"/>). Unlike
+    /// <see cref="GetValue{T}(StyledProperty{T},BindingPriority)"/> (whose parameter is a strength CEILING),
+    /// <paramref name="priority"/> here is a FLOOR: <c>HasValue(p, BaseTextStyle)</c> asks "is there a
+    /// contribution at BaseTextStyle strength or stronger" — true for any real opinion on a non-inheriting axis,
+    /// false when only inheritance/default remain. The gate for opinion-aware forwards.
+    /// </summary>
+    public bool HasValue<T>(StyledProperty<T> property, BindingPriority priority)
+    {
+        ArgumentNullException.ThrowIfNull(property);
+        ValidateMaxPriority(priority);
+        VerifyAccess();
+
+        if (_store is {} store)
+            return store.HasValue(property, priority);
+
+        return priority >= BindingPriority.Inherited &&
+               property.Inherits && FindInheritedEntry(property.Id, out _) is not null;
+    }
+
+    /// <summary>
     /// The untyped read lane (XAML / tooling / diagnostics): the boxed effective value, never
     /// <see cref="UIProperty.UnsetValue"/> (M14). Boxes are interned per entry / per metadata
     /// default, so repeated reads of an unchanged value allocate nothing (M267).

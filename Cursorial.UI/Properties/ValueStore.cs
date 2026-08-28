@@ -385,6 +385,36 @@ internal sealed class ValueStore
         return Owner.ResolveDefaultValue(property, metadata);
     }
 
+    /// <summary>
+    /// The opinion probe — the boolean companion to <see cref="GetValueAtMaxPriority{T}"/>, but reading the
+    /// FLOOR direction and checking only EXISTENCE: whether a real contribution for <paramref name="property"/>
+    /// exists at <paramref name="priority"/> strength or STRONGER (its winning lane is at or above the floor),
+    /// as opposed to merely the inherited/default fallback. Note the parameter is a FLOOR — the mirror of
+    /// <see cref="GetValueAtMaxPriority{T}"/>'s <c>maxPriority</c> CEILING: <c>HasValue(p, BaseTextStyle)</c> is
+    /// true for any contribution from the Animation lane down through BaseTextStyle (for a non-inheriting axis
+    /// that is exactly "the source has an opinion"), false when only inheritance/default remain. More permissive
+    /// than a value read (no coercion, any qualifying lane counts). Gates opinion-aware forwards: a text-axis
+    /// forward retracts when the source has no opinion so the target's own base look promotes, rather than a
+    /// forwarded DEFAULT value winning at a stronger lane and shadowing it.
+    /// </summary>
+    public bool HasValue<T>(StyledProperty<T> property, BindingPriority priority)
+    {
+        if (TryGetEntry(property.Id) is EffectiveValue<T> entry && entry.EffectivePriority != BindingPriority.Unset)
+        {
+            // The effective winner's lane — an animation IS an opinion (it masks the base), so count it;
+            // otherwise the winning base lane. Either must rank at or above the floor to qualify.
+            var winning = entry.EffectivePriority == BindingPriority.Animation
+                ? BindingPriority.Animation
+                : entry.BasePriority;
+            if (winning != BindingPriority.Unset)
+                return winning <= priority;
+        }
+
+        // Only the inherited/default fallback remains — a contribution only when the floor reaches Inherited.
+        return priority >= BindingPriority.Inherited &&
+               property.Inherits && Owner.FindInheritedEntry(property.Id, out _) is not null;
+    }
+
     private EffectiveValue<T> GetOrCreateEntry<T>(StyledProperty<T> property)
         => (EffectiveValue<T>?)TryGetEntry(property.Id) ?? CreateEntry(property);
 

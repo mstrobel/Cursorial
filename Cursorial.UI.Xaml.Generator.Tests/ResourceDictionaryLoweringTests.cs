@@ -315,4 +315,63 @@ public class ResourceDictionaryLoweringTests
         var reference = Assert.IsType<ResourceReference>(InvokeBuilder(assembly, "BuildMyView")["Fg"]);
         Assert.Equal(ThemeKeys.TextBrush, reference.Key); // keyed by the resolved static value (object), not "ThemeKeys.TextBrush"
     }
+
+    [Fact] // a same-dictionary {StaticResource} inside a <ResourceDictionary.Styles> setter resolves to the sibling
+    // keyed entry — the loader/generator parity fix. EmitStyle lowers each setter eagerly, but the frontend
+    // parser emits the implicit keyed-entry content member AFTER property elements like <ResourceDictionary.Styles>;
+    // before the two-pass Styles-last emission, the setter's {StaticResource Accent} lowered before the Accent var
+    // was declared and fenced (fail-closed CUR diagnostic). It must now resolve to the built entry.
+    public void Lowered_StaticResource_SameDict_StylesSlot_ReferencesBuiltEntry()
+    {
+        var xaml =
+            $"<ResourceDictionary {Ns}>" +
+            "<SolidColorBrush x:Key=\"Accent\" Color=\"#FF0000\"/>" +
+            "<ResourceDictionary.Styles>" +
+              "<Style TargetType=\"Button\">" +
+                "<Setter Property=\"Foreground\" Value=\"{StaticResource Accent}\"/>" +
+              "</Style>" +
+            "</ResourceDictionary.Styles>" +
+            "</ResourceDictionary>";
+
+        var compilation = GeneratorHarness.ReferencedCompilation("LoweringHost");
+        var lowered = GeneratorHarness.LowerView(compilation, xaml);
+        Assert.DoesNotContain("TODO X5", lowered); // did not fence — the same-dict key resolved
+        Assert.DoesNotContain("CURG", lowered);
+
+        var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(lowered)));
+        var dict = InvokeBuilder(assembly, "BuildMyView");
+
+        var accent = Assert.IsType<SolidColorBrush>(dict["Accent"]);
+        Assert.Equal(Color.FromRgb(0xFF, 0, 0), accent.Color);
+        var setter = Assert.Single(Assert.Single(dict.Styles!).Setters);
+        Assert.Same(accent, setter.Value); // the {StaticResource} is the SAME object as the dictionary entry
+    }
+
+    [Fact] // the same, with the <ResourceDictionary.Styles> slot written BEFORE the keyed brush in document order:
+    // the parser hoists property elements ahead of content regardless, so the Styles-last emission is what makes
+    // resolution order-independent (the loader's Static_StylesBeforeKeyed twin).
+    public void Lowered_StaticResource_SameDict_StylesSlot_StylesBeforeKeyed()
+    {
+        var xaml =
+            $"<ResourceDictionary {Ns}>" +
+            "<ResourceDictionary.Styles>" +
+              "<Style TargetType=\"Button\">" +
+                "<Setter Property=\"Foreground\" Value=\"{StaticResource Accent}\"/>" +
+              "</Style>" +
+            "</ResourceDictionary.Styles>" +
+            "<SolidColorBrush x:Key=\"Accent\" Color=\"#FF0000\"/>" +
+            "</ResourceDictionary>";
+
+        var compilation = GeneratorHarness.ReferencedCompilation("LoweringHost");
+        var lowered = GeneratorHarness.LowerView(compilation, xaml);
+        Assert.DoesNotContain("TODO X5", lowered);
+        Assert.DoesNotContain("CURG", lowered);
+
+        var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(lowered)));
+        var dict = InvokeBuilder(assembly, "BuildMyView");
+
+        var accent = Assert.IsType<SolidColorBrush>(dict["Accent"]);
+        var setter = Assert.Single(Assert.Single(dict.Styles!).Setters);
+        Assert.Same(accent, setter.Value);
+    }
 }

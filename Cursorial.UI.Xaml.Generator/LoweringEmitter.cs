@@ -300,13 +300,17 @@ internal static class LoweringEmitter
                     break;
 
                 case "Styles":
-                    foreach (int idx in ResourceItems(c, member))
-                    {
-                        var styleVar = c.NextVar();
-                        EmitObject(c, idx, styleVar, isRoot: false, hasScope: false, dataType: null); // → EmitStyle
-                        c.Line($"{dictVar}.Styles ??= new global::Cursorial.UI.Styles();");
-                        c.Line($"{dictVar}.Styles.Add({styleVar});");
-                    }
+                    // Deferred to the second pass below so a setter's {StaticResource K} sees every sibling
+                    // keyed entry. EmitStyle lowers each setter eagerly, resolving {StaticResource} against the
+                    // same-dict var map (KeyExprToVar) / deferred slots — but the frontend parser always emits
+                    // the implicit keyed-entry content member AFTER property elements like
+                    // <ResourceDictionary.Styles>, independent of document order. A single ordered pass would
+                    // therefore lower the style setters before any keyed var was declared or slot registered, so
+                    // ResolveVisibleResourceVar would miss and the eager StaticResource would fence (fail-closed
+                    // build diagnostic). Emitting Styles LAST mirrors the runtime loader's two-pass
+                    // FillResourceDictionaryMembers. (No effect on EntriesNeedDeferral: a Styles→keyed reference is
+                    // now always backward in emission order, and Styles-slot styles are unkeyed, so nothing can
+                    // {StaticResource} them.)
                     break;
 
                 default:
@@ -321,6 +325,26 @@ internal static class LoweringEmitter
                     }
                     EmitDictionaryEntries(c, dictVar, new List<int>(ResourceItems(c, member)));
                     break;
+            }
+        }
+
+        // Second pass: emit <ResourceDictionary.Styles> now that every sibling keyed entry (an eager local var
+        // or a deferred lazy slot) exists, so a setter's {StaticResource K} resolves against THIS dictionary
+        // (see the "Styles" case note above). Re-scan in member order for the Styles members.
+        for (int m = obj.MemberStart; m < obj.MemberStart + obj.MemberCount; m++)
+        {
+            ref readonly var member = ref c.Doc.Members[m];
+            var xm = member.MemberId >= 0 ? c.Doc.ResolvedMembers[member.MemberId] : null;
+            if (xm?.Name != "Styles")
+                continue;
+
+            c.CurrentLineInfo = member.PackedLineInfo;
+            foreach (int idx in ResourceItems(c, member))
+            {
+                var styleVar = c.NextVar();
+                EmitObject(c, idx, styleVar, isRoot: false, hasScope: false, dataType: null); // → EmitStyle
+                c.Line($"{dictVar}.Styles ??= new global::Cursorial.UI.Styles();");
+                c.Line($"{dictVar}.Styles.Add({styleVar});");
             }
         }
     }

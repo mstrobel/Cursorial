@@ -347,13 +347,12 @@ namespace GenApp { public partial class AppAmbView : StackPanel { public AppAmbV
         }
     }
 
-    [Fact] // Review follow-up (depth-2) — a custom extension inside a NESTED template must FENCE when an
-           // enclosing-factory <X.Resources> scope is unreachable, even when it is the OUTERMOST scope on the
-           // ambient stack (the root has no <Resources>, so no document scope encloses it). The IAmbientResources
-           // chain we could hand the extension (reachable dicts only) silently DROPS that scope, so a probed key
-           // defined there resolves to the app tail instead of the enclosing dict — a fail-open. Fencing is the
-           // only faithful option; the extension probes arbitrary keys, so we can't fence per-key.
-    public void Lowered_CustomExtension_NestedTemplate_UnreachableEnclosingScope_Fences()
+    [Fact] // Ambient-scope transport (depth-2) — a custom extension inside a NESTED template RESOLVES against the
+           // enclosing template's <X.Resources>: the enclosing dict is captured at the definition site (the outer
+           // FuncTemplateContent's captured chain) and re-exposed to the inner factory via
+           // TemplateBuildContext.AmbientResources — the generated twin of the loader's XamlTemplateContent captured
+           // scope. No fence, no fail-open to the app tail; the probed key binds the enclosing dict's value.
+    public void Lowered_CustomExtension_NestedTemplate_ResolvesEnclosingScope_ViaTransport()
     {
         var extension = @"
 using Cursorial.UI.Xaml;
@@ -367,35 +366,66 @@ namespace GenApp
     }
 }";
         var xaml =
-            $"<ContentControl {Ns} xmlns:g=\"clr-namespace:GenApp;assembly=LoweringHost\" x:Class=\"GenApp.NestAmbView\">" + // root: NO <Resources>
-            "<ContentControl.ContentTemplate>" +
-              "<DataTemplate>" +                                      // outer factory F1
-                "<ContentControl>" +
-                  "<ContentControl.Resources>" +
-                    "<SolidColorBrush x:Key=\"K\" Color=\"Red\"/>" +  // F1-scope K — unreachable AND outermost (no doc scope)
-                  "</ContentControl.Resources>" +
-                  "<ContentControl.ContentTemplate>" +
-                    "<DataTemplate>" +                                // inner factory F2
-                      "<Button Content=\"{g:NestProbe Key=K}\"/>" +   // loader → F1's Red; the chain would miss it → fence
-                    "</DataTemplate>" +
-                  "</ContentControl.ContentTemplate>" +
-                "</ContentControl>" +
-              "</DataTemplate>" +
-            "</ContentControl.ContentTemplate>" +
-            "</ContentControl>";
+            $"<StackPanel {Ns} xmlns:g=\"clr-namespace:GenApp;assembly=LoweringHost\" x:Class=\"GenApp.NestAmbView\">" +
+            "<ContentControl Content=\"a\">" +                          // realizes its ContentTemplate (F1)
+              "<ContentControl.ContentTemplate>" +
+                "<DataTemplate>" +                                      // outer factory F1
+                  "<ContentControl Content=\"b\">" +                    // F1's root; realizes F2; owns the enclosing scope
+                    "<ContentControl.Resources>" +
+                      "<SolidColorBrush x:Key=\"K\" Color=\"Red\"/>" +  // K lives in F1's factory scope (enclosing F2)
+                    "</ContentControl.Resources>" +
+                    "<ContentControl.ContentTemplate>" +
+                      "<DataTemplate>" +                                // inner factory F2
+                        "<Button Content=\"{g:NestProbe Key=K}\"/>" +   // resolves F1's Red via the transported chain
+                      "</DataTemplate>" +
+                    "</ContentControl.ContentTemplate>" +
+                  "</ContentControl>" +
+                "</DataTemplate>" +
+              "</ContentControl.ContentTemplate>" +
+            "</ContentControl>" +
+            "</StackPanel>";
         const string codeBehind = @"
 using Cursorial.UI.Controls;
-namespace GenApp { public partial class NestAmbView : ContentControl { public NestAmbView() => InitializeComponent(); } }";
+namespace GenApp { public partial class NestAmbView : StackPanel { public NestAmbView() => InitializeComponent(); } }";
 
         var compilation = GeneratorHarness.ReferencedCompilation("LoweringHost")
             .AddSyntaxTrees(CSharpSyntaxTree.ParseText(extension), CSharpSyntaxTree.ParseText(codeBehind));
         var lowered = GeneratorHarness.LowerView(compilation, xaml);
 
-        // Fences (the ambient chain would drop the unreachable enclosing scope) — NEVER emitted with a truncated
-        // ambient that silently mis-resolves. The rest of the generated code still compiles.
-        Assert.Contains("TODO X5", lowered);
-        Assert.DoesNotContain("NestProbeExtension", lowered); // not lowered at all — fenced, not emitted with ambient:null
-        GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(lowered)));
+        // No fence — the extension IS lowered, and the enclosing chain is transported: the inner factory reads
+        // __ctx.AmbientResources, and the outer FuncTemplateContent carries the captured enclosing dict.
+        Assert.DoesNotContain("TODO X5", lowered);
+        Assert.Contains("NestProbeExtension", lowered);
+        Assert.Contains("__ctx.AmbientResources", lowered);
+
+        var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(lowered)));
+        var host = Cursorial.UI.Hosting.Headless.UIHeadlessHost.Create(
+            new Cursorial.UI.Hosting.Headless.UIHeadlessHostOptions { InitialSize = new Cursorial.Rendering.Size(20, 5) });
+        try
+        {
+            var view = (StackPanel)System.Activator.CreateInstance(assembly.GetType("GenApp.NestAmbView")!)!;
+            host.ShowRoot(view);
+            host.RunUntilIdle();
+
+            var button = FindDescendant<Button>(view);
+            Assert.NotNull(button);
+            var brush = Assert.IsType<SolidColorBrush>(button!.Content); // NOT the string "MISS"
+            Assert.Equal(Colors.Red, brush.Color);                       // K resolved against the enclosing F1 scope
+        }
+        finally
+        {
+            host.Dispose();
+        }
+    }
+
+    private static T? FindDescendant<T>(UIElement root) where T : UIElement
+    {
+        if (root is T match)
+            return match;
+        for (var i = 0; i < root.VisualChildrenCount; i++)
+            if (FindDescendant<T>(root.GetVisualChild(i)) is { } found)
+                return found;
+        return null;
     }
 
     [Fact] // A nested {StaticResource} ARGUMENT to a custom extension that's EXTERNAL (app-tail) resolves via

@@ -396,21 +396,6 @@ internal static class LoweringEmitter
     private static bool IsScopeReachable(Context c, ResourceScope scope)
         => scope.FactoryId == 0 || scope.FactoryId == c.CurrentFactoryId;
 
-    // True when ANY scope on the ambient stack is UNREACHABLE (a sibling/enclosing-factory dictionary local not in
-    // the current C# method scope). The custom-extension IAmbientResources chain (ReachableAmbientDicts) silently
-    // DROPS every unreachable scope, and the extension probes ARBITRARY runtime keys — so a key the loader would
-    // resolve against a dropped scope instead resolves a farther dict / the app tail (a fail-open). We can't fence
-    // per-key (the probed keys aren't known at compile time), so the whole extension fences whenever the chain we
-    // could hand it is missing any scope the loader's captured chain includes — regardless of that scope's
-    // position (an outermost dropped scope is just as unfaithful as an interposed one).
-    private static bool HasUnreachableAmbientScope(Context c)
-    {
-        for (int i = 0; i < c.AmbientScopeStack.Count; i++)
-            if (!IsScopeReachable(c, c.AmbientScopeStack[i]))
-                return true;
-        return false;
-    }
-
     // True when an UNREACHABLE scope on the stack has compile-time-opaque own keys (a Source load). A key not found
     // inline can't be proven absent from such a scope, so the reachable-only ResolveStatic chain — which drops the
     // unreachable scope — might miss a key the loader resolves against it. The external {StaticResource} path fences.
@@ -438,22 +423,69 @@ internal static class LoweringEmitter
             }
     }
 
-    // The reachable enclosing <X.Resources> dictionary locals, INNERMOST-first — the loader's re-pushed
-    // CapturedTemplateScope (definition-site document dicts) + the template body's own dicts. Referencing a
-    // document-level local from inside a factory forces that factory non-static (it captures the local).
-    private static List<string> ReachableAmbientDicts(Context c)
+    // The ambient <X.Resources> scopes at the current emit point, split by how the flat sibling factory reaches
+    // each: the CURRENT factory's own dict locals (directly in scope), the ENCLOSING-template chain (a template
+    // nested in another template — carried on __ctx.AmbientResources, the generated twin of the loader's re-pushed
+    // CapturedTemplateScope), and the DOCUMENT dict locals (captured by the factory closure). Each part is
+    // innermost-first. Pure — the document-capture side effect is set by the callers that actually emit a document
+    // local reference (never the enclosing-transport capture, which references __ctx, not a closed-over local).
+    private static (List<string> Own, bool HasEnclosing, List<string> Document) ClassifyAmbient(Context c)
     {
-        var dicts = new List<string>();
-        for (int i = c.AmbientScopeStack.Count - 1; i >= 0; i--)
+        var own = new List<string>();
+        var document = new List<string>();
+        var hasEnclosing = false;
+        for (int i = c.AmbientScopeStack.Count - 1; i >= 0; i--) // innermost-first
         {
             var scope = c.AmbientScopeStack[i];
-            if (!IsScopeReachable(c, scope))
-                continue;
-            if (c.CurrentFactoryId != 0 && scope.FactoryId == 0)
-                c.CurrentFactoryCaptures = true; // captures a document local from within the factory
-            dicts.Add(scope.DictVar);
+            if (scope.FactoryId == c.CurrentFactoryId)
+                own.Add(scope.DictVar);
+            else if (scope.FactoryId == 0)
+                document.Add(scope.DictVar);
+            else
+                hasEnclosing = true; // an enclosing template factory's dict — carried by __ctx.AmbientResources
         }
-        return dicts;
+        return (own, hasEnclosing, document);
+    }
+
+    // The `..spread` of the enclosing-template chain a nested factory reads from its build context.
+    private const string EnclosingChainSpread =
+        ".. (__ctx.AmbientResources ?? global::System.Array.Empty<global::Cursorial.UI.ResourceDictionary>())";
+
+    // The ambient resource chain (innermost-first) as an IReadOnlyList<ResourceDictionary> expression for a custom
+    // extension's LoweredExtensionServices: own factory dicts, then the transported enclosing chain, then document
+    // dicts. "null" when empty. Non-nested cases keep the plain array literal (byte-identical to the prior output).
+    private static string AmbientChainArrayExpr(Context c)
+    {
+        var (own, hasEnclosing, document) = ClassifyAmbient(c);
+        if (document.Count > 0 && c.CurrentFactoryId != 0)
+            c.CurrentFactoryCaptures = true; // the chain references a document local ⇒ the factory captures it
+        if (!hasEnclosing)
+        {
+            var flat = own.Concat(document).ToList();
+            return flat.Count == 0
+                ? "null"
+                : $"new global::Cursorial.UI.ResourceDictionary[] {{ {string.Join(", ", flat)} }}";
+        }
+        var parts = new List<string>(own) { EnclosingChainSpread };
+        parts.AddRange(document);
+        return $"[{string.Join(", ", parts)}]"; // collection expr splices the transported chain (target: IReadOnlyList)
+    }
+
+    // The chain to capture into a NESTED template's FuncTemplateContent (its definition-site enclosing chain): the
+    // current factory's own dicts + its OWN transported enclosing chain (__ctx.AmbientResources), innermost-first —
+    // document dicts are excluded (the nested factory closures over them directly, same as this one). Null at the
+    // document level, or when there is nothing enclosing to carry.
+    private static string? CapturedAmbientForNested(Context c)
+    {
+        if (!c.InTemplate)
+            return null;
+        var (own, hasEnclosing, _) = ClassifyAmbient(c);
+        if (own.Count == 0 && !hasEnclosing)
+            return null;
+        var parts = new List<string>(own);
+        if (hasEnclosing)
+            parts.Add(EnclosingChainSpread); // this factory is itself nested — forward its own enclosing chain
+        return $"[{string.Join(", ", parts)}]";
     }
 
     // Resolves a {StaticResource} key to a same-document entry's local var, walking the enclosing scopes
@@ -491,11 +523,22 @@ internal static class LoweringEmitter
         return null;
     }
 
-    // The reachable ambient dicts as trailing `, __inner, …, __outer` params-args for ResourceScopes.ResolveStatic.
+    // The ambient dicts for ResourceScopes.ResolveStatic: the reachable local dicts as trailing `, __inner, …,
+    // __outer` params-args (byte-identical to the prior output for non-nested cases), or a single spliced
+    // collection-expr array when an enclosing-template chain must be transported via __ctx.AmbientResources.
     private static string AmbientDictsArgs(Context c)
     {
-        var dicts = ReachableAmbientDicts(c);
-        return dicts.Count == 0 ? string.Empty : ", " + string.Join(", ", dicts);
+        var (own, hasEnclosing, document) = ClassifyAmbient(c);
+        if (document.Count > 0 && c.CurrentFactoryId != 0)
+            c.CurrentFactoryCaptures = true;
+        if (!hasEnclosing)
+        {
+            var flat = own.Concat(document).ToList();
+            return flat.Count == 0 ? string.Empty : ", " + string.Join(", ", flat);
+        }
+        var parts = new List<string>(own) { EnclosingChainSpread };
+        parts.AddRange(document);
+        return $", [{string.Join(", ", parts)}]";
     }
 
     // An EAGER {StaticResource} whose key is NOT a same-document visible entry var → a runtime
@@ -2349,7 +2392,13 @@ internal static class LoweringEmitter
                     // ControlTemplate/ItemsPanelTemplate carry no DataType (null → the body types via TemplateBinding).
                     var bodyDataType = IsDataTemplateSymbol(objType) ? DataTemplateDataType(c, in obj) : null;
                     var factory = EmitTemplateFactory(c, member.ValueIndex, hasScope, target, stampRootScope: !isControlTemplate, bodyDataType);
-                    var content = $"new global::Cursorial.UI.Controls.FuncTemplateContent({factory})";
+                    // Capture the definition-site enclosing-template resource chain so the nested factory can resolve
+                    // {StaticResource}/custom extensions against the enclosing <X.Resources> (the loader's captured
+                    // scope chain). Null at document level (the factory closures over document dicts directly).
+                    var capturedAmbient = CapturedAmbientForNested(c);
+                    var content = capturedAmbient is null
+                        ? $"new global::Cursorial.UI.Controls.FuncTemplateContent({factory})"
+                        : $"new global::Cursorial.UI.Controls.FuncTemplateContent({factory}, {capturedAmbient})";
                     if (RegisteredOwner(xm) is { } owner)
                         c.Line($"{varExpr}.SetValue({Global(owner)}.{xm.Name}Property, {content});");
                     else
@@ -3202,17 +3251,6 @@ internal static class LoweringEmitter
             return null;
         }
 
-        // The IAmbientResources chain we can hand the extension (ReachableAmbientDicts) silently drops EVERY
-        // unreachable enclosing-factory scope. A runtime key the loader resolves against a dropped scope would
-        // resolve a farther dict / the app tail instead — a fail-open. The extension probes arbitrary keys, so we
-        // can't fence per-key: if the chain would be missing any scope the loader's captured chain includes, fence
-        // the whole extension.
-        if (HasUnreachableAmbientScope(c))
-        {
-            c.Todo($"custom markup extension '{node.Name}' can't be lowered inside a nested template: an enclosing-factory resource scope is unreachable from the ambient chain");
-            return null;
-        }
-
         var inits = new List<string>();
 
         // Positional args → writable public properties by the WPF [ConstructorArgument] convention (the only
@@ -3278,13 +3316,11 @@ internal static class LoweringEmitter
         var root = c.HasRootElement ? "this" : "null";
         var scope = c.InTemplate ? "__ctx.NameScope" : c.HasDocumentScope ? "__scope" : "null";
 
-        // The lexical ambient resource chain (IAmbientResources): the enclosing <X.Resources> dictionary locals
-        // in the current C# method scope, INNERMOST-first. LoweredExtensionServices.TryFindResource appends the
-        // application tail (App→Theme→Contributions→BuiltIn) at runtime, mirroring XamlResourceScopeStack.
-        var reachable = ReachableAmbientDicts(c);
-        string ambient = reachable.Count == 0
-            ? "null"
-            : $"new global::Cursorial.UI.ResourceDictionary[] {{ {string.Join(", ", reachable)} }}";
+        // The lexical ambient resource chain (IAmbientResources), innermost-first: the current factory's own
+        // <X.Resources> dict locals, the TRANSPORTED enclosing-template chain (__ctx.AmbientResources — a template
+        // nested in another template), then the document dict locals. LoweredExtensionServices.TryFindResource
+        // appends the application tail (App→Theme→Contributions→BuiltIn) at runtime, mirroring XamlResourceScopeStack.
+        string ambient = AmbientChainArrayExpr(c);
 
         // IXamlLineInfo — the node's 1-based author position (harmless 0,0 for a hand-built node).
         var services = $"new global::Cursorial.UI.Xaml.LoweredExtensionServices(" +

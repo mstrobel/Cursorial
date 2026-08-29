@@ -1,3 +1,5 @@
+using Cursorial.UI;
+
 namespace Cursorial.UI.Controls;
 
 /// <summary>
@@ -47,6 +49,15 @@ public sealed class TemplateBuildContext
     public INameScope NameScope => _nameScope;
 
     /// <summary>
+    /// The captured definition-site enclosing-template resource chain (innermost-first) — set by a
+    /// <see cref="FuncTemplateContent"/> that was created inside another template's factory, so a
+    /// <c>{StaticResource}</c> or custom markup extension in a NESTED template resolves against the enclosing
+    /// template's <c>&lt;X.Resources&gt;</c> (the generated twin of the reflection loader's captured scope chain).
+    /// <see langword="null"/> for a document-level template (its enclosing dicts are reachable directly).
+    /// </summary>
+    public IReadOnlyList<ResourceDictionary>? AmbientResources { get; internal set; }
+
+    /// <summary>
     /// Registers <paramref name="element"/> under <paramref name="name"/> in the template name scope —
     /// the runtime counterpart of an <c>x:Name</c> on a template part. Resolvable via
     /// <c>Control.GetTemplatePart&lt;T&gt;(name)</c> / <c>NameScopeExtensions.RequireControl&lt;T&gt;</c>.
@@ -65,15 +76,33 @@ public sealed class TemplateBuildContext
 /// <c>Build(TemplateBuildContext) → UIElement</c>. The sole P5 template-content producer; Fork C's
 /// XAML node joins it at P6.
 /// </summary>
-public sealed class FuncTemplateContent(Func<TemplateBuildContext, UIElement> build) : ITemplateContent
+public sealed class FuncTemplateContent : ITemplateContent
 {
-    private readonly Func<TemplateBuildContext, UIElement> _build =
-        build ?? throw new ArgumentNullException(nameof(build));
+    private readonly Func<TemplateBuildContext, UIElement> _build;
+    private readonly IReadOnlyList<ResourceDictionary>? _capturedAmbient;
+
+    /// <summary>Wraps a template factory delegate.</summary>
+    /// <param name="build">The factory delegate producing a fresh subtree per build.</param>
+    /// <param name="capturedAmbient">
+    /// The enclosing-template resource chain (innermost-first) captured at the definition site, or
+    /// <see langword="null"/> for a document-level template. Handed to the factory via
+    /// <see cref="TemplateBuildContext.AmbientResources"/> so a nested template's <c>{StaticResource}</c> /
+    /// custom extensions resolve against the enclosing <c>&lt;X.Resources&gt;</c> — the generated twin of the
+    /// loader's <c>XamlTemplateContent</c> captured scope chain.
+    /// </param>
+    public FuncTemplateContent(Func<TemplateBuildContext, UIElement> build,
+                               IReadOnlyList<ResourceDictionary>? capturedAmbient = null)
+    {
+        _build = build ?? throw new ArgumentNullException(nameof(build));
+        _capturedAmbient = capturedAmbient;
+    }
 
     /// <inheritdoc/>
     public UIElement Build(TemplateBuildContext context)
     {
         ArgumentNullException.ThrowIfNull(context);
+        if (_capturedAmbient is not null)
+            context.AmbientResources = _capturedAmbient; // hand the nested factory its definition-site chain
         return _build(context) ?? throw new InvalidOperationException(
             "FuncTemplateContent.Build returned null; a template must produce a non-null root element.");
     }

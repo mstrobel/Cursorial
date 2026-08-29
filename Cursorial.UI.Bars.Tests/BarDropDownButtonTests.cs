@@ -1,3 +1,4 @@
+using System.Text;
 using System.Windows.Input;
 using Cursorial.Input;
 using Cursorial.Rendering;
@@ -301,6 +302,14 @@ public sealed class BarDropDownButtonTests
 
         Assert.NotNull(templatedFirst);
         Assert.True(templatedFirst!.IsFocused);
+    }
+
+    private static string Screen(UIHeadlessHost host, int rows = 10)
+    {
+        var sb = new StringBuilder();
+        for (var r = 0; r < rows; r++)
+            sb.AppendLine(host.GetRowText(r));
+        return sb.ToString();
     }
 
     [Fact] // OnTemplateDetaching unhooks the old parts so a re-template rebinds cleanly to the fresh template (the

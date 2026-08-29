@@ -68,7 +68,7 @@ internal static class ContentRealization
                 templateContent.IsSet(TextElement.InverseProperty) is false && 
                 BindingOperations.IsDataBound(templateContent, TextElement.InverseProperty) is false)
             {
-                ForwardInverseOnly(host, template.Build(content, host));
+                ForwardInverseOnly(host, templateContent);
             }
 
             return templateContent;

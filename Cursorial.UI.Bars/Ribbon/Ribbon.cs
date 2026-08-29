@@ -824,9 +824,6 @@ public class Ribbon : TabControl
         }
     }
 
-    protected override bool IsContainerSelectable(UIElement container)
-        => container is RibbonTab t && IsContentTab(t); 
-
     // A content tab is an ordinary selectable band tab: not the File command tab, and (if contextual) currently shown.
     private static bool IsContentTab(RibbonTab tab) => !tab.IsFileTab && tab.Visibility != Visibility.Collapsed;
 

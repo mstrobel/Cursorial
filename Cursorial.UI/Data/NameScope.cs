@@ -110,12 +110,12 @@ public static class NameScope
     {
         ArgumentNullException.ThrowIfNull(element);
 
-        for (UIElement? a = element; a is not null; a = a.LogicalParent)
+        for (UIElement? a = element; a is not null; a = a.UIParent)
         {
             if (ReferenceEquals(element.TemplatedParent, a) && GetTemplateNameScope(a) is {} templateScope)
                 return templateScope;
 
-            if (GetNameScope(a) is { } documentScope)
+            if (GetNameScope(a)  is {} documentScope)
                 return documentScope;
         }
 

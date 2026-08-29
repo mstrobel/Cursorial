@@ -45,4 +45,54 @@ public class BindingPathValidatorTests
         var diags = Run($"<StackPanel {Ns} x:DataType=\"Button\"><TextBlock Text=\"{{Binding Frobnicate, Source={{x:Null}}}}\"/></StackPanel>");
         Assert.Empty(diags);
     }
+
+    // A <DataTemplate DataType="X"> establishes the SAME scope the compiled-binding lowering already uses (the
+    // template DataContext is an X). Without this the validator only saw x:DataType directives, so a binding inside
+    // a template whose content root omitted a redundant x:DataType was validated against the OUTER scope — a false
+    // CURG2001 (the Shell.xaml ThemesViewModel/ThemeEntry regression).
+
+    [Fact] // {Binding Content} inside <DataTemplate DataType="Button"> validates against Button, NOT the outer StackPanel
+    public void DataTemplateDataType_EstablishesScope_NoFalseAssist()
+    {
+        var diags = Run(
+            $"<ContentControl {Ns} x:DataType=\"StackPanel\">" +      // outer scope: StackPanel (no Content member)
+              "<ContentControl.ContentTemplate>" +
+                "<DataTemplate DataType=\"Button\">" +                 // inner scope from DataType: Button (has Content)
+                  "<TextBlock Text=\"{Binding Content}\"/>" +          // no redundant x:DataType on the root
+                "</DataTemplate>" +
+              "</ContentControl.ContentTemplate>" +
+            "</ContentControl>");
+        Assert.Empty(diags);
+    }
+
+    [Fact] // a bad inner path is reported against the DataTemplate's DataType (proving the scope is Button, not StackPanel)
+    public void DataTemplateDataType_BadInnerPath_ReportsAgainstDataType()
+    {
+        var diags = Run(
+            $"<ContentControl {Ns} x:DataType=\"StackPanel\">" +
+              "<ContentControl.ContentTemplate>" +
+                "<DataTemplate DataType=\"Button\">" +
+                  "<TextBlock Text=\"{Binding Frobnicate}\"/>" +
+                "</DataTemplate>" +
+              "</ContentControl.ContentTemplate>" +
+            "</ContentControl>");
+        Assert.Single(diags);
+        Assert.Contains("Frobnicate", diags[0]);
+        Assert.Contains("Button", diags[0]);   // scoped to the DataType, not the outer StackPanel
+    }
+
+    [Fact] // an explicit x:DataType on the content root still wins over the DataTemplate's DataType (ForObject ?? DataType)
+    public void DataTemplateDataType_ExplicitRootXDataType_Wins()
+    {
+        var diags = Run(
+            $"<ContentControl {Ns} x:DataType=\"StackPanel\">" +
+              "<ContentControl.ContentTemplate>" +
+                "<DataTemplate DataType=\"Button\">" +
+                  "<TextBlock x:DataType=\"CheckBox\" Text=\"{Binding Frobnicate}\"/>" +
+                "</DataTemplate>" +
+              "</ContentControl.ContentTemplate>" +
+            "</ContentControl>");
+        Assert.Single(diags);
+        Assert.Contains("CheckBox", diags[0]);  // the root's own x:DataType won over the template's Button
+    }
 }

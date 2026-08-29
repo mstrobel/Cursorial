@@ -40,8 +40,12 @@ internal static class BindingPathValidator
             while (scope.Count > 0 && scope.Peek().SubtreeEnd <= i)
                 scope.Pop();
 
-            // An x:DataType on this object establishes the DataContext type for its whole subtree.
-            if (XamlDataTypeScope.ForObject(document, in obj, resolver) is {} declared)
+            // An x:DataType on this object — or a `<DataTemplate DataType="vm:Foo">` (the template's content binds
+            // against Foo) — establishes the DataContext type for its whole subtree. The x:DataType directive wins
+            // when both are present; otherwise a DataTemplate's DataType stands in, so an inner binding validates
+            // even when the content root omits a redundant x:DataType (Shell.xaml's ThemesViewModel/ThemeEntry).
+            if ((XamlDataTypeScope.ForObject(document, in obj, resolver)
+                 ?? XamlDataTypeScope.ForDataTemplate(document, in obj, resolver)) is {} declared)
                 scope.Push((i + obj.SubtreeLength, declared));
 
             if (scope.Count == 0)

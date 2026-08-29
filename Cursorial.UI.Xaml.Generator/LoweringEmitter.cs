@@ -892,28 +892,10 @@ internal static class LoweringEmitter
         return null;
     }
 
-    // The DataTemplate's DataType as a resolved symbol (mirrors the loader's TryGetDataType): the x:DataType
-    // directive, or a CLR DataType member (a folded Type constant or a Text token), resolved via the document
-    // xmlns. Null when absent / unresolvable.
+    // The DataTemplate's DataType as a resolved symbol (mirrors the loader's TryGetDataType). Shared with the path
+    // validator via XamlDataTypeScope so the DataTemplateKey (here) and the x:DataType scope (there) cannot drift.
     private static INamedTypeSymbol? DataTemplateDataType(Context c, in ObjectRecord obj)
-    {
-        for (int m = obj.MemberStart; m < obj.MemberStart + obj.MemberCount; m++)
-        {
-            ref readonly var member = ref c.Doc.Members[m];
-
-            if (member is { Kind: XamlValueKind.Directive, DirectiveKind: (int) XamlDirectiveKind.DataType })
-                return XamlDataTypeScope.ResolveToken(c.Doc, c.Doc.Strings[member.ValueIndex], c.Resolver);
-
-            if (member.MemberId >= 0 && c.Doc.ResolvedMembers[member.MemberId]?.Name == "DataType")
-            {
-                if (member.Kind == XamlValueKind.Folded && c.Doc.Constants[member.ValueIndex] is XamlTypeReference tr)
-                    return XamlDataTypeScope.ResolveToken(c.Doc, tr.TypeName, c.Resolver); // {x:Type Foo} now resolves (was a silent null drop)
-                if (member.Kind == XamlValueKind.Text)
-                    return XamlDataTypeScope.ResolveToken(c.Doc, c.Doc.Strings[member.ValueIndex], c.Resolver);
-            }
-        }
-        return null;
-    }
+        => XamlDataTypeScope.DataTemplateDataType(c.Doc, in obj, c.Resolver);
 
     // True when the type is BindingBase or derives from it (the loader's typeof(BindingBase).IsAssignableFrom —
     // the descriptor-slot gate: a Binding-typed CLR member takes the {Binding} OBJECT, not a live install).
@@ -927,13 +909,7 @@ internal static class LoweringEmitter
 
     // True when the symbol is DataTemplate or derives from it (the loader's typeof(DataTemplate).IsAssignableFrom
     // — HierarchicalDataTemplate etc. also key by DataType).
-    private static bool IsDataTemplateSymbol(INamedTypeSymbol? type)
-    {
-        for (var t = type; t is not null; t = t.BaseType)
-            if (t is { Name: "DataTemplate", ContainingNamespace.Name: "Controls" })
-                return true;
-        return false;
-    }
+    private static bool IsDataTemplateSymbol(INamedTypeSymbol? type) => XamlDataTypeScope.IsDataTemplate(type);
 
     // Pulls the argument out of a single-intrinsic markup-extension string "{name arg}" (e.g. "{x:Static A.B}").
     private static bool TryExtractIntrinsic(string raw, string name, out string arg)

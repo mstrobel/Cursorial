@@ -1124,12 +1124,12 @@ namespace GenApp { public partial class NestedTplView : StackPanel { public Nest
         Assert.Same(runtime.Resources["Ink"], runtimeInner.Foreground);
     }
 
-    [Fact] // Phase 4, depth-2 — an in-template {StaticResource} whose INNERMOST loader hop is an enclosing-factory
-           // scope the flat factory can't close over must FENCE, never fall through to a farther reachable match. The
-           // enclosing template's ContentControl.Resources shadows the document key; the loader resolves that Blue
-           // (its captured chain's innermost hop), but the lowered inner factory can't reach the enclosing factory's
-           // local — before the fence fix it silently bound the document Red instead.
-    public void Lowered_StaticResource_NestedTemplate_ShadowedByUnreachableEnclosingScope_Fences()
+    [Fact] // Ambient-scope transport (depth-2, shadowing) — an in-template {StaticResource} whose innermost loader hop
+           // is an ENCLOSING-factory scope now resolves against it (transported via __ctx.AmbientResources) EXACTLY as
+           // the loader: the enclosing ContentControl.Resources' Blue shadows the document Red, and the transported
+           // chain searches the enclosing dict first, so the lowered inner factory binds Blue — not the document Red
+           // (was: fenced, because the flat factory couldn't reach the enclosing local).
+    public void Lowered_StaticResource_NestedTemplate_ShadowedByEnclosingScope_ResolvesViaTransport()
     {
         var xaml =
             $"<StackPanel {Ns} x:Class=\"GenApp.NestedShadowView\">" +
@@ -1157,28 +1157,35 @@ namespace GenApp { public partial class NestedShadowView : StackPanel { public N
         var compilation = GeneratorHarness.ReferencedCompilation("LoweringHost").AddSyntaxTrees(CSharpSyntaxTree.ParseText(codeBehind));
         var lowered = GeneratorHarness.LowerView(compilation, xaml);
 
-        // The shadowed in-template key fences loudly (the innermost loader hop is an unreachable enclosing-factory
-        // scope) rather than binding the document value — and the generated code still compiles (the member drops).
-        Assert.Contains("TODO X5", lowered);
-        Assert.DoesNotContain("ResolveStatic(\"K\"", lowered); // never fall through to a farther reachable / app match
-        GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(lowered)));
+        // No fence — the shadowed in-template key resolves via ResolveStatic against the transported chain (which
+        // splices the enclosing dict at its lexical position, so it shadows the document key). Compiles.
+        Assert.DoesNotContain("TODO X5", lowered);
+        Assert.Contains("ResolveStatic(\"K\"", lowered);
+        Assert.Contains("__ctx.AmbientResources", lowered);
+        var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(lowered)));
 
-        // The loader DOES resolve it — to the enclosing ContentControl.Resources' Blue (its captured chain's
-        // innermost hop), NOT the document Red. This is the value the lowered factory cannot reproduce, hence the fence.
+        // The GENERATED path resolves the shadow correctly — the transported chain searches the enclosing Blue
+        // before the document Red, so the inner Button binds Blue (NOT the document Red).
+        var genView = (StackPanel)System.Activator.CreateInstance(assembly.GetType("GenApp.NestedShadowView")!)!;
+        var genOuter = Assert.IsType<ContentControl>(Assert.IsType<DataTemplate>(genView.Resources["Outer"]).Build(null));
+        var genInner = Assert.IsType<Button>(genOuter.ContentTemplate!.Build(null));
+        Assert.Equal(Cursorial.Media.Colors.Blue, Assert.IsType<SolidColorBrush>(genInner.Foreground).Color);
+
+        // Drift check — the reflection loader resolves the identical Blue through its captured chain (X174 parity).
         var runtime = (StackPanel)new Cursorial.UI.Xaml.XamlLoader(
             new Cursorial.UI.Xaml.XamlLoaderOptions { MetadataProvider = Cursorial.UI.Xaml.ReflectionXamlMetadata.Instance })
             .Load(xaml.Replace(" x:Class=\"GenApp.NestedShadowView\"", ""));
         var runtimeOuter = Assert.IsType<ContentControl>(Assert.IsType<DataTemplate>(runtime.Resources["Outer"]).Build(null));
         var runtimeInner = Assert.IsType<Button>(runtimeOuter.ContentTemplate!.Build(null));
+        Assert.Equal(Cursorial.Media.Colors.Blue, Assert.IsType<SolidColorBrush>(runtimeInner.Foreground).Color);
         Assert.NotSame(runtime.Resources["K"], runtimeInner.Foreground); // NOT the document Red — the shadow won
     }
 
-    [Fact] // Review follow-up (depth-2) — a plain {StaticResource} inside a NESTED template must FENCE when an
-           // unreachable enclosing-factory dict is populated from a Source. The Source-loaded keys fold into that
-           // dict's OWN entries (visible to the loader's TryGetValue) but are opaque at compile time, so the
-           // reachable-only ResolveStatic chain — which drops the unreachable dict — could miss a key the loader
-           // resolves against it. Fence rather than emit a ResolveStatic that binds a farther / app-tail value.
-    public void Lowered_StaticResource_NestedTemplate_UnreachableSourceScope_Fences()
+    [Fact] // Ambient-scope transport (depth-2, Source-loaded) — a {StaticResource} inside a NESTED template no longer
+           // fences when the enclosing dict is populated from a Source: that dict (opaque keys included) is
+           // TRANSPORTED via __ctx.AmbientResources, so ResolveStatic resolves K against the SAME Source-loaded dict
+           // the loader uses — no dropped scope, no fail-open, no fence.
+    public void Lowered_StaticResource_NestedTemplate_SourceScope_ResolvesViaTransport()
     {
         var xaml =
             $"<ContentControl {Ns} x:Class=\"GenApp.NestSrcView\">" + // root: NO <Resources>
@@ -1204,11 +1211,12 @@ namespace GenApp { public partial class NestSrcView : ContentControl { public Ne
         var compilation = GeneratorHarness.ReferencedCompilation("LoweringHost").AddSyntaxTrees(CSharpSyntaxTree.ParseText(codeBehind));
         var lowered = GeneratorHarness.LowerView(compilation, xaml);
 
-        // The Source still lowers; the in-template {StaticResource K} fences (an unreachable opaque scope could hold
-        // K) rather than emitting an unfaithful ResolveStatic. The generated code still compiles.
-        Assert.Contains(".Source = new global::System.Uri(", lowered); // the enclosing Source is lowered, not dropped
-        Assert.Contains("TODO X5", lowered);
-        Assert.DoesNotContain("ResolveStatic(\"K\"", lowered); // never emit a ResolveStatic that drops the opaque scope
+        // The Source still lowers; the in-template {StaticResource K} now resolves via ResolveStatic against the
+        // transported chain (which includes the Source-loaded dict) rather than fencing. The generated code compiles.
+        Assert.Contains(".Source = new global::System.Uri(", lowered);  // the enclosing Source is lowered
+        Assert.DoesNotContain("TODO X5", lowered);                      // no fence
+        Assert.Contains("ResolveStatic(\"K\"", lowered);                // resolves at runtime against the chain
+        Assert.Contains("__ctx.AmbientResources", lowered);             // which includes the transported Source dict
         GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(lowered)));
     }
 
@@ -1248,12 +1256,11 @@ namespace GenApp { public partial class CrossFormView : StackPanel { public Cros
         Assert.Same(runtime.Resources["Theme.SurfaceBrush"], runtimeButton.Foreground);
     }
 
-    [Fact] // Review follow-up (depth-2, cross-form) — a nested template's plain-string {StaticResource} whose
-           // value-equal key is defined by a const-string {x:Static} in the enclosing (unreachable) template's
-           // Resources must FENCE. The canonical key identity now matches across the two forms, so
-           // ResolveVisibleResourceVar sees the unreachable holder and fences — instead of the cross-form miss
-           // silently falling through to a ResolveStatic that drops the unreachable scope and binds a farther/app value.
-    public void Lowered_StaticResource_NestedTemplate_CrossFormShadow_Fences()
+    [Fact] // Ambient-scope transport (depth-2, cross-form) — a nested template's plain-string {StaticResource} whose
+           // value-equal key is defined by a const-string {x:Static} in the enclosing template's Resources resolves
+           // via the transported chain: the canonical key identity matches across the two forms, the enclosing scope
+           // is carried on __ctx.AmbientResources, and ResolveStatic finds the entry by its (value) key — no fence.
+    public void Lowered_StaticResource_NestedTemplate_CrossFormEnclosingKey_ResolvesViaTransport()
     {
         var xaml =
             $"<ContentControl {Ns} x:Class=\"GenApp.CrossFormNestView\">" + // root: NO <Resources>
@@ -1279,10 +1286,11 @@ namespace GenApp { public partial class CrossFormNestView : ContentControl { pub
         var compilation = GeneratorHarness.ReferencedCompilation("LoweringHost").AddSyntaxTrees(CSharpSyntaxTree.ParseText(codeBehind));
         var lowered = GeneratorHarness.LowerView(compilation, xaml);
 
-        // The canonical identity matches across forms, so the unreachable holder is seen and the member fences —
-        // never a ResolveStatic that drops the enclosing scope and mis-resolves. The generated code still compiles.
-        Assert.Contains("TODO X5", lowered);
-        Assert.DoesNotContain("ResolveStatic(\"Theme.SurfaceBrush\"", lowered);
+        // The canonical identity matches across forms, so the enclosing (x:Static-keyed) scope is transported and
+        // ResolveStatic finds the entry by its value key — no fence. The generated code compiles.
+        Assert.DoesNotContain("TODO X5", lowered);
+        Assert.Contains("ResolveStatic(\"Theme.SurfaceBrush\"", lowered);
+        Assert.Contains("__ctx.AmbientResources", lowered);
         GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(lowered)));
     }
 }

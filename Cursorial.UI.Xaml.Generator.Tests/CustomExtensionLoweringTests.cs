@@ -418,6 +418,61 @@ namespace GenApp { public partial class NestAmbView : StackPanel { public NestAm
         }
     }
 
+    [Fact] // {StaticResource} completion — a {StaticResource} inside a NESTED template resolves against the enclosing
+           // template's <X.Resources> via the transported ResolveStatic chain (was: fenced as an unreachable scope).
+    public void Lowered_StaticResource_NestedTemplate_ResolvesEnclosingScope_ViaTransport()
+    {
+        var xaml =
+            $"<StackPanel {Ns} x:Class=\"GenApp.NestStaticView\">" +
+            "<ContentControl Content=\"a\">" +
+              "<ContentControl.ContentTemplate>" +
+                "<DataTemplate>" +                                      // outer factory F1
+                  "<ContentControl Content=\"b\">" +
+                    "<ContentControl.Resources>" +
+                      "<SolidColorBrush x:Key=\"K\" Color=\"Red\"/>" +  // K in F1's factory scope (enclosing F2)
+                    "</ContentControl.Resources>" +
+                    "<ContentControl.ContentTemplate>" +
+                      "<DataTemplate>" +                                // inner factory F2
+                        "<Button Content=\"{StaticResource K}\"/>" +    // resolves F1's Red via the transported chain
+                      "</DataTemplate>" +
+                    "</ContentControl.ContentTemplate>" +
+                  "</ContentControl>" +
+                "</DataTemplate>" +
+              "</ContentControl.ContentTemplate>" +
+            "</ContentControl>" +
+            "</StackPanel>";
+        const string codeBehind = @"
+using Cursorial.UI.Controls;
+namespace GenApp { public partial class NestStaticView : StackPanel { public NestStaticView() => InitializeComponent(); } }";
+
+        var compilation = GeneratorHarness.ReferencedCompilation("LoweringHost")
+            .AddSyntaxTrees(CSharpSyntaxTree.ParseText(codeBehind));
+        var lowered = GeneratorHarness.LowerView(compilation, xaml);
+
+        Assert.DoesNotContain("TODO X5", lowered);          // no fence
+        Assert.Contains("ResolveStatic(\"K\"", lowered);    // resolves at runtime against the transported chain
+        Assert.Contains("__ctx.AmbientResources", lowered); // the enclosing scope IS spliced into that chain
+
+        var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(lowered)));
+        var host = Cursorial.UI.Hosting.Headless.UIHeadlessHost.Create(
+            new Cursorial.UI.Hosting.Headless.UIHeadlessHostOptions { InitialSize = new Cursorial.Rendering.Size(20, 5) });
+        try
+        {
+            var view = (StackPanel)System.Activator.CreateInstance(assembly.GetType("GenApp.NestStaticView")!)!;
+            host.ShowRoot(view);
+            host.RunUntilIdle();
+
+            var button = FindDescendant<Button>(view);
+            Assert.NotNull(button);
+            var brush = Assert.IsType<SolidColorBrush>(button!.Content); // K resolved against the enclosing F1 scope
+            Assert.Equal(Colors.Red, brush.Color);
+        }
+        finally
+        {
+            host.Dispose();
+        }
+    }
+
     private static T? FindDescendant<T>(UIElement root) where T : UIElement
     {
         if (root is T match)

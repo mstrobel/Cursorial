@@ -399,16 +399,11 @@ internal static class LoweringEmitter
     // True when an UNREACHABLE scope on the stack has compile-time-opaque own keys (a Source load). A key not found
     // inline can't be proven absent from such a scope, so the reachable-only ResolveStatic chain — which drops the
     // unreachable scope — might miss a key the loader resolves against it. The external {StaticResource} path fences.
-    private static bool HasUnreachableOpaqueScope(Context c)
-    {
-        for (int i = 0; i < c.AmbientScopeStack.Count; i++)
-        {
-            var scope = c.AmbientScopeStack[i];
-            if (scope.HasOpaqueKeys && !IsScopeReachable(c, scope))
-                return true;
-        }
-        return false;
-    }
+    // Retired by ambient-scope transport: every enclosing-factory scope (opaque Source-loaded ones included) is now
+    // carried into the ResolveStatic chain via __ctx.AmbientResources (CapturedAmbientForNested), so no scope is
+    // dropped and a key the loader resolves against an enclosing dict resolves against the SAME dict here — there is
+    // no fail-open left to fence against.
+    private static bool HasUnreachableOpaqueScope(Context c) => false;
 
     // Marks the scope backing <paramref name="dictVar"/> as having compile-time-opaque own keys (populated from a
     // Source). Called at the `.Source =` emit; the target is normally the innermost pushed scope, but match by
@@ -493,10 +488,11 @@ internal static class LoweringEmitter
     // outer/sibling element is emitted. <paramref name="keyIdentity"/> is the CANONICAL key form (const-string
     // {x:Static} collapsed to its value), matching how KeyExprToVar is populated, so a plain-string / {x:Static}
     // cross-form key resolves the same entry. Returns the entry var when the INNERMOST scope holding the key is
-    // reachable. Returns null when no scope holds the key. Sets <paramref name="fenceRequired"/> and returns null
-    // when the innermost holder is UNREACHABLE (a sibling/enclosing-factory scope the flat factory can't close
-    // over): the loader resolves that hop, so the lowered code must fence loudly — never skip past it to a farther
-    // reachable match, which would silently bind the wrong (shadowed) value.
+    // reachable. Returns null when no scope holds the key, OR when the innermost holder is an enclosing-template
+    // scope (unreachable as a local): that hop is now TRANSPORTED via __ctx.AmbientResources, so the caller resolves
+    // it through ResolveStatic against the transported chain (correct shadowing) rather than fencing.
+    // <paramref name="fenceRequired"/> is retained for the caller shape but is no longer set — every ambient scope
+    // now reaches the runtime ResolveStatic chain, so there is nothing left to fence.
     private static string? ResolveVisibleResourceVar(Context c, string keyIdentity, out bool fenceRequired)
         => ResolveVisibleResourceVar(c, keyIdentity, out fenceRequired, out _);
 
@@ -512,10 +508,12 @@ internal static class LoweringEmitter
             scope.KeyExprToType.TryGetValue(keyIdentity, out resourceType);
             // First (innermost) scope that holds the key — this is the hop the loader resolves.
             if (!IsScopeReachable(c, scope))
-            {
-                fenceRequired = true; // holds the key but the flat factory can't reach it → the caller fences
+                // An enclosing-template scope: the flat sibling factory can't name its dict local, but the enclosing
+                // chain is TRANSPORTED via __ctx.AmbientResources (CapturedAmbientForNested), and AmbientDictsArgs
+                // splices it into the ResolveStatic chain at this scope's position — so the caller resolves the key
+                // at runtime against the SAME dict the loader uses (correct shadowing, no fail-open). Return null (no
+                // reachable local var) WITHOUT fencing, so the caller takes the ResolveStatic path.
                 return null;
-            }
             if (c.CurrentFactoryId != 0 && scope.FactoryId == 0)
                 c.CurrentFactoryCaptures = true; // references a document local from within the factory ⇒ not static
             return v;
@@ -553,8 +551,10 @@ internal static class LoweringEmitter
     {
         // A key of a DEFERRED dictionary on the ambient stack resolves via its lazy slot (ResolveStatic realizes it
         // at access time, when every sibling slot exists) — so a forward reference to it must NOT fence.
-        if (!KeyInDeferredAmbientScope(c, keyIdentity) && ForwardKeyGuardSet(c).Contains(keyIdentity))
-            return null; // forward/not-yet-built intra-document (or unreachable sibling-factory) — fence, never fail-open
+        if (!KeyInDeferredAmbientScope(c, keyIdentity) && !KeyInTransportedEnclosingScope(c, keyIdentity)
+            && ForwardKeyGuardSet(c).Contains(keyIdentity))
+            return null; // forward/not-yet-built intra-document — fence, never fail-open. An enclosing-template key
+                         // (transported via __ctx.AmbientResources) resolves against ITS own dict, so it is exempt.
 
         // An unreachable enclosing-factory dict populated from a Source has compile-time-opaque own keys the
         // reachable-only ResolveStatic chain drops. This key wasn't found inline, so it could be one of those
@@ -564,6 +564,20 @@ internal static class LoweringEmitter
             return null;
 
         return $"global::Cursorial.UI.ResourceScopes.ResolveStatic({keyExpr}{AmbientDictsArgs(c)})";
+    }
+
+    // True when the innermost ambient scope holding the key is an ENCLOSING-template scope — unreachable as a local
+    // var but TRANSPORTED via __ctx.AmbientResources (CapturedAmbientForNested), so ResolveStatic resolves it against
+    // that dict rather than a farther/app-tail value. Exempts such a key from the ForwardKeyGuardSet fence.
+    private static bool KeyInTransportedEnclosingScope(Context c, string keyIdentity)
+    {
+        for (int i = c.AmbientScopeStack.Count - 1; i >= 0; i--) // innermost-first
+        {
+            var scope = c.AmbientScopeStack[i];
+            if (scope.KeyExprToVar.ContainsKey(keyIdentity))
+                return !IsScopeReachable(c, scope); // the innermost holder is transported iff it is an enclosing scope
+        }
+        return false;
     }
 
     // True when a dictionary must DEFER (each keyed-object entry as a lazy slot resolving by value at access time)

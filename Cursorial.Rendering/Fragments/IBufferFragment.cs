@@ -139,6 +139,13 @@ public interface IBufferFragment
     /// the default for cell-stream protocols that ship a pre-encoded payload (iTerm2) or place an
     /// uncroppable overlay (Kitty, today); the compositor then suppresses the fragment rather than letting it
     /// overdraw past the clip. Implementations that hold the raw pixels (Sixel) override to re-crop + re-encode.
+    /// <para>
+    /// <b>Give the cropped fragment a stable <see cref="Key"/>.</b> The compositor calls <c>Clip</c> afresh
+    /// every composite pass for an occluded fragment, so a re-crop that returns a new instance with the default
+    /// reference-identity <see cref="Key"/> is read as a different fragment each frame and re-transmitted — a
+    /// static image under a static clip then flickers. Derive the result's <see cref="Key"/> from
+    /// <c>(this.Key, visible)</c> so an unchanged source under an unchanged crop diff-skips.
+    /// </para>
     /// </summary>
     IBufferFragment? Clip(in Rect visible) => null;
 }

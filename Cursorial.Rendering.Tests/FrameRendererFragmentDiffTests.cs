@@ -291,6 +291,75 @@ public class FrameRendererFragmentDiffTests
         Assert.DoesNotContain("ERASE2", output);
     }
 
+    // ---- Clipped Sixel (occlusion-flicker fix) -----------------------------------
+
+    private static OutputCapabilities SixelCaps() =>
+        OutputCapabilities.None with
+        {
+            Graphics = new GraphicsCapabilities(Sixel: true, KittyGraphics: false, ITerm2InlineImages: false),
+        };
+
+    private static byte[] SolidRgba(int width, int height)
+    {
+        var px = new byte[width * height * 4];
+        for (int i = 0; i < px.Length; i += 4)
+        {
+            px[i] = 0x40; px[i + 1] = 0x80; px[i + 2] = 0xC0; px[i + 3] = 0xFF;
+        }
+        return px;
+    }
+
+    private static byte[] RenderBytes(FrameRenderer renderer, CellBuffer back)
+    {
+        var w = new ArrayBufferWriter<byte>();
+        renderer.Render(back, w);
+        return w.WrittenSpan.ToArray();
+    }
+
+    // True when the output carries a Sixel envelope — the DCS opener ESC P (0x1B 0x50). Only the
+    // Sixel fragment emits it, so its presence/absence is a clean "was the image (re-)transmitted?".
+    private static bool ContainsSixel(byte[] bytes)
+    {
+        for (int i = 0; i + 1 < bytes.Length; i++)
+            if (bytes[i] == 0x1B && bytes[i + 1] == (byte) 'P') return true;
+        return false;
+    }
+
+    [Fact]
+    public void ClippedSixel_StableClip_NotReTransmittedAcrossComposites()
+    {
+        // A partially-occluded Sixel banner re-clips into a fresh instance every composite pass. Absent
+        // the (source, rect) clip key it re-transmitted the whole envelope each frame — the banner
+        // flickering under a clipping dialog. With the fix the stable clip diff-skips.
+        var r = new FrameRenderer(SixelCaps());
+        var buffer = new CellBuffer(10, 4);
+        var source = new SixelFragment(SolidRgba(8, 8), 8, 8, new Size(4, 2));
+        var clip = new Rect(0, 0, 2, 1); // the visible sub-rect the occluder leaves
+
+        buffer.AddFragment(0, 0, source.Clip(clip)!);
+        Assert.True(ContainsSixel(RenderBytes(r, buffer)), "first composite must transmit the clipped image");
+
+        // Next composite: same source, same occlusion → a brand-new cropped instance, identical crop.
+        buffer.AddFragment(0, 0, source.Clip(clip)!);
+        Assert.False(ContainsSixel(RenderBytes(r, buffer)), "a stable clip must not re-transmit the image");
+    }
+
+    [Fact]
+    public void ClippedSixel_ChangedClip_ReTransmitted()
+    {
+        // The control: when the occlusion actually changes the visible rect, the crop is genuinely
+        // different and must be re-transmitted.
+        var r = new FrameRenderer(SixelCaps());
+        var buffer = new CellBuffer(10, 4);
+        var source = new SixelFragment(SolidRgba(8, 8), 8, 8, new Size(4, 2));
+
+        buffer.AddFragment(0, 0, source.Clip(new Rect(0, 0, 2, 1))!);
+        RenderBytes(r, buffer);
+
+        buffer.AddFragment(0, 0, source.Clip(new Rect(0, 0, 3, 1))!); // dialog moved → wider reveal
+        Assert.True(ContainsSixel(RenderBytes(r, buffer)), "a changed crop must re-transmit");
+    }
+
     // ---- Test helpers ------------------------------------------------------------
 
     // Overlay fragment with an explicit content-style Key and a distinct wire id encoded into

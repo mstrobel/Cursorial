@@ -54,6 +54,15 @@ public sealed class SixelFragment : IBufferFragment
     private readonly int _pixelHeight;
     private readonly int _maxColors;
 
+    // Stable diff identity for a fragment produced by Clip: the (source Key, visible rect) tuple, PRE-BOXED
+    // once here. Null for a non-clipped fragment (Key falls back to reference identity). A clip re-crops and
+    // re-encodes into a brand-new instance every composite pass, so without this the FrameRenderer's
+    // Key-equality diff (FragmentsMatch) reads an unchanged-but-occluded image as a different fragment every
+    // frame and re-transmits the whole Sixel envelope — the "banner flickers under a clipping dialog" bug.
+    // Two composites with the same source and the same visible rect box VALUE-equal tuples, so the diff skips.
+    // Pre-boxing keeps Key allocation-free per access (the diff reads it every frame).
+    private object? _clipKey;
+
     /// <summary>
     /// Construct a Sixel fragment from a pre-encoded payload. <paramref name="sixelPayload"/>
     /// must be the full <c>DCS … q … ST</c> envelope (including framing) — the fragment writes
@@ -143,8 +152,21 @@ public sealed class SixelFragment : IBufferFragment
         for (int y = 0; y < ph; y++)
             Array.Copy(_rgba, ((py + y) * _pixelWidth + px) * 4, cropped, y * pw * 4, pw * 4);
 
-        return new SixelFragment(cropped, pw, ph, new Size(visible.Columns, visible.Rows), _maxColors);
+        return new SixelFragment(cropped, pw, ph, new Size(visible.Columns, visible.Rows), _maxColors)
+        {
+            // Derive a stable identity from THIS fragment's Key plus the crop rect, so a static
+            // image under a static clip diff-skips across composites instead of re-emitting.
+            _clipKey = (Key, visible),
+        };
     }
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// A clipped fragment keys off (source identity, visible rect) so the FrameRenderer's diff treats an
+    /// unchanged image under an unchanged clip as the same fragment across frames; an unclipped fragment
+    /// keeps the default reference identity (reusing the instance across frames is the diff-friendly pattern).
+    /// </remarks>
+    public object Key => _clipKey ?? this;
 
     /// <summary>The pre-encoded Sixel payload (DCS framing included).</summary>
     public ReadOnlyMemory<byte> Payload => _payload;

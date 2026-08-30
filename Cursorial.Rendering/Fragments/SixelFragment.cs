@@ -54,14 +54,21 @@ public sealed class SixelFragment : IBufferFragment
     private readonly int _pixelHeight;
     private readonly int _maxColors;
 
-    // Stable diff identity for a fragment produced by Clip: the (source Key, visible rect) tuple, PRE-BOXED
-    // once here. Null for a non-clipped fragment (Key falls back to reference identity). A clip re-crops and
-    // re-encodes into a brand-new instance every composite pass, so without this the FrameRenderer's
-    // Key-equality diff (FragmentsMatch) reads an unchanged-but-occluded image as a different fragment every
-    // frame and re-transmits the whole Sixel envelope — the "banner flickers under a clipping dialog" bug.
-    // Two composites with the same source and the same visible rect box VALUE-equal tuples, so the diff skips.
-    // Pre-boxing keeps Key allocation-free per access (the diff reads it every frame).
+    // Diff identities (see Key). Both are PRE-BOXED so Key is allocation-free per access (the diff reads it
+    // every frame).
+    //
+    //  _clipKey — for a fragment produced by Clip: the (source content key, visible rect) tuple, set in Clip.
+    //    A clip re-crops + re-encodes into a brand-new instance every composite pass, so keying on reference
+    //    identity would make the FrameRenderer's Key-equality diff (FragmentsMatch) read an unchanged-but-
+    //    occluded image as a different fragment every frame and re-transmit the whole envelope — the "banner
+    //    flickers under a clipping dialog" bug. Reusing the SOURCE's content key (not re-hashing the crop)
+    //    keeps the clip path allocation-light.
+    //  _contentKey — for a non-clipped (source) fragment: a content-derived key computed lazily on first
+    //    access and cached, matching KittyImageFragment / ITerm2ImageFragment. The Image content layer builds
+    //    a fresh SixelFragment every raster, so a content key lets an identical reconstruction diff-skip
+    //    instead of re-transmitting; it also makes a re-rastered-but-identical source clip to a stable key.
     private object? _clipKey;
+    private object? _contentKey;
 
     /// <summary>
     /// Construct a Sixel fragment from a pre-encoded payload. <paramref name="sixelPayload"/>
@@ -154,19 +161,35 @@ public sealed class SixelFragment : IBufferFragment
 
         return new SixelFragment(cropped, pw, ph, new Size(visible.Columns, visible.Rows), _maxColors)
         {
-            // Derive a stable identity from THIS fragment's Key plus the crop rect, so a static
-            // image under a static clip diff-skips across composites instead of re-emitting.
+            // Key off THIS fragment's (content-derived) Key plus the crop rect, so a static image under a
+            // static clip diff-skips across composites — and a re-rastered-but-identical source clips to the
+            // same key. Reuses the source's cached content key rather than re-hashing the cropped pixels.
             _clipKey = (Key, visible),
         };
     }
 
     /// <inheritdoc/>
     /// <remarks>
-    /// A clipped fragment keys off (source identity, visible rect) so the FrameRenderer's diff treats an
-    /// unchanged image under an unchanged clip as the same fragment across frames; an unclipped fragment
-    /// keeps the default reference identity (reusing the instance across frames is the diff-friendly pattern).
+    /// <b>Content-derived</b>, matching <see cref="KittyImageFragment.Key"/> / <see cref="ITerm2ImageFragment.Key"/>:
+    /// the Image content layer builds a fresh <see cref="SixelFragment"/> every raster, so keying on reference
+    /// identity would re-transmit the whole DCS envelope each identical reconstruction. A source fragment's key
+    /// is a hash of its source (raw RGBA, or the pre-encoded payload) plus its sizes, computed once and cached;
+    /// a clipped fragment keys off <c>(source content key, visible rect)</c> so an unchanged image under an
+    /// unchanged clip diff-skips too.
     /// </remarks>
-    public object Key => _clipKey ?? this;
+    public object Key => _clipKey ?? (_contentKey ??= ComputeContentKey());
+
+    // The source-content key: hash the true source (raw RGBA when we hold it, else the pre-encoded payload)
+    // rather than the encoded output, so it's deterministic regardless of any quantizer/encoder variation.
+    // Only ever called for a non-clipped fragment (a clipped one carries _clipKey), so the crop path never
+    // hashes pixels.
+    private object ComputeContentKey()
+    {
+        var hash = new HashCode();
+        ReadOnlySpan<byte> source = _rgba is not null ? _rgba : _payload.Span;
+        hash.AddBytes(source);
+        return (source.Length, hash.ToHashCode(), _cellSize, _pixelWidth, _pixelHeight, _maxColors);
+    }
 
     /// <summary>The pre-encoded Sixel payload (DCS framing included).</summary>
     public ReadOnlyMemory<byte> Payload => _payload;

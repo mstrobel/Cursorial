@@ -135,10 +135,11 @@ public interface IBufferFragment
     /// Return a fragment that renders only the <paramref name="visible"/> cell sub-rectangle of this one
     /// (anchor-relative), for compositing under a clip that cuts the fragment's footprint. The returned
     /// fragment's <see cref="GetSize"/> is <paramref name="visible"/>'s size and it is re-anchored at the
-    /// translated top-left. Returns <see langword="null"/> when the protocol can't crop a partial image —
-    /// the default for cell-stream protocols that ship a pre-encoded payload (iTerm2) or place an
-    /// uncroppable overlay (Kitty, today); the compositor then suppresses the fragment rather than letting it
-    /// overdraw past the clip. Implementations that hold the raw pixels (Sixel) override to re-crop + re-encode.
+    /// translated top-left. Returns <see langword="null"/> when the fragment can't produce a partial — the
+    /// default, kept by iTerm2 (ships an opaque encoded payload) and by Sixel's pre-encoded-payload variant;
+    /// the compositor then suppresses the fragment rather than letting it overdraw past the clip. Fragments
+    /// that hold the source (Sixel's raw pixels re-crop + re-encode; Kitty re-places with a source rectangle)
+    /// override to crop.
     /// <para>
     /// <b>Give the cropped fragment a stable <see cref="Key"/>.</b> The compositor calls <c>Clip</c> afresh
     /// every composite pass for an occluded fragment, so a re-crop that returns a new instance with the default

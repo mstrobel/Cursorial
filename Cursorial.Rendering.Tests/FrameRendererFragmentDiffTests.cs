@@ -360,6 +360,22 @@ public class FrameRendererFragmentDiffTests
         Assert.True(ContainsSixel(RenderBytes(r, buffer)), "a changed crop must re-transmit");
     }
 
+    [Fact]
+    public void UnclippedSixel_IdenticalReconstruction_NotReTransmitted()
+    {
+        // The reconstruction-churn fix (Sixel unified with Kitty/iTerm2 content keys): the Image content
+        // layer builds a fresh SixelFragment every raster, so an identical rebuild (new instance, same
+        // pixels) must diff-skip via the content key instead of re-transmitting the DCS envelope.
+        var r = new FrameRenderer(SixelCaps());
+        var buffer = new CellBuffer(10, 4);
+
+        buffer.AddFragment(0, 0, new SixelFragment(SolidRgba(8, 8), 8, 8, new Size(4, 2)));
+        Assert.True(ContainsSixel(RenderBytes(r, buffer)), "first render transmits the image");
+
+        buffer.AddFragment(0, 0, new SixelFragment(SolidRgba(8, 8), 8, 8, new Size(4, 2))); // fresh, identical
+        Assert.False(ContainsSixel(RenderBytes(r, buffer)), "an identical reconstruction must not re-transmit");
+    }
+
     // ---- Test helpers ------------------------------------------------------------
 
     // Overlay fragment with an explicit content-style Key and a distinct wire id encoded into

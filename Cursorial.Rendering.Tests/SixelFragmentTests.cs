@@ -76,4 +76,67 @@ public class SixelFragmentTests
         // The inner DCS opener (ESC P) gets its ESC doubled by the wrapper.
         Assert.Contains("\x1b\x1bP", output);
     }
+
+    // ---- Clip identity (the occlusion-flicker fix) -------------------------------
+    //
+    // A clip re-crops + re-encodes into a brand-new instance every composite pass. The FrameRenderer's
+    // fragment diff is Key-equality, so a clipped fragment must key off (source identity, visible rect):
+    // otherwise a static image under a static clip re-emits the whole envelope every frame (the banner
+    // flickering under a clipping dialog).
+
+    private static byte[] SolidRgba(int width, int height)
+    {
+        var px = new byte[width * height * 4];
+        for (int i = 0; i < px.Length; i += 4)
+        {
+            px[i] = 0x40; px[i + 1] = 0x80; px[i + 2] = 0xC0; px[i + 3] = 0xFF;
+        }
+        return px;
+    }
+
+    private static SixelFragment RgbaSource() => new(SolidRgba(8, 8), 8, 8, new Size(4, 2));
+
+    [Fact]
+    public void Clip_SameVisibleRect_FreshInstances_HaveValueEqualKeys()
+    {
+        var source = RgbaSource();
+        var rect = new Rect(0, 0, 2, 1);
+
+        var a = source.Clip(rect)!;
+        var b = source.Clip(rect)!;
+
+        Assert.NotSame(a, b);                    // a clip re-encodes into a new instance each call …
+        Assert.True(Equals(a.Key, b.Key));       // … but the diff key is value-equal, so FragmentsMatch skips
+    }
+
+    [Fact]
+    public void Clip_DifferentVisibleRect_HaveDifferentKeys()
+    {
+        var source = RgbaSource();
+
+        var a = source.Clip(new Rect(0, 0, 2, 1))!;
+        var b = source.Clip(new Rect(0, 0, 1, 1))!;
+
+        Assert.False(Equals(a.Key, b.Key)); // a genuinely different crop must re-emit
+    }
+
+    [Fact]
+    public void Clip_DifferentSource_SameRect_HaveDifferentKeys()
+    {
+        // The source identity is part of the key, so re-rastering the image (a new source instance) still
+        // re-emits even at the same crop rect — the pixels may have changed.
+        var rect = new Rect(0, 0, 2, 1);
+
+        var a = RgbaSource().Clip(rect)!;
+        var b = RgbaSource().Clip(rect)!;
+
+        Assert.False(Equals(a.Key, b.Key));
+    }
+
+    [Fact]
+    public void UnclippedFragment_KeyIsReferenceIdentity()
+    {
+        var source = RgbaSource();
+        Assert.Same(source, source.Key); // reusing the same instance is the diff-friendly pattern
+    }
 }

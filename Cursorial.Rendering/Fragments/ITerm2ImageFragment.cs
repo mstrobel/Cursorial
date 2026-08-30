@@ -35,6 +35,7 @@ public sealed class ITerm2ImageFragment : IBufferFragment
     private readonly Size _displaySize;
     // Which placement dimension to leave to iTerm2's aspect-ratio scaling (emit width=auto / height=auto).
     private readonly AspectFreeDimension _aspectFree;
+    private readonly object _contentKey;
 
     /// <summary>Construct an iTerm2 inline image fragment.</summary>
     /// <param name="data">The encoded image and its metadata.</param>
@@ -49,7 +50,30 @@ public sealed class ITerm2ImageFragment : IBufferFragment
         _pixelSize = pixelSize;
         _displaySize = displaySize ?? data.RequestedSize ?? throw new InvalidOperationException("ImageData.CellSize or displaySize must be provided.");
         _aspectFree = aspectFree;
+
+        // Content-derived diff key (see Key). Mirrors KittyImageFragment: a hash of the encoded bytes plus
+        // the byte length, format, and target sizes, so two fragments wrapping the same image compare equal.
+        // Boxed once here to keep Key allocation-free per access. (iTerm2 carries no source-rectangle crop —
+        // it returns null from Clip and is suppressed under occlusion — so, unlike Kitty, the key omits it.)
+        var hash = new HashCode();
+        hash.AddBytes(data.Bytes.Span);
+        hash.Add(data.Bytes.Length);
+        hash.Add(data.Format);
+        hash.Add(_displaySize);
+        hash.Add(_pixelSize);
+        hash.Add(_aspectFree);
+        _contentKey = (data.Bytes.Length, hash.ToHashCode(), _displaySize, _pixelSize, _aspectFree);
     }
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// <b>Content-derived</b>, matching <see cref="KittyImageFragment.Key"/>: the Image content layer builds
+    /// a fresh fragment every raster, so keying on reference identity would re-transmit the whole OSC 1337
+    /// payload each time an identical fragment is reconstructed (a re-rastered zone) — churn/flicker. Two
+    /// fragments over the same image (bytes, format, sizes) compare equal, so the FrameRenderer's fragment
+    /// diff skips the reconstruction.
+    /// </remarks>
+    public object Key => _contentKey;
 
     /// <inheritdoc/>
     /// <remarks>

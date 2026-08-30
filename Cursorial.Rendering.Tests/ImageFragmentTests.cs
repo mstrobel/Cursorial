@@ -248,6 +248,33 @@ public class ITerm2ImageFragmentTests
         // Base64 payload is present.
         Assert.Contains(Convert.ToBase64String(new byte[] { 1, 2, 3, 4, 5, 6, 7, 8 }), text);
     }
+
+    [Fact]
+    public void Key_IsContentDerived_SoIdenticalReconstructionsDiffSkip()
+    {
+        // The Image content layer builds a fresh ITerm2ImageFragment every raster; keying on reference
+        // identity would re-transmit the whole OSC 1337 payload each reconstruction (churn/flicker). Two
+        // fragments over the SAME image must compare equal by Key so the FrameRenderer diff-skips —
+        // matching KittyImageFragment.
+        var data = new ImageData([1, 2, 3], ImageFormat.Png, new Size(5, 3));
+        var a = new ITerm2ImageFragment(data);
+        var b = new ITerm2ImageFragment(data);
+
+        Assert.NotSame(a, b);
+        Assert.Equal(a.Key, b.Key);
+    }
+
+    [Fact]
+    public void Key_DiffersForDifferentContentOrSize()
+    {
+        var data = new ImageData([1, 2, 3], ImageFormat.Png, new Size(5, 3));
+        var other = new ImageData([9, 9, 9], ImageFormat.Png, new Size(5, 3));
+
+        Assert.NotEqual(new ITerm2ImageFragment(data).Key, new ITerm2ImageFragment(other).Key);          // bytes
+        Assert.NotEqual(new ITerm2ImageFragment(data).Key, new ITerm2ImageFragment(data, new Size(6, 3)).Key); // size
+        Assert.NotEqual(new ITerm2ImageFragment(data).Key,
+                        new ITerm2ImageFragment(data, aspectFree: AspectFreeDimension.Columns).Key);      // aspect-free axis
+    }
 }
 
 public class ImageContentTests

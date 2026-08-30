@@ -541,6 +541,61 @@ public sealed class InlinePresentationTests
         Assert.Contains("history-", screen.LineTrimmed(0));
     }
 
+    [Fact] // a mid-line prompt (CPR column > 1) starts the region on the NEXT line while the cursor is still on
+    // the prompt line — one row ABOVE the region. The relative renderer must know, or its first paint erases
+    // and overwrites the prompt line (the absolute path re-addresses with CUP and never had the problem).
+    public void RelativeMoves_Startup_MidLinePrompt_PaintsBelowThePromptLine()
+    {
+        var screen = new VtScreen(40, 12);
+        for (int r = 0; r < 12; r++) { screen.SetCursor(r, 0); screen.Print($"history-{r:00}"); }
+        screen.SetCursor(5, 0); screen.Print("$ prompt: "); // over history-05; the cursor sits mid-line at (5, 10)
+
+        using var host = CreateInlineRelative();
+        host.ShowRoot(new Probe(10, 2) { FillGlyph = "X" });
+        host.RunFrame();
+        ReplyCursorPosition(host, row: screen.CursorRow + 1, column: screen.CursorCol + 1);
+        host.RunFrame();
+        var frame = Frame(host);
+        screen.Feed(host.LastFrameBytes.Span);
+
+        Assert.Contains("\x1b[1B\x1b[1G\x1b[0J", frame);          // the first paint steps DOWN onto the region's line
+        Assert.Equal("$ prompt:", screen.LineTrimmed(5));           // the prompt line is untouched
+        Assert.Equal(new string('X', screen.Cols), screen.Line(6)); // region rows 0..1 on the two lines below it
+        Assert.Equal(new string('X', screen.Cols), screen.Line(7));
+        Assert.Contains("history-", screen.LineTrimmed(4));
+    }
+
+    [Fact] // the renegotiation rebuild is the same seam: a fresh buffer AND a fresh relative renderer while the
+    // physical cursor still sits on the old caret cell — the repaint must climb from there, not from (0,0).
+    public async Task RelativeMoves_Renegotiation_RepaintClimbsFromTheCaretRow()
+    {
+        var screen = new VtScreen(40, 12);
+        for (int r = 0; r < 12; r++) { screen.SetCursor(r, 0); screen.Print($"history-{r:00}"); }
+        screen.SetCursor(5, 0); // the shell prompt sits on row 5
+
+        using var host = CreateInlineRelative();
+        var box = new TextBox { Width = 10, Height = 1 };
+        var root = new StackPanel { Orientation = Orientation.Vertical };
+        root.Children.Add(new TextBlock { Text = "Prompt" });
+        root.Children.Add(box); // the caret rides region row 1
+        host.ShowRoot(root);
+        host.RunFrame();
+        box.Focus();
+        ReplyCursorPosition(host, row: 6);
+        for (int i = 0; i < 3; i++) { host.RunFrame(); screen.Feed(host.LastFrameBytes.Span); }
+
+        Assert.Equal("Prompt", screen.LineTrimmed(5));
+        Assert.Equal(6, screen.CursorRow); // the frame ended on the caret — region row 1
+
+        host.Terminal.ScriptRenegotiatedCapabilities(HeadlessCapabilities.KittyTruecolor);
+        await host.Application.RenegotiateAsync();
+        for (int i = 0; i < 3; i++) { host.RunFrame(); screen.Feed(host.LastFrameBytes.Span); }
+
+        Assert.Equal("Prompt", screen.LineTrimmed(5));    // the rebuilt renderer's full repaint landed on the origin row...
+        Assert.DoesNotContain("Prompt", screen.Line(6));  // ...not a caret-row lower
+        Assert.Equal(6, screen.CursorRow);
+    }
+
     [Fact]
     public void RelativeMoves_SpuriousSameSizeResize_StillScrollsAtGrowth()
     {
@@ -718,6 +773,49 @@ public sealed class InlinePresentationTests
         Assert.True(host.Application.IsPresentingInline);
         Assert.Contains(PresentationClasses.Inline, probe.Classes);
         Assert.DoesNotContain(PresentationClasses.FullScreen, probe.Classes);
+    }
+
+    [Fact] // the return leg builds a FRESH relative renderer, and DECRST 1049 restores the cursor to the caret
+    // cell the last inline frame parked it on — the renderer must delta from THERE, not from (0,0), or the
+    // region repaints caret-row rows too low (the curio filter symptom: prompt on row 0, query box on row 1).
+    public void Switching_ReturnToInline_RelativeRepaintClimbsFromTheRestoredCaretRow()
+    {
+        var screen = new VtScreen(40, 12);
+        for (int r = 0; r < 12; r++) { screen.SetCursor(r, 0); screen.Print($"history-{r:00}"); }
+        screen.SetCursor(5, 0); // the shell prompt sits on row 5
+
+        using var host = CreateSwitching();
+        var box = new TextBox { Width = 10, Height = 1 };
+        var root = new StackPanel { Orientation = Orientation.Vertical };
+        root.Children.Add(new TextBlock { Text = "Prompt" });
+        root.Children.Add(box); // the caret rides region row 1
+        host.ShowRoot(root);
+        host.RunFrame();
+        box.Focus();
+        ReplyCursorPosition(host, row: 6);
+        for (int i = 0; i < 3; i++) { host.RunFrame(); screen.Feed(host.LastFrameBytes.Span); }
+
+        Assert.Equal("Prompt", screen.LineTrimmed(5));
+        Assert.Equal(6, screen.CursorRow); // the frame ended on the caret — region row 1
+        var (savedRow, savedCol) = (screen.CursorRow, screen.CursorCol);
+
+        var window = host.NewWindow(content: new Probe(8, 2) { FillGlyph = "W" }, left: 4, top: 2);
+        window.Show(host.Application.WindowManager!);
+        host.RunFrame(); // the escalation paints the ALT buffer — not the main raster, so not fed
+        Assert.False(host.Application.IsPresentingInline);
+
+        window.Close();
+        host.RunFrame(); // the return frame pops 1049 and re-queries DSR...
+        screen.SetCursor(savedRow, savedCol); // ...and DECRST 1049 restored the push-time cursor (VtScreen has no alt buffer)
+        ReplyCursorPosition(host, row: savedRow + 1, column: savedCol + 1);
+        host.RunFrame();
+        var frame = Frame(host);
+        screen.Feed(host.LastFrameBytes.Span);
+
+        Assert.Contains("\x1b[1A\x1b[1G\x1b[0J", frame); // the full repaint CLIMBS from the caret row to the region top
+        Assert.Equal("Prompt", screen.LineTrimmed(5));    // region row 0 is back on the origin row...
+        Assert.DoesNotContain("Prompt", screen.Line(6));  // ...not pushed down a row
+        Assert.Equal(6, screen.CursorRow);                // and the frame ends on the caret again
     }
 
     [Fact]

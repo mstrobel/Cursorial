@@ -940,7 +940,13 @@ public sealed partial class UIApplication
                 restoredMainRaster = true;
             }
             else
-                ScreenWriter.WriteClearScreen(writer); // the no-alt-buffer degrade: the region redraws below, but the surrounding scrollback is gone
+            {
+                // The no-alt-buffer degrade: the region redraws below, but the surrounding scrollback is
+                // gone. ED 2 leaves the cursor wherever the last fullscreen frame parked it — home it, so
+                // the fresh renderer's (0,0) tracked position is truthful at the origin-0 region below.
+                ScreenWriter.WriteClearScreen(writer);
+                CursorWriter.WriteMoveTo(writer, 0, 0);
+            }
 
             var parked = _parkedInlineBuffer!;
             _parkedInlineBuffer = null;
@@ -958,6 +964,14 @@ public sealed partial class UIApplication
                                           new FrameRendererOptions(OrderedDither: _options.OrderedDither,
                                                                    Inline: true,
                                                                    RelativeInline: _options.InlineRelativeMoves));
+
+            // DECRST 1049 put the hardware cursor back where the last inline frame parked it — the
+            // parked buffer's caret cell, the same row the re-anchor below subtracts. A fresh relative
+            // renderer tracks (0,0) until told otherwise; without this its first repaint's climb to the
+            // region top is a zero-delta no-op and the region paints caret-row rows too low.
+            if (restoredMainRaster)
+                _renderer.MarkInlineCursorMoved(_buffer.CursorRow, _buffer.CursorColumn);
+
             IsPresentingInline = true;
             _windowManager!.OnViewportResized(new Size(_buffer.Columns, _buffer.Rows));
 
@@ -1095,16 +1109,30 @@ public sealed partial class UIApplication
             return;
         }
 
-        _inlineOrigin = _inlineCpr == InlineCprState.Startup
+        if (_inlineCpr == InlineCprState.Startup)
+        {
             // The region starts on the shell's cursor line — or the NEXT line when the shell left
             // the cursor mid-line (a prompt without a trailing newline), which must not be painted
             // over. `row + 1` may point one past the bottom row; the render-time scroll adjust in
             // PrepareInlineRegion makes the room.
-            ? row + (column > 1 ? 1 : 0)
+            var midLine = column > 1;
+            _inlineOrigin = row + (midLine ? 1 : 0);
+
+            // Mid-line, the hardware cursor is still on the prompt line — one row ABOVE the region.
+            // Relative rendering deltas from the tracked position, so the renderer must know, or its
+            // first paint's climb to the region top is a no-op and the prompt line is erased and
+            // painted over. Row -1 is exact: the next move emits CUD 1. (A bottom-row prompt puts
+            // the origin past the screen; make-room then scrolls and re-marks the cursor itself.)
+            if (midLine)
+                _renderer?.MarkInlineCursorMoved(-1, column - 1);
+        }
+        else
+        {
             // Re-anchor: the hardware cursor rode the region through the terminal's resize rewrap;
             // subtracting its believed region-relative row recovers the region top. Clamp ON-SCREEN
             // only — an origin past `rows - height` is left for make-room to scroll onto the screen.
-            : ClampOriginOnScreen(row - Math.Max(0, _buffer?.CursorRow ?? 0));
+            _inlineOrigin = ClampOriginOnScreen(row - Math.Max(0, _buffer?.CursorRow ?? 0));
+        }
 
         _inlineCpr = InlineCprState.None;
         RequestFullRedraw(); // the region may have moved — repaint it wholesale at the new origin
@@ -1446,6 +1474,7 @@ public sealed partial class UIApplication
             }
 
             var (columns, rows) = (_buffer!.Columns, _buffer.Rows);
+            var (cursorRow, cursorColumn) = (_buffer.CursorRow, _buffer.CursorColumn);
 
             _buffer = new CellBuffer(columns, rows, effective) { CursorVisible = false };
 
@@ -1468,6 +1497,12 @@ public sealed partial class UIApplication
                                           new FrameRendererOptions(OrderedDither: _options.OrderedDither,
                                                                    Inline: IsPresentingInline,
                                                                    RelativeInline: _options.InlineRelativeMoves)); // the LIVE side — a renegotiation while escalated must rebuild a fullscreen renderer
+
+            // Close moved nothing: the physical cursor still sits on the old buffer's caret cell. A fresh
+            // relative-inline renderer deltas from its tracked (0,0) unless told otherwise — the same
+            // seed the InlineWithSwitching return path applies (SwitchPresentation).
+            if (IsPresentingInline)
+                _renderer.MarkInlineCursorMoved(cursorRow, cursorColumn);
 
             _effectiveInputCapabilities = ApplyDecorationProjections(effective.Input);
             _supportsAltKeyTracking = ComputeAltKeyTracking(effective.Input);

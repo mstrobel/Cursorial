@@ -97,6 +97,12 @@ internal sealed partial class WindowsConsoleInputByteSource : IInputByteSource, 
     private readonly ManualResetEventSlim _runEvent = new(initialState: true);
     private readonly bool _passThroughVtBytes;
 
+    // Native-console path only (see EmitKeyEvent): reassembles a terminal's ESC-introduced VT response
+    // (DSR-CPR, DA1/DA2, OSC colour reply) from the per-character vk=0 records conhost / Windows Terminal
+    // deliver it as, so it survives as a real DeviceResponseEvent instead of leaking as key text. Touched
+    // only from the single-threaded pump.
+    private readonly Win32VtResponseReassembler _vtResponse = new();
+
     private readonly object _stateLock = new();
     private int _pauseRefCount;
     private TaskCompletionSource? _pauseCompleted;
@@ -265,9 +271,11 @@ internal sealed partial class WindowsConsoleInputByteSource : IInputByteSource, 
                 EmitKeyEvent(in record.KeyEvent, output);
                 break;
             case MOUSE_EVENT:
+                _vtResponse.Reset(); // a non-key event ends any partial VT response reassembly
                 EmitMouseEvent(in record.MouseEvent, output);
                 break;
             case FOCUS_EVENT:
+                _vtResponse.Reset();
                 EmitFocusEvent(in record.FocusEvent, output);
                 break;
             // WINDOW_BUFFER_SIZE_EVENT is handled by the separate resize monitor.
@@ -312,6 +320,30 @@ internal sealed partial class WindowsConsoleInputByteSource : IInputByteSource, 
             output.Advance(copies);
             return;
         }
+
+        // Native-console families keep the lossless Win32 Input Mode envelope for real keys, but a
+        // terminal's ESC-introduced VT response (DSR-CPR the inline host waits on, DA1/DA2, OSC colour
+        // replies) is injected as a run of vk=0 ASCII records too — enveloping each would destroy the
+        // `ESC[…R` and leak it as literal key text. Divert only those bytes raw so the classifier reframes
+        // the real response; a genuine standalone vk=0 ASCII char (not ESC-introduced) falls through to the
+        // envelope untouched. Real keystrokes carry a non-zero vk and never enter this branch.
+        if (!_passThroughVtBytes && evt.VirtualKeyCode == 0 && evt.UnicodeChar is > 0 and < 0x80)
+        {
+            // Drop the up-half of every vk=0 ASCII record (real keystrokes carry a non-zero vk, so these
+            // are only ConPTY's VT-passthrough bytes — the same treatment the passthrough branch above
+            // applies). This must be unconditional, not gated on InSequence: the sequence's *terminator*
+            // closes the reassembler on its DOWN record, so a later InSequence check would let the
+            // terminator's own up-half leak back out as a spurious key envelope — one bogus keystroke per
+            // CPR reply, and relative-inline mode polls CPR continuously.
+            if (evt.KeyDown == 0) return;
+
+            if (_vtResponse.TryConsume((byte) evt.UnicodeChar, output))
+                return; // consumed as part of an ESC-introduced VT response
+        }
+
+        // A genuine key reaches the envelope: any partial VT response was interrupted (terminals inject
+        // replies atomically), so abandon it rather than let a stuck latch swallow later input.
+        _vtResponse.Reset();
 
         // The framework will repeat events per RepeatCount; emit one sequence with the actual
         // repeat count rather than RepeatCount copies of a Rc=1 sequence.

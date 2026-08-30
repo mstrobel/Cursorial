@@ -303,16 +303,21 @@ public class Calendar : Control
 
     // Month-mode keyboard: arrows move the selected day (±1 / ±7), Home/End the first/last selectable day of the
     // month, PageUp/PageDown the displayed month (refocusing a cell in the new month so keys keep routing here).
+    // Ctrl+arrow moves keyboard focus WITHOUT touching the selection, and Ctrl+Space toggles the focused day —
+    // together the keyboard-only path to disjoint ranges (arrow to a new day, toggle it, Shift+arrow to grow it).
     private bool HandleMonthKey(KeyEventArgs e)
     {
         var extend = (e.Modifiers & KeyModifiers.Shift) != 0;
 
+        // Ctrl+arrow is a pure focus move; Shift wins when both are held, so Ctrl+Shift+arrow still extends.
+        var focusOnly = (e.Modifiers & KeyModifiers.Control) != 0 && !extend;
+
         switch (e.Key)
         {
-            case Key.LeftArrow:  MoveSelection(ResolveAnchorDate(e), -1, extend); break;
-            case Key.RightArrow: MoveSelection(ResolveAnchorDate(e), 1, extend); break;
-            case Key.UpArrow:    MoveSelection(ResolveAnchorDate(e), -7, extend); break;
-            case Key.DownArrow:  MoveSelection(ResolveAnchorDate(e), 7, extend); break;
+            case Key.LeftArrow:  MoveDay(e, -1, extend, focusOnly); break;
+            case Key.RightArrow: MoveDay(e, 1, extend, focusOnly); break;
+            case Key.UpArrow:    MoveDay(e, -7, extend, focusOnly); break;
+            case Key.DownArrow:  MoveDay(e, 7, extend, focusOnly); break;
             case Key.Home:       SelectInMonth(forward: true); break;
             case Key.End:        SelectInMonth(forward: false); break;
 
@@ -326,10 +331,34 @@ public class Calendar : Control
                 FocusViewCell();
                 break;
 
-            default: return false; // not a calendar-nav key — leave unhandled
+            default:
+                // Ctrl+Space toggles the focused day's selected state. A day cell ignores Ctrl+Space (only the
+                // modifier-free spacebar activates it — ND10), so it bubbles here; both wire forms of the spacebar
+                // are matched via ButtonBase.IsActivationSpace. The toggle runs the standard per-mode gesture (the
+                // same one a Ctrl-click runs), so in MultipleRange it adds/removes the day and the other modes
+                // degrade exactly as they do for a Ctrl-click.
+                if (ButtonBase.IsActivationSpace(e, KeyModifiers.Control))
+                {
+                    ToggleFocusedDay(ResolveAnchorDate(e));
+                    return true;
+                }
+
+                return false; // not a calendar-nav key — leave unhandled
         }
 
         return true;
+    }
+
+    // One arrow keypress: Ctrl+arrow moves keyboard focus only (selection untouched); otherwise move the selection
+    // (a plain arrow re-selects the target, Shift+arrow extends the range in a range mode).
+    private void MoveDay(KeyEventArgs e, int deltaDays, bool extend, bool focusOnly)
+    {
+        var anchor = ResolveAnchorDate(e);
+
+        if (focusOnly)
+            MoveFocusToDay(anchor, deltaDays);
+        else
+            MoveSelection(anchor, deltaDays, extend);
     }
 
     // Year/Decade-mode keyboard: arrows move focus among the 4-column cell grid (±1 / ±ModeColumns, skipping disabled
@@ -516,6 +545,46 @@ public class Calendar : Control
             _activeRange.Clear();
             _activeRange.Add(target);
         }
+    }
+
+    // Ctrl+arrow: move keyboard focus to the adjacent selectable day (the same target an arrow would pick, blackouts
+    // skipped, view-follow included) but leave the selection and its anchor untouched — the keyboard-only route to a
+    // fresh range. The anchor is fixed later by Ctrl+Space (the toggle), so Shift+arrow then grows the range there.
+    private void MoveFocusToDay(DateOnly anchor, int deltaDays)
+    {
+        var lo = EffectiveMin();
+        var hi = EffectiveMax();
+        var clamped = Math.Clamp(anchor.DayNumber + deltaDays, lo, hi);
+
+        if (NearestSelectable(clamped, deltaDays >= 0 ? 1 : -1, lo, hi) is {} target)
+            FocusDay(target);
+    }
+
+    // Move keyboard focus onto a day cell, bringing its month into view first if it is outside the shown grid
+    // (mirroring the SelectedDate view-follow in OnSelectedDateChanged — but selection-neutral, since a DisplayDate
+    // change only rebuilds the grid).
+    private void FocusDay(DateOnly target)
+    {
+        if (target.Year != DisplayDate.Year || target.Month != DisplayDate.Month)
+            SetCurrentValue(DisplayDateProperty, new DateOnly(target.Year, target.Month, 1)); // rebuilds the grid
+
+        if (_cells.TryGetValue(target, out var cell))
+            cell.Focus(FocusNavigationMethod.Directional); // ⇒ :focus-visible
+    }
+
+    // Ctrl+Space: toggle the focused day through the standard per-mode selection gesture (ApplyDaySelection with the
+    // Ctrl flag — the same one a Ctrl-click runs), then keep focus on it. In MultipleRange this adds/removes the day
+    // (disjoint ranges by keyboard); SingleDate/SingleRange select it; None is a no-op. SingleDate rebuilds the grid,
+    // so re-resolve the cell before focusing.
+    private void ToggleFocusedDay(DateOnly date)
+    {
+        if (!IsSelectable(date))
+            return;
+
+        ApplyDaySelection(date, shift: false, ctrl: true);
+
+        if (_cells.TryGetValue(date, out var cell))
+            cell.Focus(FocusNavigationMethod.Directional);
     }
 
     // Select the first/last selectable day of the shown month within [Start, End] (Home / End).

@@ -84,12 +84,12 @@ public class SixelFragmentTests
     // otherwise a static image under a static clip re-emits the whole envelope every frame (the banner
     // flickering under a clipping dialog).
 
-    private static byte[] SolidRgba(int width, int height)
+    private static byte[] SolidRgba(int width, int height, byte r = 0x40, byte g = 0x80, byte b = 0xC0)
     {
         var px = new byte[width * height * 4];
         for (int i = 0; i < px.Length; i += 4)
         {
-            px[i] = 0x40; px[i + 1] = 0x80; px[i + 2] = 0xC0; px[i + 3] = 0xFF;
+            px[i] = r; px[i + 1] = g; px[i + 2] = b; px[i + 3] = 0xFF;
         }
         return px;
     }
@@ -121,22 +121,40 @@ public class SixelFragmentTests
     }
 
     [Fact]
-    public void Clip_DifferentSource_SameRect_HaveDifferentKeys()
+    public void Clip_SameContentDifferentSourceInstances_SameRect_HaveEqualKeys()
     {
-        // The source identity is part of the key, so re-rastering the image (a new source instance) still
-        // re-emits even at the same crop rect — the pixels may have changed.
+        // Content-derived: two DISTINCT source instances with identical pixels (e.g. the banner re-rastered)
+        // clipped to the same rect produce an equal key, so the diff skips — an upgrade over reference
+        // identity, which re-transmitted on every re-raster.
         var rect = new Rect(0, 0, 2, 1);
 
         var a = RgbaSource().Clip(rect)!;
         var b = RgbaSource().Clip(rect)!;
 
+        Assert.True(Equals(a.Key, b.Key));
+    }
+
+    [Fact]
+    public void Clip_DifferentContent_SameRect_HaveDifferentKeys()
+    {
+        // Different source pixels → different source content key → different clip key → re-emit.
+        var rect = new Rect(0, 0, 2, 1);
+
+        var a = new SixelFragment(SolidRgba(8, 8), 8, 8, new Size(4, 2)).Clip(rect)!;
+        var b = new SixelFragment(SolidRgba(8, 8, 0xFF, 0x00, 0x00), 8, 8, new Size(4, 2)).Clip(rect)!;
+
         Assert.False(Equals(a.Key, b.Key));
     }
 
     [Fact]
-    public void UnclippedFragment_KeyIsReferenceIdentity()
+    public void UnclippedFragment_KeyIsContentDerived()
     {
-        var source = RgbaSource();
-        Assert.Same(source, source.Key); // reusing the same instance is the diff-friendly pattern
+        // Matches Kitty / iTerm2: identical content compares equal (an identical reconstruction diff-skips);
+        // different content or size differs.
+        Assert.Equal(RgbaSource().Key, RgbaSource().Key);
+        Assert.NotEqual(RgbaSource().Key,
+                        new SixelFragment(SolidRgba(8, 8, 0xFF, 0x00, 0x00), 8, 8, new Size(4, 2)).Key);
+        Assert.NotEqual(RgbaSource().Key,
+                        new SixelFragment(SolidRgba(8, 8), 8, 8, new Size(5, 2)).Key);
     }
 }

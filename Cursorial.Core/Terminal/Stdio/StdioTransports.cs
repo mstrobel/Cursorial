@@ -3,6 +3,8 @@ using System.IO.Pipelines;
 using Cursorial.Input;
 using Cursorial.Output;
 
+using Microsoft.Win32.SafeHandles;
+
 namespace Cursorial.Terminal.Stdio;
 
 /// <summary>
@@ -12,6 +14,54 @@ namespace Cursorial.Terminal.Stdio;
 /// </summary>
 public static class StdioTransports
 {
+    /// <summary>
+    /// Opens the process's <b>redirected</b> standard input as a readable <see cref="Stream"/> — the
+    /// piped or file DATA on fd 0 (<c>git branch | app</c>, <c>app &lt; items.txt</c>). Returns
+    /// <see langword="null"/> when standard input is <b>not</b> redirected (a real terminal — there is no
+    /// piped data to read, and the tty belongs to the interactive session <see cref="Open"/> drives).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This is the redirected-DATA counterpart to <see cref="Open"/>: <see cref="Open"/> attaches to the
+    /// controlling terminal for keystrokes, while a redirected fd 0 carries pipeline data the UI wants to
+    /// consume before it takes over the screen. The two are independent fds — reading this stream never
+    /// disturbs the interactive terminal.
+    /// </para>
+    /// <para>
+    /// <b>Cross-platform handle resolution.</b> The real standard-input handle is wrapped in a
+    /// <b>non-owning</b> <see cref="SafeFileHandle"/> (the process keeps ownership of fd 0 — dispose the
+    /// returned <see cref="Stream"/>, but the underlying handle stays open). On Windows the handle comes
+    /// from <c>GetStdHandle(STD_INPUT_HANDLE)</c> — the raw fd number <c>0</c> is <b>not</b> a valid
+    /// Win32 kernel handle there, so <c>new SafeFileHandle((IntPtr)0, …)</c> throws
+    /// <see cref="ArgumentException"/> ("Invalid handle"). On POSIX the file descriptor <c>0</c> <i>is</i>
+    /// the kernel handle. <see cref="Console"/> is deliberately bypassed — its stream plumbing can mutate
+    /// terminal mode — which is safe precisely because a redirected fd 0 is a pipe/file, never the tty.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="PlatformNotSupportedException">Thrown on operating systems other than Linux, macOS, FreeBSD, or Windows.</exception>
+    public static Stream? TryOpenRedirectedInput()
+    {
+        if (!Console.IsInputRedirected)
+            return null;
+
+        IntPtr handle;
+        if (OperatingSystem.IsWindows())
+        {
+            handle = WindowsStdioTransports.GetStandardInputHandle();
+        }
+        else if (OperatingSystem.IsLinux() || OperatingSystem.IsMacOS() || OperatingSystem.IsFreeBSD())
+        {
+            handle = IntPtr.Zero; // POSIX: file descriptor 0 IS the kernel handle
+        }
+        else
+        {
+            throw new PlatformNotSupportedException("Cursorial stdio transports are only implemented for " +
+                                                    "Linux, macOS, FreeBSD, and Windows.");
+        }
+
+        return new FileStream(new SafeFileHandle(handle, ownsHandle: false), FileAccess.Read);
+    }
+
     /// <summary>
     /// Opens the platform stdio transports, applying raw mode and (on Windows) enabling VT processing.
     /// When stdin and/or stdout is redirected (a pipe or a file — <c>app | less</c>, <c>app &gt; log</c>,

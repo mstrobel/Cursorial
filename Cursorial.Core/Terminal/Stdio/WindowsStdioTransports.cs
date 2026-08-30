@@ -123,6 +123,14 @@ internal sealed partial class WindowsStdioTransports : IStdioTransports
     public IInputByteSource Source => _source;
     public IOutputByteSink Sink => _sink;
 
+    /// <summary>
+    /// The process's standard-input handle (<c>GetStdHandle(STD_INPUT_HANDLE)</c>). On Windows the raw
+    /// file-descriptor number 0 is <b>not</b> a valid kernel handle — stdin must be resolved through
+    /// <c>GetStdHandle</c> — so <see cref="StdioTransports.TryOpenRedirectedInput"/> routes through here
+    /// rather than fabricating a <c>SafeFileHandle(0)</c> (which throws "Invalid handle" on Windows).
+    /// </summary>
+    internal static IntPtr GetStandardInputHandle() => GetStdHandle(STD_INPUT_HANDLE);
+
     public static WindowsStdioTransports Open()
     {
         var family = VtTerminalNegotiator.ResolveIdentification().Family;

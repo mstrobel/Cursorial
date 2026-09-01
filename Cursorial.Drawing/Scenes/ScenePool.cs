@@ -34,6 +34,7 @@ public sealed class ScenePool
     // cycle touches only an existing Stack (zero allocation) — until the table outgrows the working
     // set, at which point eviction sweeps the empties (see EvictOne) so unbounded size churn cannot
     // accrete bucket metadata forever.
+    private readonly IGraphemeCache _graphemeCache;
     private readonly Dictionary<SizeKey, Bucket> _buckets = [];
     private readonly int _maxRetainedBuffers;
     private int _retainedCount;
@@ -51,10 +52,11 @@ public sealed class ScenePool
 
     /// <summary>Creates a pool retaining at most <paramref name="maxRetainedBuffers"/> freed buffers.</summary>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="maxRetainedBuffers"/> is less than 1.</exception>
-    public ScenePool(int maxRetainedBuffers = DefaultMaxRetainedBuffers)
+    public ScenePool(int maxRetainedBuffers = DefaultMaxRetainedBuffers, IGraphemeCache? graphemeCache = null)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(maxRetainedBuffers, 1);
         _maxRetainedBuffers = maxRetainedBuffers;
+        _graphemeCache = graphemeCache ?? IGraphemeCache.None;
     }
 
     /// <summary>The retention cap: the maximum number of freed buffers held for reuse.</summary>
@@ -92,7 +94,7 @@ public sealed class ScenePool
             return new Scene(buffer, this);   // ctor re-clears to transparent
         }
 
-        return new Scene(Scene.CreateBuffer(columns, rows), this);
+        return new Scene(Scene.CreateBuffer(columns, rows, _graphemeCache), this);
     }
 
     internal void Return(Scene scene)

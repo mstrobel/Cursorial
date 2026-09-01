@@ -37,6 +37,8 @@ public sealed class ITerm2ImageFragment : IBufferFragment
     private readonly AspectFreeDimension _aspectFree;
     private readonly object _contentKey;
 
+    private StringBuilder? _buffer;
+
     /// <summary>Construct an iTerm2 inline image fragment.</summary>
     /// <param name="data">The encoded image and its metadata.</param>
     /// <param name="displaySize">The whole-cell footprint reported by <see cref="GetSize"/>.</param>
@@ -127,7 +129,9 @@ public sealed class ITerm2ImageFragment : IBufferFragment
         var cellSize = _displaySize;
 
         // Build the header string up to the ':' separator. ASCII-only; we encode as raw bytes.
-        var header = new StringBuilder();
+        var header = Interlocked.Exchange(ref _buffer, null);
+
+        header ??= new StringBuilder();
         header.Append("\x1B]1337;File=");
         header.Append("size=").Append(_data.Bytes.Length).Append(';');
 
@@ -171,6 +175,8 @@ public sealed class ITerm2ImageFragment : IBufferFragment
         terminator.CopyTo(dest[written..]);
         written += terminator.Length;
         output.Advance(written);
+
+        Interlocked.CompareExchange(ref _buffer, header.Clear(), null);
     }
     
     /// <inheritdoc/>

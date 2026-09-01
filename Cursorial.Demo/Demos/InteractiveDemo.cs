@@ -115,6 +115,7 @@ internal abstract class InteractiveDemo : IDemo
         {
             long frame = 0;
             bool dirty = true;
+            var scratch = new ArrayBufferWriter<byte>(65536);
 
             while (!stopCts.IsCancellationRequested)
             {
@@ -147,8 +148,7 @@ internal abstract class InteractiveDemo : IDemo
                 if (Animated || dirty || invalidated)
                 {
                     RenderFrame(frame);
-
-                    var scratch = new ArrayBufferWriter<byte>();
+                    scratch.ResetWrittenCount();
                     Renderer.Render(Buffer, scratch);
 
                     await writer.WriteAsync(scratch.WrittenMemory);

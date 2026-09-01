@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 
 // ReSharper disable RedundantTypeArgumentsOfMethod
 
@@ -570,13 +571,33 @@ public abstract class UIObject : IInheritanceNode
             throw new ArgumentException($"Direct property '{property}' has no coercion (ledger A24).", nameof(property));
 
         if (_store is {} store && store.TryGetEntry(property.Id) is {} entry)
-        {
-            // Re-coerce both lanes that carry a raw value (each no-ops if its lane is absent, §20/PD6
-            // parity): the local lane (the winning base when present) notifies; the Template lane
-            // notifies only when it wins, else re-coerces its stored source silently.
-            entry.RecoerceLocal(store);
-            entry.RecoerceTemplate(store);
-        }
+            CoerceValueCore(entry, store);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void CoerceValueCore(EffectiveValueBase entry, ValueStore store)
+    {
+        // Re-coerce both lanes that carry a raw value (each no-ops if its lane is absent, §20/PD6
+        // parity): the local lane (the winning base when present) notifies; the Template lane
+        // notifies only when it wins, else re-coerces its stored source silently.
+        entry.RecoerceLocal(store);
+        entry.RecoerceTemplate(store);
+    }
+
+    /// <summary>
+    /// Forces the property's coercer to produce a value. If no value entry currently exists, one
+    /// will first be created with a <see cref="SetCurrentValue{T}(Cursorial.UI.StyledProperty{T},T)">
+    /// SetCurrentValue</see> graft.
+    /// </summary>
+    protected internal void ForceCoersion<T>(StyledProperty<T> property)
+    {
+        ArgumentNullException.ThrowIfNull(property);
+        VerifyAccess();
+
+        if (_store is {} store && store.TryGetEntry(property.Id) is {} entry)
+            CoerceValueCore(entry, store);
+        else
+            SetCurrentValue(property, property.GetMetadata(GetType()).DefaultValue);
     }
 
     private void SetValueCore<T>(StyledProperty<T> property, T value, bool isCurrentValue, bool honorTemplateScope = true)

@@ -26,7 +26,9 @@ public static class ChartDrawingExtensions
                                  ReadOnlySpan<double> values, Color color)
     {
         ArgumentNullException.ThrowIfNull(context);
-        new Sparkline(values, color).Render(context, column, row, width);
+        var sparkline = new Sparkline(values, color);
+        sparkline.Render(context, column, row, width);
+        sparkline.Dispose();
     }
 
     /// <summary>Render a braille line chart of <paramref name="points"/> into <paramref name="area"/>.</summary>

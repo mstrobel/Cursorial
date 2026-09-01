@@ -190,7 +190,9 @@ public sealed partial class UIApplication
         // to content before Phase 5 each frame (1 row until the first fit runs).
         var bufferSize = _options.Inline ? (size.Columns, Rows: 1) : size;
 
-        _buffer = new CellBuffer(bufferSize.Columns, bufferSize.Rows, _capabilities) { CursorVisible = false };
+        _buffer = new CellBuffer(bufferSize.Columns, bufferSize.Rows, _capabilities,
+                                 graphemeCache: GetService<IGraphemeCache>()) { CursorVisible = false };
+
         _renderer = new FrameRenderer(_capabilities.Output,
                                       new FrameRendererOptions(OrderedDither: _options.OrderedDither,
                                                                Inline: _options.Inline,
@@ -261,7 +263,7 @@ public sealed partial class UIApplication
     private void ComposeSystems()
     {
         _windowManager =
-            new WindowManager(_capabilities.Output, _caretService, _guard)
+            new WindowManager(_capabilities.Output, _caretService, _guard, graphemeCache: GetService<IGraphemeCache>())
             {
                 // S3 re-evaluates hover against the new stack on every show/close/modal/z change (§8.6).
                 SurfacesChanged = _inputDispatcher.OnSurfacesChanged,
@@ -919,7 +921,8 @@ public sealed partial class UIApplication
             _inlineCpr = InlineCprState.None;
 
             _parkedInlineBuffer = _buffer;
-            _buffer = new CellBuffer(_screenSize.Columns, _screenSize.Rows, _capabilities) { CursorVisible = false };
+            _buffer = new CellBuffer(_screenSize.Columns, _screenSize.Rows, _capabilities,
+                                     graphemeCache: GetService<IGraphemeCache>()) { CursorVisible = false };
             _renderer = new FrameRenderer(_capabilities.Output,
                                           new FrameRendererOptions(OrderedDither: _options.OrderedDither,
                                                                    Inline: false));
@@ -1476,7 +1479,8 @@ public sealed partial class UIApplication
             var (columns, rows) = (_buffer!.Columns, _buffer.Rows);
             var (cursorRow, cursorColumn) = (_buffer.CursorRow, _buffer.CursorColumn);
 
-            _buffer = new CellBuffer(columns, rows, effective) { CursorVisible = false };
+            _buffer = new CellBuffer(columns, rows, effective,
+                                     graphemeCache: GetService<IGraphemeCache>()) { CursorVisible = false };
 
             // A renegotiation while ESCALATED must not leave the parked inline buffer on the old
             // capability snapshot — restored verbatim after the excursion, it would blend against the
@@ -1485,7 +1489,8 @@ public sealed partial class UIApplication
             // need to (the fresh inline renderer full-redraws).
             if (_parkedInlineBuffer is {} parked)
             {
-                _parkedInlineBuffer = new CellBuffer(parked.Columns, parked.Rows, effective)
+                _parkedInlineBuffer = new CellBuffer(parked.Columns, parked.Rows, effective,
+                                                     graphemeCache: GetService<IGraphemeCache>())
                 {
                     CursorVisible = false,
                     CursorRow = parked.CursorRow,

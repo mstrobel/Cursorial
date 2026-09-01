@@ -258,7 +258,7 @@ public sealed class Section50_SizedTextBox
         using var _ = host;
 
         var highlight = Color.FromRgb(200, 40, 40);
-        box.SelectionBrush = new SolidColorBrush(highlight);
+        box.SelectionFill = new SolidColorBrush(highlight);
         box.SelectionStart = 1;
         box.SelectionLength = 2;
         Assert.True(host.RunUntilIdle());
@@ -354,7 +354,7 @@ public sealed class Section50_SizedTextBox
         for (int r = 0; r < face.Height; r++) before[r] = host.GetRowText(r);
 
         var highlight = Color.FromRgb(40, 160, 220);
-        box.SelectionBrush = new SolidColorBrush(highlight);
+        box.SelectionFill = new SolidColorBrush(highlight);
         box.SelectionStart = 1;
         box.SelectionLength = 3;
         Assert.True(host.RunUntilIdle());
@@ -405,7 +405,7 @@ public sealed class Section50_SizedTextBox
         host.RunUntilIdle();
 
         var unique = Color.FromRgb(199, 21, 133);
-        box.SelectionBrush = new SolidColorBrush(unique);
+        box.SelectionFill = new SolidColorBrush(unique);
 
         // Screen-anchor the expectation FIRST — the CaretIndex setter collapses any selection.
         int end = box.Text.Length;

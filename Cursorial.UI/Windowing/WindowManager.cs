@@ -38,7 +38,7 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
     private const int MinVisible = 4; // cells of a window that must stay on-screen so the title bar is grabbable (§8.7)
     private const int PerfectPlacementScore = 4; // a perfect popup placement score (all 4 corners in-bounds)
 
-    private readonly ScenePool _scenePool = new();
+    private readonly ScenePool _scenePool;
     private readonly List<TopLevelSurface> _surfaces = [];   // z-order, bottom→top; [0] is the root surface when present
     private readonly List<SceneLayer> _layers = [];          // per-frame scratch (the one concatenated layer span)
     private readonly TerminalCaretService _caretService;
@@ -74,11 +74,13 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
     /// Creates the window manager. <paramref name="guard"/> is the user-code funnel routed to every
     /// element <c>Render</c> override (design doc §10.8); null means draw exceptions propagate raw.
     /// </summary>
-    public WindowManager(OutputCapabilities capabilities, TerminalCaretService caretService, IUserCodeGuard? guard = null)
+    public WindowManager(OutputCapabilities capabilities, TerminalCaretService caretService,
+                         IUserCodeGuard? guard = null, IGraphemeCache? graphemeCache = null)
     {
         ArgumentNullException.ThrowIfNull(capabilities);
         ArgumentNullException.ThrowIfNull(caretService);
 
+        _scenePool = new ScenePool(graphemeCache: graphemeCache);
         _capabilities = capabilities;
         _caretService = caretService;
         _guard = guard;

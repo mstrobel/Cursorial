@@ -88,6 +88,9 @@ public sealed class PhaseShiftedBrush : UIObject, IBrush
     /// <summary>Delegates to the inner brush; an empty wrapper samples the terminal default, which carries no alpha.</summary>
     public bool IsOpaque => Brush?.IsOpaque ?? true;
 
+    /// <summary>Delegates to the inner brush; an empty wrapper samples the terminal default, which carries no alpha.</summary>
+    public bool IsTransparent => Brush?.IsTransparent ?? false;
+
     /// <inheritdoc/>
     public Color ColorAt(int column, int row, Rect bounds)
         => Brush?.ColorAt(column, row, bounds, Phase) ?? Colors.Default;

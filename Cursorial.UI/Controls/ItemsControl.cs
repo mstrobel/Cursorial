@@ -386,8 +386,13 @@ public class ItemsControl : Control
     protected override void OnTearDown()
     {
         base.OnTearDown();
-        _textSearch?.Reset(); // stop the idle-reset timer
+        ResetTextSearch();
         ItemContainerGenerator.ReleaseSource(); // unhook a live ItemsSource so it no longer pins this control
+    }
+
+    protected void ResetTextSearch()
+    {
+        _textSearch?.Reset(); // stop the idle-reset timer
     }
 
     /// <summary>

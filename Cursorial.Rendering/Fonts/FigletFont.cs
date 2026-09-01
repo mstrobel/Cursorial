@@ -1,5 +1,5 @@
 using System.ComponentModel;
-using System.Globalization;
+using System.Text;
 
 using Cursorial.Media;
 using Cursorial.Output;
@@ -87,7 +87,7 @@ public sealed class FigletFont : IGlyphFont
         // height; a file outside that range is still a perfectly renderable font, because the
         // baseline affects nothing but where a foreign-metric run (a fallback trim indicator)
         // sits BESIDE the glyphs. Refusing to load the whole face over a cosmetic metric would
-        // trade a one-row misplacement for a hard failure — the same judgement the constructor
+        // trade a one-row misplacement for a hard failure — the same judgment the constructor
         // already makes two statements below, where a font missing its mandatory space glyph gets
         // a fabricated one instead of an exception.
         //
@@ -183,10 +183,11 @@ public sealed class FigletFont : IGlyphFont
 
         int total = 0;
         FigletGlyph? prev = null;
+        var cps = EnumerateCodepoints(text);
 
-        foreach (uint cp in EnumerateCodepoints(text))
+        while (cps.MoveNext())
         {
-            var glyph = GetGlyph(cp);
+            var glyph = GetGlyph((uint)cps.Current.Value);
 
             if (prev is null)
             {
@@ -290,10 +291,11 @@ public sealed class FigletFont : IGlyphFont
 
         int caret = column;
         FigletGlyph? prev = null;
+        var cps = EnumerateCodepoints(text);
 
-        foreach (uint cp in EnumerateCodepoints(text))
+        while (cps.MoveNext())
         {
-            var glyph = GetGlyph(cp);
+            var glyph = GetGlyph((uint)cps.Current.Value);
             int overlap = prev is null ? 0 : ComputeOverlap(prev, glyph);
             caret -= overlap;
             PaintGlyph(buffer, caret, row, glyph, provider);
@@ -310,6 +312,8 @@ public sealed class FigletFont : IGlyphFont
     private void PaintGlyph(in CellBufferView buffer, int column, int row, FigletGlyph glyph, Func<int, int, CellStyle, CellStyle> style)
     {
         var lines = glyph.Lines;
+
+        scoped Span<char> smush = stackalloc char[1];
 
         for (int r = 0; r < lines.Length; r++)
         {
@@ -351,13 +355,13 @@ public sealed class FigletFont : IGlyphFont
                     continue;
                 }
 
-                string cluster;
+                scoped ReadOnlySpan<char> cluster;
 
                 // Hardblanks render as visual spaces; pure spaces are transparent so previously
                 // painted cells show through (this is what makes kerned/smushed boundaries
                 // composite correctly with the underlying cell grid).
                 if (ch == HardBlank) cluster = " ";
-                else cluster = line.Length == grapheme.Length ? line : grapheme.ToString();
+                else cluster = line.Length == grapheme.Length ? line : grapheme;
 
                 // The cell as it stands, read ONCE and used twice: as the smush look-back below, and
                 // as the base the flat overload's delta folds onto (an absent channel means "keep
@@ -381,14 +385,15 @@ public sealed class FigletFont : IGlyphFont
                 // well-defined here. Falls back to plain overwrite if the existing cell holds a
                 // character that doesn't pair with the new one (defensive \u2014 shouldn't fire under
                 // a correct overlap computation).
-                if (cluster != " " && cluster.Length == 1)
+                if (cluster is not " " && cluster.Length == 1)
                 {
                     if (existing.Grapheme is { Length: > 0 and 1 } prev &&
                         prev[0] is var prevCh &&
                         prevCh != ' ' &&
                         TrySmush(prevCh, ch, out char smushed))
                     {
-                        cluster = smushed.ToString();
+                        smush[0] = smushed;
+                        cluster = smush;
                     }
                 }
 
@@ -399,24 +404,9 @@ public sealed class FigletFont : IGlyphFont
         }
     }
 
-    private static IEnumerable<uint> EnumerateCodepoints(ReadOnlySpan<char> text)
+    private static SpanRuneEnumerator EnumerateCodepoints(ReadOnlySpan<char> text)
     {
-        // We can't yield from a method taking a Span — materialize. FIGlet rendering already
-        // allocates per-glyph buffers, so an enumerable string here is in the noise.
-        var s = text.ToString();
-        var iter = StringInfo.GetTextElementEnumerator(s);
-        var result = new List<uint>(s.Length);
-
-        while (iter.MoveNext())
-        {
-            var cluster = (string) iter.Current;
-            // For each grapheme cluster, use the first codepoint as the glyph lookup key.
-            // FIGlet fonts target single codepoints; combining marks and emoji clusters fall
-            // back to the base character's glyph (or to space, if not defined).
-            result.Add((uint) char.ConvertToUtf32(cluster, 0));
-        }
-
-        return result;
+        return text.EnumerateRunes();
     }
 
     /// <summary>

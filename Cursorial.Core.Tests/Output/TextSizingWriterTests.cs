@@ -79,12 +79,21 @@ public class TextSizingWriterTests
     public void WriteSplit_OversizedText_SplitsIntoMultipleSequences()
     {
         // Build a payload that exceeds the spec cap.
-        var big = new string('a', VtOutputSequences.KittyTextSizing.MaxTextBytes + 100);
+        var buffer = new char[VtOutputSequences.KittyTextSizing.MaxTextBytes + 100];
+
+        for (int i = 0, c = 'a'; i < buffer.Length; i++, c++)
+        {
+            if (c > 'z') c = 'a';
+            buffer[i] = (char)c;
+        }
+
+        var big = new string(buffer);
         var s = Encode(w => TextSizingWriter.WriteSplit(w, TextSizing.Normal, big));
 
         // The combined emission should still cover all the input text and round-trip cleanly
         // when the wire OSC envelopes are stripped.
         Assert.Contains(big[..100], s);
+        Assert.Contains(big.AsSpan()[VtOutputSequences.KittyTextSizing.MaxTextBytes..], s);
         Assert.Contains("\x1b\\\x1b]66;;", s); // back-to-back close+open at split boundary
     }
 }

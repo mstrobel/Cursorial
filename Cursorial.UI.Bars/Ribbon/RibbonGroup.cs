@@ -35,6 +35,14 @@ public class RibbonGroup : HeaderedItemsControl
     public static readonly RoutedEvent<RoutedEventArgs> DialogLauncherRequestedEvent =
         RoutedEvent<RoutedEventArgs>.Register(nameof(DialogLauncherRequested), RoutingStrategy.Bubble, typeof(RibbonGroup));
 
+    /// <summary>Raised when the width-collapsed group's <c>[name ▾]</c> flyout opens (forwarded from the collapsed opener).</summary>
+    public static readonly RoutedEvent<RoutedEventArgs> DropDownOpenedEvent =
+        RoutedEvent<RoutedEventArgs>.Register(nameof(DropDownOpened), RoutingStrategy.Direct, typeof(RibbonGroup));
+
+    /// <summary>Raised when the collapsed-group flyout dismisses (Escape / light-dismiss / item invoke).</summary>
+    public static readonly RoutedEvent<RoutedEventArgs> DropDownClosedEvent =
+        RoutedEvent<RoutedEventArgs>.Register(nameof(DropDownClosed), RoutingStrategy.Direct, typeof(RibbonGroup));
+
     /// <summary>Whether the group shows a <c>⋰</c> dialog-launcher (the guide's optional <c>.launch</c> corner cell).</summary>
     public static readonly StyledProperty<bool> HasDialogLauncherProperty =
         UIProperty.Register<RibbonGroup, bool>(nameof(HasDialogLauncher), defaultValue: false, changed: OnHasDialogLauncherChanged);
@@ -358,20 +366,28 @@ public class RibbonGroup : HeaderedItemsControl
         base.OnTemplateDetaching(old);
     }
 
-    /// <summary>Raised when the width-collapsed group's <c>[name ▾]</c> flyout opens (forwarded from the collapsed opener).</summary>
-    public event EventHandler? DropDownOpened;
+    /// <inheritdoc cref="DropDownOpenedEvent"/>
+    public event EventHandler<RoutedEventArgs>? DropDownOpened
+    {
+        add => AddHandler(DropDownOpenedEvent, value!);
+        remove => RemoveHandler(DropDownOpenedEvent, value!);
+    }
 
-    /// <summary>Raised when the collapsed-group flyout dismisses (Escape / light-dismiss / item invoke).</summary>
-    public event EventHandler? DropDownClosed;
+    /// <inheritdoc cref="DropDownClosedEvent"/>
+    public event EventHandler<RoutedEventArgs>? DropDownClosed
+    {
+        add => AddHandler(DropDownClosedEvent, value!);
+        remove => RemoveHandler(DropDownClosedEvent, value!);
+    }
 
     /// <summary>Raises <see cref="DropDownOpened"/>. Override to react to the collapsed flyout opening; call base to keep the event.</summary>
-    protected virtual void OnDropDownOpened() => DropDownOpened?.Invoke(this, EventArgs.Empty);
+    protected virtual void OnDropDownOpened() => RaiseEvent(new RoutedEventArgs(DropDownOpenedEvent, this));
 
     /// <summary>Raises <see cref="DropDownClosed"/>. Override to react to the collapsed flyout closing; call base to keep the event.</summary>
-    protected virtual void OnDropDownClosed() => DropDownClosed?.Invoke(this, EventArgs.Empty);
+    protected virtual void OnDropDownClosed() => RaiseEvent(new RoutedEventArgs(DropDownClosedEvent, this));
 
-    private void OnCollapsedDropDownOpened(object? sender, EventArgs e) => OnDropDownOpened();
-    private void OnCollapsedDropDownClosed(object? sender, EventArgs e) => OnDropDownClosed();
+    private void OnCollapsedDropDownOpened(object? sender, RoutedEventArgs e) => OnDropDownOpened();
+    private void OnCollapsedDropDownClosed(object? sender, RoutedEventArgs e) => OnDropDownClosed();
 
     private void ApplySeparatorVisibility()
     {

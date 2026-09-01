@@ -387,24 +387,21 @@
   </ControlTemplate>
 
   <Style x:Key="{x:Type ListBoxItem}" TargetType="ListBoxItem">
-    <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.ListItemForegroundNormal}}"/>
+    <Setter Property="TextElement.BaseTextStyle" Value="{DynamicResource {x:Static ThemeKeys.ListItemNormalTextStyle}}"/>
     <Setter Property="Padding"    Value="1,0"/>
     <Setter Property="Template"   Value="{StaticResource ListBoxItemTemplate}"/>
     <Style.Children>
       <Style Selector="^:pointerover" TargetType="ListBoxItem">
-        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.ListItemBackgroundHover}}"/>
-        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.ListItemForegroundHover}}"/>
+        <Setter Property="TextElement.BaseTextStyle" Value="{DynamicResource {x:Static ThemeKeys.ListItemHoverTextStyle}}"/>
       </Style>
       <Style Selector="^:selected" TargetType="ListBoxItem">
-        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.ListItemBackgroundSelectedInactive}}"/>
-        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.ListItemForegroundSelectedInactive}}"/>
+        <Setter Property="TextElement.BaseTextStyle" Value="{DynamicResource {x:Static ThemeKeys.ListItemBackgroundSelectedInactive}}"/>
       </Style>
       <Style Selector="^:focus-visible" TargetType="ListBoxItem">
-        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.ListItemBackgroundFocus}}"/>
-        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.ListItemForegroundFocus}}"/>
+        <Setter Property="TextElement.BaseTextStyle" Value="{DynamicResource {x:Static ThemeKeys.ListItemFocusTextStyle}}"/>
       </Style>
       <Style Selector="^:disabled" TargetType="ListBoxItem">
-        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.ListItemForegroundDisabled}}"/>
+        <Setter Property="TextElement.BaseTextStyle" Value="{DynamicResource {x:Static ThemeKeys.ListItemDisabledTextStyle}}"/>
       </Style>
     </Style.Children>
   </Style>
@@ -803,22 +800,20 @@
   </ControlTemplate>
 
   <Style x:Key="{x:Type TextBox}" TargetType="TextBox">
-    <Setter Property="Foreground"     Value="{DynamicResource {x:Static ThemeKeys.InputForegroundNormal}}"/>
-    <Setter Property="Background"     Value="{DynamicResource {x:Static ThemeKeys.InputBackgroundNormal}}"/>
-    <Setter Property="MinWidth"       Value="12"/>
-    <Setter Property="SelectionBrush" Value="{DynamicResource {x:Static ThemeKeys.InputSelectionInactive}}"/>
-    <Setter Property="Template"       Value="{StaticResource TextBoxTemplate}"/>
+    <Setter Property="BaseTextStyle"         Value="{DynamicResource {x:Static ThemeKeys.InputNormalTextStyle}}"/>
+    <Setter Property="SelectedTextStyle"     Value="{DynamicResource {x:Static ThemeKeys.InputSelectionInactiveTextStyle}}"/>
+    <Setter Property="MinWidth"              Value="12"/>
+    <Setter Property="Template"              Value="{StaticResource TextBoxTemplate}"/>
     <Style.Children>
       <Style Selector="^:pointerover" TargetType="TextBox">
-        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.InputBackgroundHover}}"/>
+        <Setter Property="BaseTextStyle"     Value="{DynamicResource {x:Static ThemeKeys.InputHoverTextStyle}}"/>
       </Style>
       <Style Selector="^:focus" TargetType="TextBox">
-        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.InputBackgroundFocus}}"/>
-        <Setter Property="SelectionBrush" Value="{DynamicResource {x:Static ThemeKeys.InputSelectionActive}}"/>
+        <Setter Property="BaseTextStyle"     Value="{DynamicResource {x:Static ThemeKeys.InputFocusTextStyle}}"/>
+        <Setter Property="SelectedTextStyle" Value="{DynamicResource {x:Static ThemeKeys.InputSelectionTextStyle}}"/>
       </Style>
       <Style Selector="^:disabled" TargetType="TextBox">
-        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.InputBackgroundDisabled}}"/>
-        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.InputForegroundDisabled}}"/>
+        <Setter Property="BaseTextStyle"     Value="{DynamicResource {x:Static ThemeKeys.InputDisabledTextStyle}}"/>
       </Style>
     </Style.Children>
   </Style>
@@ -1030,6 +1025,8 @@
             <ContentPresenter x:Name="PART_ContentSite" Content="{TemplateBinding SelectionBoxItem}"
                               ShowTrimmedContentInToolTip="True"/>
             <TextBox x:Name="PART_EditableTextBox"
+                     BaseTextStyle="{TemplateBinding BaseTextStyle}"
+                     IsTabStop="False"
                      Visibility="Collapsed"
                      Placeholder="{TemplateBinding PlaceholderText}"
                      IsReadOnly="{TemplateBinding IsReadOnly}"/>
@@ -1048,10 +1045,20 @@
   </ControlTemplate>
 
   <Style x:Key="{x:Type ComboBox}" TargetType="ComboBox">
-    <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.WellBrush}}"/>
-    <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.TextBrush}}"/>
+    <Setter Property="TextElement.BaseTextStyle" Value="{DynamicResource {x:Static ThemeKeys.InputNormalTextStyle}}"/>
     <Setter Property="Padding" Value="1,0"/>
     <Setter Property="Template"   Value="{StaticResource ComboBoxTemplate}"/>
+    <Style.Children>
+      <Style Selector="^:focus, ^:focus-within" TargetType="ComboBox">
+        <Setter Property="TextElement.BaseTextStyle" Value="{DynamicResource {x:Static ThemeKeys.InputFocusTextStyle}}"/>
+      </Style>
+      <Style Selector="^:pointerover" TargetType="ComboBox">
+        <Setter Property="TextElement.BaseTextStyle" Value="{DynamicResource {x:Static ThemeKeys.InputHoverTextStyle}}"/>
+      </Style>
+      <Style Selector="^:disabled" TargetType="ComboBox">
+        <Setter Property="TextElement.BaseTextStyle" Value="{DynamicResource {x:Static ThemeKeys.InputDisabledTextStyle}}"/>
+      </Style>
+    </Style.Children>
   </Style>
 
   <!-- ComboBoxItem: the ListBoxItem selection bar verbatim (hover -> selected -> focus-visible -> disabled). The
@@ -1064,22 +1071,21 @@
   </ControlTemplate>
 
   <Style x:Key="{x:Type ComboBoxItem}" TargetType="ComboBoxItem">
-    <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.ListItemForegroundNormal}}"/>
+    <Setter Property="TextElement.BaseTextStyle" Value="{DynamicResource {x:Static ThemeKeys.ListItemNormalTextStyle}}"/>
     <Setter Property="Template"   Value="{StaticResource ComboBoxItemTemplate}"/>
     <Setter Property="TextBlock.TextTrimming" Value="CharacterEllipsis"/>
     <Style.Children>
       <Style Selector="^:pointerover" TargetType="ComboBoxItem">
-        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.ListItemBackgroundHover}}"/>
+        <Setter Property="TextElement.BaseTextStyle" Value="{DynamicResource {x:Static ThemeKeys.ListItemHoverTextStyle}}"/>
       </Style>
       <Style Selector="^:selected" TargetType="ComboBoxItem">
-        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.ListItemBackgroundSelected}}"/>
+        <Setter Property="TextElement.BaseTextStyle" Value="{DynamicResource {x:Static ThemeKeys.ListItemBackgroundSelectedInactive}}"/>
       </Style>
       <Style Selector="^:focus-visible" TargetType="ComboBoxItem">
-        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.ListItemBackgroundFocus}}"/>
-        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.ListItemForegroundFocus}}"/>
+        <Setter Property="TextElement.BaseTextStyle" Value="{DynamicResource {x:Static ThemeKeys.ListItemFocusTextStyle}}"/>
       </Style>
       <Style Selector="^:disabled" TargetType="ComboBoxItem">
-        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.ListItemForegroundDisabled}}"/>
+        <Setter Property="TextElement.BaseTextStyle" Value="{DynamicResource {x:Static ThemeKeys.ListItemDisabledTextStyle}}"/>
       </Style>
     </Style.Children>
   </Style>
@@ -1114,9 +1120,9 @@
                               TextBlock.TextWrapping="NoWrap"
                               TextBlock.TextTrimming="None"/>
             <ContentPresenter x:Name="PART_Footer" DockPanel.Dock="Bottom" Visibility="Collapsed" Margin="1,0"
-                              TextElement.Foreground="{DynamicResource {x:Static ThemeKeys.FaintBrush}}"
-                              TextBlock.TextWrapping="NoWrap"
-                              TextBlock.TextTrimming="None"
+                              TextElement.BaseTextStyle="{DynamicResource {x:Static ThemeKeys.FaintTextStyle}}"
+                              TextElement.TextWrapping="NoWrap"
+                              TextElement.TextTrimming="None"
                               ShowTrimmedContentInToolTip="True"/>
             <CompletionList x:Name="PART_List"/>
           </DockPanel>

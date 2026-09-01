@@ -525,10 +525,11 @@ internal static class ControlThemes
                             TemplateBinding.From(ComboBox.SelectionBoxItemProperty));
 
         // Editable face: a text box (visible when IsEditable). Placeholder + read-only flow from the ComboBox.
-        var editable = new TextBox { Visibility = Visibility.Collapsed };
+        var editable = new TextBox { Visibility = Visibility.Collapsed, Padding = Margins.Zero, IsTabStop = false };
         ctx.RegisterName("PART_EditableTextBox", editable);
         editable.SetBinding(TextBox.PlaceholderProperty, TemplateBinding.From(ComboBox.PlaceholderTextProperty));
         editable.SetBinding(TextBox.IsReadOnlyProperty, TemplateBinding.From(ComboBox.IsReadOnlyProperty));
+        TextElement.ForwardBaseTextStyle(editable);
 
         var content = new Grid(); // the two faces overlap in one cell; the collapsed one takes no space
         content.SetBinding(UIElement.MarginProperty, TemplateBinding.From(Control.PaddingProperty));
@@ -570,18 +571,15 @@ internal static class ControlThemes
                Key = "Theme.ComboBox",
                Children =
                {
-                   new Style("^:focus")
-                      .SetResource(Control.BackgroundProperty, ThemeKeys.ListItemBackgroundFocus)
-                      .SetResource(Control.ForegroundProperty, ThemeKeys.ListItemForegroundFocus),
                    new Style("^:pointerover")
-                      .SetResource(Control.BackgroundProperty, ThemeKeys.ListItemBackgroundHover)
-                      .SetResource(Control.ForegroundProperty, ThemeKeys.ListItemForegroundHover),
+                      .SetResource(TextElement.BaseTextStyleProperty, ThemeKeys.InputHoverTextStyle),
+                   new Style("^:focus, ^:focus-within")
+                      .SetResource(TextElement.BaseTextStyleProperty, ThemeKeys.InputFocusTextStyle),
                    new Style("^:disabled")
-                      .SetResource(Control.BackgroundProperty, ThemeKeys.DisabledBackgroundBrush)
-                      .SetResource(Control.ForegroundProperty, ThemeKeys.DisabledForegroundBrush)
+                      .SetResource(TextElement.BaseTextStyleProperty, ThemeKeys.InputDisabledTextStyle)
                }
-           }.SetResource(Control.BackgroundProperty, ThemeKeys.WellBrush) // a recessed field
-            .SetResource(Control.ForegroundProperty, ThemeKeys.TextBrush)
+           }.SetResource(TextElement.BaseTextStyleProperty, ThemeKeys.InputNormalTextStyle) // a recessed field
+            .Set(KeyboardNavigation.TabNavigationProperty, KeyboardNavigationMode.Once)
             .Set(Control.PaddingProperty, new Margins(1, 0))
             .Set(Control.TemplateProperty, ComboBoxTemplate());
 
@@ -617,21 +615,18 @@ internal static class ControlThemes
     private static Style ComboBoxItemTheme()
     {
         var theme = new Style { Key = "Theme.ComboBoxItem" }
-            .SetResource(Control.ForegroundProperty, ThemeKeys.ListItemForegroundNormal)
+            .SetResource(TextElement.BaseTextStyleProperty, ThemeKeys.ListItemNormalTextStyle)
             .Set(TextBlock.TextTrimmingProperty, TextTrimming.CharacterEllipsis)
             .Set(Control.TemplateProperty, ComboBoxItemTemplate());
         
         theme.Children.Add(new Style("^:pointerover")
-                          .SetResource(Control.BackgroundProperty, ThemeKeys.ListItemBackgroundHover)
-                          .SetResource(Control.ForegroundProperty, ThemeKeys.ListItemForegroundHover));
+                          .SetResource(TextElement.BaseTextStyleProperty, ThemeKeys.ListItemHoverTextStyle));
         theme.Children.Add(new Style("^:selected")
-                          .SetResource(Control.BackgroundProperty, ThemeKeys.ListItemBackgroundSelectedInactive)
-                          .SetResource(Control.ForegroundProperty, ThemeKeys.ListItemForegroundSelectedInactive));
+                          .SetResource(TextElement.BaseTextStyleProperty, ThemeKeys.ListItemSelectedInactiveTextStyle));
         theme.Children.Add(new Style("^:focus-visible")
-                          .SetResource(Control.BackgroundProperty, ThemeKeys.ListItemBackgroundFocus)
-                          .SetResource(Control.ForegroundProperty, ThemeKeys.ListItemForegroundFocus));
+                          .SetResource(TextElement.BaseTextStyleProperty, ThemeKeys.ListItemFocusTextStyle));
         theme.Children.Add(new Style("^:disabled")
-                              .SetResource(Control.ForegroundProperty, ThemeKeys.ListItemForegroundDisabled));
+                          .SetResource(TextElement.BaseTextStyleProperty, ThemeKeys.ListItemDisabledTextStyle));
 
         return theme;
     }
@@ -810,9 +805,9 @@ internal static class ControlThemes
                          Margin = new(1, 0),
                          ShowTrimmedContentInToolTip = true
                      };
-        footer.SetValue(TextBlock.TextTrimmingProperty, TextTrimming.CharacterEllipsis);
-        footer.SetValue(TextBlock.TextWrappingProperty, WrapMode.NoWrap);
-        footer.SetResourceReference(TextBlock.ForegroundProperty, ThemeKeys.FaintBrush);
+        footer.SetValue(TextElement.TextTrimmingProperty, TextTrimming.CharacterEllipsis);
+        footer.SetValue(TextElement.TextWrappingProperty, WrapMode.NoWrap);
+        footer.SetResourceReference(TextElement.BaseTextStyleProperty, ThemeKeys.FaintTextStyle);
         ctx.RegisterName("PART_Footer", footer);
         DockPanel.SetDock(footer, Dock.Bottom);
 
@@ -1726,6 +1721,7 @@ internal static class ControlThemes
         border.SetBinding(Border.BorderPenProperty, TemplateBinding.From(Control.BorderPenProperty));
         border.SetBinding(Border.PaddingProperty, TemplateBinding.From(Control.PaddingProperty));
         TextElement.ForwardInverse(border);
+        TextElement.ForwardBaseTextStyle(presenter);
         TextElement.ForwardAllAxes(presenter);
         TextElement.ForwardTypography(presenter);
         return border;
@@ -1733,21 +1729,22 @@ internal static class ControlThemes
 
     private static Style TextBoxTheme()
     {
-        var theme = ApplyPaletteSpine(new Style { Key = "Theme.TextBox" }, ThemeKeys.InputForegroundNormal, ThemeKeys.InputBackgroundNormal)
-            .Set(Control.PaddingProperty, new Margins(1, 0))
-            .Set(UIElement.MinWidthProperty, 12)
-            .SetResource(TextBox.SelectionBrushProperty, ThemeKeys.InputSelectionInactive)
-            .Set(Control.TemplateProperty, TextBoxTemplate());
+        var theme = new Style { Key = "Theme.TextBox" }
+                   .SetResource(TextBox.BaseTextStyleProperty, ThemeKeys.InputNormalTextStyle)
+                   .SetResource(TextBox.SelectedTextStyleProperty, ThemeKeys.InputSelectionInactiveTextStyle)
+                   .Set(Control.PaddingProperty, new Margins(1, 0))
+                   .Set(UIElement.MinWidthProperty, 12)
+                   .Set(Control.TemplateProperty, TextBoxTemplate());
+
         theme.Children.Add(new Style("^:pointerover")
-                              .SetResource(Control.BackgroundProperty, ThemeKeys.InputBackgroundHover)
-                              .SetResource(Control.ForegroundProperty, ThemeKeys.InputForegroundHover));
+                              .SetResource(TextElement.BaseTextStyleProperty, ThemeKeys.InputHoverTextStyle));
+
         theme.Children.Add(new Style("^:focus")
-                              .SetResource(TextBox.SelectionBrushProperty, ThemeKeys.InputSelectionActive)
-                              .SetResource(Control.BackgroundProperty, ThemeKeys.InputBackgroundFocus)
-                              .SetResource(Control.ForegroundProperty, ThemeKeys.InputForegroundFocus));
+                          .SetResource(TextBox.SelectedTextStyleProperty, ThemeKeys.InputSelectionTextStyle)
+                          .SetResource(TextBox.BaseTextStyleProperty, ThemeKeys.InputFocusTextStyle));
+
         theme.Children.Add(new Style("^:disabled")
-            .SetResource(Control.BackgroundProperty, ThemeKeys.InputBackgroundDisabled)
-            .SetResource(Control.ForegroundProperty, ThemeKeys.InputForegroundDisabled));
+                              .SetResource(TextElement.BaseTextStyleProperty, ThemeKeys.InputDisabledTextStyle));
         return theme;
     }
 
@@ -1952,23 +1949,21 @@ internal static class ControlThemes
     private static Style ListBoxItemTheme()
     {
         var theme = new Style { Key = "Theme.ListBoxItem" }
-            .SetResource(Control.BackgroundProperty, ThemeKeys.ListItemBackgroundNormal)
-            .SetResource(Control.ForegroundProperty, ThemeKeys.ListItemForegroundNormal)
+            .SetResource(TextElement.BaseTextStyleProperty, ThemeKeys.ListItemNormalTextStyle)
             .Set(Control.PaddingProperty, new(1, 0))
             .Set(Control.TemplateProperty, ListBoxItemTemplate());
+
         theme.Children.Add(new Style("^:pointerover")
-                              .SetResource(Control.BackgroundProperty, ThemeKeys.ListItemBackgroundHover)
-                              .SetResource(Control.ForegroundProperty, ThemeKeys.ListItemForegroundHover));
+                              .SetResource(TextElement.BaseTextStyleProperty, ThemeKeys.ListItemHoverTextStyle));
         theme.Children.Add(new Style("^:selected")
-                              .SetResource(Control.BackgroundProperty, ThemeKeys.ListItemBackgroundSelectedInactive)
-                              .SetResource(Control.ForegroundProperty, ThemeKeys.ListItemForegroundSelectedInactive));
+                              .SetResource(TextElement.BaseTextStyleProperty, ThemeKeys.ListItemSelectedInactiveTextStyle));
         // The keyboard focus-row cue (gallery .item.rev): reverse-video — ordered AFTER :selected so a
         // focused+selected current item reads as focused (adoption-spec lines 108-110). :focus-visible (not :focus)
         // so a mouse click — Pointer modality — shows :selected, while keyboard nav shows the reverse row.
         theme.Children.Add(new Style("^:focus-visible")
-            .SetResource(Control.BackgroundProperty, ThemeKeys.ListItemBackgroundFocus)
-            .SetResource(Control.ForegroundProperty, ThemeKeys.ListItemForegroundFocus));
-        theme.Children.Add(new Style("^:disabled").SetResource(Control.ForegroundProperty, ThemeKeys.ListItemForegroundDisabled));
+                              .SetResource(TextElement.BaseTextStyleProperty, ThemeKeys.ListItemFocusTextStyle));
+        theme.Children.Add(new Style("^:disabled")
+                              .SetResource(TextElement.BaseTextStyleProperty, ThemeKeys.ListItemDisabledTextStyle));
         return theme;
     }
 

@@ -69,7 +69,7 @@ internal interface ICellSurface
     Cell this[int column, int row] { get; set; }
 
     /// <summary>Place a single grapheme cluster, handling wide-cell width. Returns columns occupied.</summary>
-    int Set(int column, int row, string? grapheme, in CellStyle style);
+    int Set(int column, int row, ReadOnlySpan<char> grapheme, in CellStyle style);
 
     /// <summary>
     /// Place a single grapheme cluster styled by a DELTA over the <b>destination cell</b>. Returns
@@ -90,14 +90,14 @@ internal interface ICellSurface
     /// for the terminal's own default background — the same value means "say nothing" here.
     /// </para>
     /// <para>
-    /// The exact per-channel behaviour is a function of the channel, the blending mode, whether the
-    /// cell's own value is opaque, whether the grapheme is whitespace, and what the neighbouring cell
+    /// The exact per-channel behavior is a function of the channel, the blending mode, whether the
+    /// cell's own value is opaque, whether the grapheme is whitespace, and what the neighboring cell
     /// holds. It is pinned exhaustively by <c>CellBufferDeltaWriteTests</c> rather than restated here:
     /// three attempts to write it as prose were each wrong in a different direction, and a doc comment
     /// that is confidently wrong costs more than one that defers.
     /// </para>
     /// </remarks>
-    int Set(int column, int row, string? grapheme, in PartialStyle style);
+    int Set(int column, int row, ReadOnlySpan<char> grapheme, in PartialStyle style);
 
     /// <summary>Lay out a string's grapheme clusters across a single row, stopping at the first
     /// C0/C1 control character. Returns columns written.</summary>
@@ -108,7 +108,7 @@ internal interface ICellSurface
     /// each destination cell in turn. Returns columns written.
     /// </summary>
     /// <remarks>
-    /// Every cluster goes through <see cref="Set(int, int, string?, in PartialStyle)"/>, so the
+    /// Every cluster goes through <see cref="Set(int, int, ReadOnlySpan{char}, in PartialStyle)"/>, so the
     /// qualification on what a declined channel keeps applies here per cell — see its remarks.
     /// </remarks>
     int Write(int column, int row, ReadOnlySpan<char> text, in PartialStyle style);
@@ -152,7 +152,7 @@ internal interface ICellSurface
     /// <summary>
     /// Regions marked dirty since the last render, in this surface's coordinate space. On
     /// <see cref="CellBuffer"/> this is the live backing list; on <see cref="CellBufferView"/> it is
-    /// a transformed snapshot clipped to the view (see <see cref="CellBufferView.DirtyRegions"/>).
+    /// a transformed snapshot clipped to the view (see <see cref="CellBuffer.DirtyRegions"/>).
     /// </summary>
     IReadOnlyList<Rect> DirtyRegions { get; }
 

@@ -1,7 +1,6 @@
 using Cursorial.Rendering.Media;
 using Cursorial.Text;
 using Cursorial.UI.Controls;
-using Cursorial.UI.Data;
 using Cursorial.UI.Input;
 
 namespace Cursorial.UI;
@@ -80,25 +79,29 @@ public static class Extensions
         /// included, animated excluded. A theme-resolved default (e.g., <see cref="TextElement.ForegroundProperty"/>)
         /// counts as a stated opinion, so compose this before any delta that should override it.
         /// </summary>
-        public static BrushedStyle FromElement(UIElement element)
+        /// <remarks>
+        /// By default, post-animation values are read. To read the pre-animation value, specify
+        /// <c>readBaseValues: true</c>.
+        /// </remarks>
+        public static BrushedStyle FromElement(UIElement element, bool readBaseValues = false)
         {
             ArgumentNullException.ThrowIfNull(element);
 
             var t = new BrushedStyle
                     {
-                        Foreground = element.GetBaseValue(TextElement.ForegroundProperty),
-                        Background = element.GetBaseValue(Panel.BackgroundProperty),
-                        UnderlineColor = element.GetBaseValue(TextElement.UnderlineBrushProperty),
+                        Foreground = Read(element, TextElement.ForegroundProperty, readBaseValues),
+                        Background = Read(element, Panel.BackgroundProperty, readBaseValues),
+                        UnderlineColor = Read(element, TextElement.UnderlineBrushProperty, readBaseValues),
                         // RenderOptions.BlendingMode is NOT read here: it composites the element's WHOLE
                         // surface at the render-boundary layer (RenderTree wires it into CompositeParameters,
                         // and a non-default mode promotes a boundary), so folding it per-cell too would blend
                         // the content twice.
                     };
 
-            if (element.GetBaseValue(TextElement.UnderlineProperty) is {} underlineShape)
+            if (Read(element, TextElement.UnderlineProperty, readBaseValues) is {} underlineShape)
                 t = t.Underlining(underlineShape); // Underline is not in BooleanAttributes, so set separately.
 
-            var resolvedAttributes = TextElement.ComposeAttributes(element);
+            var resolvedAttributes = TextElement.ComposeAttributes(element, readBaseValues);
             var booleans = TextAttributes.None;
 
             if (resolvedAttributes.Flags.HasFlag(TextAttributes.Bold))
@@ -120,5 +123,8 @@ public static class Extensions
 
             return t;
         }
+
+        private static T Read<T>(UIElement element, StyledProperty<T> property, bool readBaseValue = false)
+            => readBaseValue ? element.GetBaseValue(property) : element.GetValue(property);
     }
 }

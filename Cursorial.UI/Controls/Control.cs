@@ -19,6 +19,10 @@ public class Control : UIElement, IControlThemeHost
     private bool _reapplyRequested;
     private ResourceSubscription _controlThemeSubscription;
 
+    /// <inheritdoc cref="TextElement.BaseTextStyleProperty"/>
+    public static readonly StyledProperty<BrushedStyle> BaseTextStyleProperty =
+        TextElement.BaseTextStyleProperty.AddOwner<Control>();
+
     /// <summary>The control's visual template (<c>AffectsMeasure</c> — a change re-expands at the next measure, CD17).</summary>
     public static readonly StyledProperty<ControlTemplate?> TemplateProperty =
         UIProperty.Register<Control, ControlTemplate?>(nameof(Template), changed: OnTemplateChanged);
@@ -52,6 +56,13 @@ public class Control : UIElement, IControlThemeHost
         AffectsMeasure<Control>(TemplateProperty, PaddingProperty);
         AffectsRender<Control>(BackgroundProperty, BorderPenProperty);
         // Foreground inherits + AffectsRender via the TextElement owner registration (global lane).
+    }
+
+    /// <inheritdoc cref="BaseTextStyleProperty"/>
+    public BrushedStyle BaseTextStyle
+    {
+        get => GetValue(BaseTextStyleProperty);
+        set => SetValue(BaseTextStyleProperty, value);
     }
 
     /// <inheritdoc cref="TemplateProperty"/>

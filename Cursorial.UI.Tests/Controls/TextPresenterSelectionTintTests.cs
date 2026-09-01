@@ -61,7 +61,7 @@ public sealed class TextPresenterSelectionTintTests
             Width = 12,
             HorizontalAlignment = HorizontalAlignment.Left,
             VerticalAlignment = VerticalAlignment.Top,
-            SelectionBrush = selectionBrush,
+            SelectionFill = selectionBrush,
         };
 
         TextElement.SetFont(box, Face);
@@ -161,7 +161,7 @@ public sealed class TextPresenterSelectionTintTests
     }
 
     /// <summary>
-    /// TRAP 3. <c>Brushes.Default</c> is a legal <see cref="TextBox.SelectionBrush"/> and samples to
+    /// TRAP 3. <c>Brushes.Default</c> is a legal <see cref="TextBox.SelectionFill"/> and samples to
     /// <c>Color.Default</c> everywhere. The old code's <c>IsDefault</c> guard meant it stated no
     /// background — the tint fell back to un-inverting — and the guard has to survive the migration,
     /// because a present-but-default background is a real opinion to a <c>PartialStyle</c>.

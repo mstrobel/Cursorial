@@ -62,6 +62,14 @@ public abstract class GradientBrush : IBrush
         }
     }
 
+    public bool IsDefault => Stops.All(s => s.Color.IsDefault);
+
+    /// <inheritdoc/>
+    public bool IsOpaque => Math.Abs(Opacity - 1.0) < double.Epsilon || Stops.All(s => s.Color.IsOpaque);
+
+    /// <inheritdoc/>
+    public bool IsTransparent => Math.Abs(Opacity) < double.Epsilon || Stops.All(s => s.Color.IsTransparent);
+
     /// <inheritdoc/>
     public Color ColorAt(int column, int row, Rect bounds) => ColorAt(column, row, bounds, phase: 0.0);
 

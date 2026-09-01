@@ -34,14 +34,26 @@ public sealed class SolidColorBrush : IBrush
     /// <inheritdoc/>
     public bool IsUniform => true;
 
+    /// <inheritdoc/>
+    public bool IsDefault => Color.IsDefault;
+
     /// <summary>
     /// Whether every sample this brush produces is opaque. Unlike the interface default — which
     /// speaks for the <see cref="Opacity"/> knob alone, because <see cref="IBrush.ColorAt(int, int, Rect)"/> is
-    /// positional and the interface cannot know its colours' alpha — a solid brush knows its one
-    /// colour, so the colour's own alpha folds in: a half-alpha solid reports non-opaque
+    /// positional and the interface cannot know its colors' alpha — a solid brush knows its one
+    /// color, so the color's own alpha folds in: a half-alpha solid reports non-opaque
     /// (the narrow fix for design doc defect 6).
     /// </summary>
-    public bool IsOpaque => Color.IsOpaque && _opacity >= 1.0;
+    public bool IsOpaque => Color.IsOpaque && Math.Abs(Opacity - 1.0) < double.Epsilon;
+
+    /// <summary>
+    /// Whether every sample this brush produces is transparent. Unlike the interface default — which
+    /// speaks for the <see cref="Opacity"/> knob alone, because <see cref="IBrush.ColorAt(int, int, Rect)"/> is
+    /// positional and the interface cannot know its colors' alpha — a solid brush knows its one
+    /// color, so the color's own alpha folds in: a half-alpha solid reports non-opaque
+    /// (the narrow fix for design doc defect 6).
+    /// </summary>
+    public bool IsTranspareant => Color.IsTransparent || Math.Abs(Opacity) < double.Epsilon;
 
     /// <summary>
     /// Whole-brush opacity (0–1), folded into each sampled color's alpha at <see cref="ColorAt"/> (RGB

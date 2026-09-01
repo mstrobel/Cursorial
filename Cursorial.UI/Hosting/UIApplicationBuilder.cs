@@ -207,6 +207,20 @@ public sealed class UIApplicationBuilder
         return this;
     }
 
+    /// <summary>Registers a service to be made available from the built application.</summary>
+    public UIApplicationBuilder WithService<TService>(TService service) where TService : class
+    {
+        _options.AddService(service);
+        return this;
+    }
+
+    /// <summary>Registers a deferred-instantiation service to be made available from the built application.</summary>
+    public UIApplicationBuilder WithService<TService>(Func<UIApplication, TService> service) where TService : class
+    {
+        _options.AddService(service);
+        return this;
+    }
+    
     /// <summary>
     /// Constructs the application. Single-use. <see cref="UIApplication.Current"/> and
     /// <see cref="UIApplication.Dispatcher"/> exist from here; no I/O happens until
@@ -225,6 +239,9 @@ public sealed class UIApplicationBuilder
 /// <summary>The builder's option snapshot (internal carrier).</summary>
 internal sealed class UIApplicationOptions
 {
+    private readonly Dictionary<Type, object> _services = [];
+    private readonly Dictionary<Type, Func<UIApplication, object>> _deferredServices = [];
+
     public TerminalSessionOptions? SessionOptions;
     public TerminalSession? Session;
     public bool DisposeSession;
@@ -252,5 +269,30 @@ internal sealed class UIApplicationOptions
     public bool TranslateNumpadKeys = false;
     public UserConfigurationOptions? UserConfiguration;
 
+    public IReadOnlyDictionary<Type, object> Services => _services;
+    public IReadOnlyDictionary<Type, Func<UIApplication, object>> DeferredServices => _deferredServices;
+    
     public TimeSpan FrameInterval => TimeSpan.FromMilliseconds(1000.0 / FramesPerSecond);
+
+    public UIApplicationOptions AddService<TService>(TService service) where TService : class
+    {
+        ArgumentNullException.ThrowIfNull(service);
+        VerifyNoExistingService<TService>();
+        _services[typeof(TService)] = service;
+        return this;
+    }
+
+    public UIApplicationOptions AddService<TService>(Func<UIApplication, TService> factory) where TService : class
+    {
+        ArgumentNullException.ThrowIfNull(factory);
+        VerifyNoExistingService<TService>();
+        _deferredServices[typeof(TService)] = factory;
+        return this;
+    }
+
+    private void VerifyNoExistingService<TService>() where TService : class
+    {
+        if (_services.ContainsKey(typeof(TService)) || _deferredServices.ContainsKey(typeof(TService)))
+            throw new ArgumentException($"Service of type {typeof(TService)} is already registered.");
+    }
 }

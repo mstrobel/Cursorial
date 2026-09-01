@@ -1,4 +1,5 @@
 using Cursorial.Input;
+using Cursorial.Input.Events;
 using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
@@ -31,7 +32,7 @@ public sealed class Section30_ComboBoxV2
         return (host, box);
     }
 
-    [Fact] // C17.1: IsEditable swaps the face — the text box is shown + the tab stop; the content site is collapsed
+    [Fact] // C17.1: IsEditable swaps the face — the text box is shown, but not the tab stop; the content site is collapsed
     public void C17_1_EditableSwapsFace()
     {
         var (host, box) = Show(editable: false);
@@ -44,7 +45,8 @@ public sealed class Section30_ComboBoxV2
         host.RunUntilIdle();
         Assert.Equal(Visibility.Collapsed, box.ContentSitePart!.Visibility);
         Assert.Equal(Visibility.Visible, box.EditableTextBoxPart!.Visibility);
-        Assert.False(box.IsTabStop); // the text box is the tab stop now
+        Assert.False(box.EditableTextBoxPart.IsTabStop); // the text box is never a tab stop
+        Assert.True(box.IsTabStop); // the combo box remains the tab stop
     }
 
     [Fact] // C17.2: typing into the editable box updates Text as free text (no type-ahead selection jump)
@@ -332,6 +334,255 @@ public sealed class Section30_ComboBoxV2
 
         Assert.Equal("apple", box.Text); // not "Cursorial.UI.Controls.ComboBoxItem"
         Assert.Equal("apple", box.EditableTextBoxPart!.Text);
+    }
+
+    // ── edit-text search + inline completion (C17.19+): tentative highlight, single close policy ─────────
+
+    [Fact] // C17.19: typing while open inline-completes — trailer appended, selected back-to-front, caret after the prefix
+    public void C17_19_TypingWhileOpenInlineCompletes()
+    {
+        var (host, box) = Show();
+        using var _ = host;
+        box.EditableTextBoxPart!.Focus();
+        box.IsDropDownOpen = true;
+        host.RunUntilIdle();
+
+        host.SendText("b");
+        host.RunUntilIdle();
+
+        var part = box.EditableTextBoxPart!;
+        Assert.Equal("banana", box.Text);         // "b" + the matched trailer
+        Assert.Equal("banana", part.Text);
+        Assert.Equal(1, part.CaretIndex);          // the caret sits right after the typed prefix…
+        Assert.Equal(1, part.SelectionStart);      // …and the trailer is selected (back-to-front)
+        Assert.Equal(5, part.SelectionLength);
+        Assert.Equal("banana", box.SelectedItem);  // tentative highlight follows the match
+        Assert.True(box.IsDropDownOpen);
+
+        host.SendText("x"); // overwrites the selected trailer: "b" + "x" → no match
+        host.RunUntilIdle();
+        Assert.Equal("bx", box.Text);              // the trailer was consumed, nothing re-appended
+        Assert.Null(box.SelectedItem);             // the tentative highlight rolled back to the pre-open selection
+    }
+
+    [Fact] // C17.20: Enter commits the tentative match; a dismissal (programmatic close) restores the pre-open selection
+    public void C17_20_CommitVersusDismissal()
+    {
+        var (host, box) = Show();
+        using var _ = host;
+        box.EditableTextBoxPart!.Focus();
+        box.IsDropDownOpen = true;
+        host.RunUntilIdle();
+        host.SendText("b");
+        host.RunUntilIdle();
+        Assert.Equal("banana", box.SelectedItem); // tentative
+
+        box.IsDropDownOpen = false; // a dismissal, not a commit
+        host.RunUntilIdle();
+        Assert.Null(box.SelectedItem);            // the tentative selection rolled back…
+        Assert.Equal("banana", box.Text);         // …but the visible text is untouched (only Escape reverts)
+
+        box.IsDropDownOpen = true;
+        host.RunUntilIdle();
+        host.SendKey(Key.Enter);                  // commit-close
+        host.RunUntilIdle();
+        Assert.Equal("banana", box.SelectedItem);
+        Assert.Equal("banana", box.Text);
+        Assert.False(box.IsDropDownOpen);
+    }
+
+    [Fact] // C17.21: Escape with a tentative match restores the pre-open selection AND reverts the text (never Select(-1))
+    public void C17_21_EscapeRestoresPreOpenSelection()
+    {
+        var (host, box) = Show();
+        using var _ = host;
+        box.SelectedItem = "banana";
+        host.RunUntilIdle();
+        box.EditableTextBoxPart!.Focus();
+        box.IsDropDownOpen = true;
+        host.RunUntilIdle();
+
+        box.EditableTextBoxPart!.SelectAll();
+        host.SendText("ch"); // tentative cherry
+        host.RunUntilIdle();
+        Assert.Equal("cherry", box.SelectedItem);
+
+        host.SendKey(Key.Escape);
+        host.RunUntilIdle();
+        Assert.Equal("banana", box.SelectedItem); // restored, not cleared
+        Assert.Equal("banana", box.Text);         // reverted to the pre-open selection's text
+        Assert.False(box.IsDropDownOpen);
+    }
+
+    [Fact] // C17.22: a keyboard open pre-seeds the highlight from committed free text WITHOUT rewriting it
+    public void C17_22_KeyboardOpenKeepsCommittedFreeText()
+    {
+        var (host, box) = Show();
+        using var _ = host;
+        box.EditableTextBoxPart!.Focus();
+        host.SendText("b");
+        host.SendKey(Key.Enter); // commit: no exact match → free text, no selection
+        host.RunUntilIdle();
+        Assert.Equal("b", box.Text);
+        Assert.Null(box.SelectedItem);
+
+        host.SendKey(Key.DownArrow); // open gesture
+        host.RunUntilIdle();
+        Assert.True(box.IsDropDownOpen);
+        Assert.Equal("b", box.Text);              // mere opening never rewrites the text…
+        Assert.Equal("b", box.EditableTextBoxPart!.Text);
+        Assert.Equal("banana", box.SelectedItem); // …but the match is highlighted (pre-seed)
+
+        host.SendKey(Key.Escape);
+        host.RunUntilIdle();
+        Assert.Null(box.SelectedItem);            // dismissal restores the pre-open (empty) selection
+        Assert.Equal("b", box.Text);              // Escape reverts to the pre-open free text
+    }
+
+    [Fact] // C17.23: pasted text never drives the search (the type-ahead FromPaste rule) — no highlight, no trailer
+    public void C17_23_PasteNeverSearches()
+    {
+        var (host, box) = Show();
+        using var _ = host;
+        box.EditableTextBoxPart!.Focus();
+        box.IsDropDownOpen = true;
+        host.RunUntilIdle();
+
+        host.SendInput(new PasteEvent { Text = "ch".AsMemory(), Timestamp = default }); // the terminal paste ⇒ TextInput{FromPaste}
+        host.RunUntilIdle();
+        Assert.Equal("ch", box.Text);  // no trailer appended
+        Assert.Null(box.SelectedItem); // no tentative highlight
+    }
+
+    [Fact] // C17.24: a programmatic selection change mid-edit supersedes the tentative match — the close respects it
+    public void C17_24_ProgrammaticSelectionSupersedesTentative()
+    {
+        var (host, box) = Show();
+        using var _ = host;
+        box.EditableTextBoxPart!.Focus();
+        box.IsDropDownOpen = true;
+        host.RunUntilIdle();
+        host.SendText("b");
+        host.RunUntilIdle();
+        Assert.Equal("banana", box.SelectedItem); // tentative
+
+        box.SelectedItem = "cherry"; // the app decides (uncommitted typed text is preserved — C17.11's rule)
+        host.RunUntilIdle();
+        Assert.Equal("banana", box.Text);
+
+        box.IsDropDownOpen = false;  // dismissal: nothing tentative remains to roll back
+        host.RunUntilIdle();
+        Assert.Equal("cherry", box.SelectedItem); // the programmatic choice stands — never silently committed
+        Assert.Equal("banana", box.Text);         // and the typed text was not normalized to "cherry"
+    }
+
+    [Fact] // C17.25: an external Text write while a tentative match is up lands intact (no self-wiping cascade)
+    public void C17_25_ExternalTextWriteLandsIntact()
+    {
+        var (host, box) = Show();
+        using var _ = host;
+        box.EditableTextBoxPart!.Focus();
+        box.IsDropDownOpen = true;
+        host.RunUntilIdle();
+        host.SendText("b");
+        host.RunUntilIdle();
+        Assert.Equal("banana", box.SelectedItem);
+
+        box.Text = "xy"; // external write supersedes the tentative match
+        host.RunUntilIdle();
+        Assert.Equal("xy", box.Text);  // the write survives (the old cascade wiped it to "")
+        Assert.Null(box.SelectedItem); // the tentative highlight rolled back
+    }
+
+    [Fact] // C17.26: deleting never re-appends the trailer (backspace stays deletable), the highlight still tracks
+    public void C17_26_DeletionNeverReappends()
+    {
+        var (host, box) = Show();
+        using var _ = host;
+        box.EditableTextBoxPart!.Focus();
+        box.IsDropDownOpen = true;
+        host.RunUntilIdle();
+        host.SendText("ba");
+        host.RunUntilIdle();
+        Assert.Equal("banana", box.Text); // "ba" + trailer
+
+        host.SendKey(Key.Backspace); // deletes the selected trailer
+        host.RunUntilIdle();
+        Assert.Equal("ba", box.Text);
+        Assert.Equal("banana", box.SelectedItem); // still highlighted (prefix still matches)…
+
+        host.SendKey(Key.Backspace);
+        host.RunUntilIdle();
+        Assert.Equal("b", box.Text); // …and the character delete was not fought by a re-append
+    }
+
+    [Fact] // C17.27: the typed prefix keeps the user's casing until commit normalizes it to the item's display
+    public void C17_27_PrefixCasingPreservedUntilCommit()
+    {
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(28, 12) });
+        using var _ = host;
+        var box = new ComboBox { ItemsSource = new[] { "Alpha", "Beta" }, IsEditable = true, Width = 16 };
+        host.ShowRoot(box);
+        host.RunUntilIdle();
+        box.EditableTextBoxPart!.Focus();
+        box.IsDropDownOpen = true;
+        host.RunUntilIdle();
+
+        host.SendText("al");
+        host.RunUntilIdle();
+        Assert.Equal("alpha", box.Text); // the user's "al" + the item's "pha" — not case-transformed yet
+        Assert.Equal(2, box.EditableTextBoxPart!.CaretIndex);
+        Assert.Equal("Alpha", box.SelectedItem);
+
+        host.SendKey(Key.Enter);
+        host.RunUntilIdle();
+        Assert.Equal("Alpha", box.Text); // commit normalizes to the item's display casing
+    }
+
+    [Fact] // C17.28: when typing itself opens the session (StaysOpenOnEdit), Escape reverts to BEFORE the first
+    // keystroke — not to the first typed character the open-time snapshot happened to see
+    public void C17_28_AutoOpenEscapeRevertsToPreTypingText()
+    {
+        var (host, box) = Show();
+        using var _ = host;
+        box.StaysOpenOnEdit = true;
+        host.RunUntilIdle();
+        box.EditableTextBoxPart!.Focus();
+        host.RunUntilIdle();
+
+        host.SendText("al"); // the first keystroke auto-opens; both keystrokes land in one session
+        host.RunUntilIdle();
+        Assert.True(box.IsDropDownOpen);
+        Assert.Equal("al", box.Text); // "a" completed to "a[pple]", then "l" overwrote the trailer; "al" matches nothing
+        Assert.Null(box.SelectedItem); // so the tentative highlight rolled back
+
+        host.SendKey(Key.Escape);
+        host.RunUntilIdle();
+        Assert.False(box.IsDropDownOpen);
+        Assert.Equal("", box.Text); // the whole typing session reverts (baseline was empty), never "a"
+    }
+
+    [Fact] // C17.29: Escape also rolls back a selection moved by LIST NAVIGATION this session (not just a text match) —
+    // while a programmatic mid-session selection still stands (C17.24's contract)
+    public void C17_29_EscapeRollsBackNavigatedSelection()
+    {
+        var (host, box) = Show();
+        using var _ = host;
+        box.EditableTextBoxPart!.Focus();
+        box.IsDropDownOpen = true;
+        host.RunUntilIdle();
+
+        host.SendText("b"); // tentative banana
+        host.SendKey(Key.DownArrow); // navigate: cherry — a user gesture, text follows
+        host.RunUntilIdle();
+        Assert.Equal("cherry", box.SelectedItem);
+        Assert.Equal("cherry", box.Text);
+
+        host.SendKey(Key.Escape);
+        host.RunUntilIdle();
+        Assert.False(box.IsDropDownOpen);
+        Assert.Null(box.SelectedItem); // the whole session rolls back: navigation too…
+        Assert.Equal("", box.Text);    // …and the text reverts to the pre-open baseline
     }
 
     private static bool AnyRowContains(UIHeadlessHost host, string text)

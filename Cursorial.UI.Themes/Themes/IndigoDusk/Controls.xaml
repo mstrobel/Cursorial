@@ -808,22 +808,20 @@
   </ControlTemplate>
 
   <Style x:Key="{x:Type TextBox}" TargetType="TextBox">
-    <Setter Property="Foreground"     Value="{DynamicResource {x:Static ThemeKeys.InputForegroundNormal}}"/>
-    <Setter Property="Background"     Value="{DynamicResource {x:Static ThemeKeys.InputBackgroundNormal}}"/>
-    <Setter Property="MinWidth"       Value="12"/>
-    <Setter Property="SelectionBrush" Value="{DynamicResource {x:Static ThemeKeys.InputSelectionInactive}}"/>
-    <Setter Property="Template"       Value="{StaticResource TextBoxTemplate}"/>
+    <Setter Property="BaseTextStyle"         Value="{DynamicResource {x:Static ThemeKeys.InputNormalTextStyle}}"/>
+    <Setter Property="SelectedTextStyle"     Value="{DynamicResource {x:Static ThemeKeys.InputSelectionInactiveTextStyle}}"/>
+    <Setter Property="MinWidth"              Value="12"/>
+    <Setter Property="Template"              Value="{StaticResource TextBoxTemplate}"/>
     <Style.Children>
       <Style Selector="^:pointerover" TargetType="TextBox">
-        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.InputBackgroundHover}}"/>
+        <Setter Property="BaseTextStyle"     Value="{DynamicResource {x:Static ThemeKeys.InputHoverTextStyle}}"/>
       </Style>
       <Style Selector="^:focus" TargetType="TextBox">
-        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.InputBackgroundFocus}}"/>
-        <Setter Property="SelectionBrush" Value="{DynamicResource {x:Static ThemeKeys.InputSelectionActive}}"/>
+        <Setter Property="BaseTextStyle"     Value="{DynamicResource {x:Static ThemeKeys.InputFocusTextStyle}}"/>
+        <Setter Property="SelectedTextStyle" Value="{DynamicResource {x:Static ThemeKeys.InputSelectionTextStyle}}"/>
       </Style>
       <Style Selector="^:disabled" TargetType="TextBox">
-        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.InputBackgroundDisabled}}"/>
-        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.InputForegroundDisabled}}"/>
+        <Setter Property="BaseTextStyle"     Value="{DynamicResource {x:Static ThemeKeys.InputDisabledTextStyle}}"/>
       </Style>
     </Style.Children>
   </Style>

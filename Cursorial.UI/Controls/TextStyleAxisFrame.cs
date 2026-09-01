@@ -28,6 +28,7 @@ internal sealed class TextStyleAxisFrame : ValueFrame
     private readonly IValueEntry _underline      = TextElement.UnderlineProperty.CreateStyleEntry(null, hasValue: false);
     private readonly IValueEntry _underlineBrush = TextElement.UnderlineBrushProperty.CreateStyleEntry(null, hasValue: false);
     private readonly IValueEntry _foreground     = TextElement.ForegroundProperty.CreateStyleEntry(null, hasValue: false);
+    private readonly IValueEntry _background     = Panel.BackgroundProperty.CreateStyleEntry(null, hasValue: false);
     private readonly IValueEntry _strikethrough  = TextElement.StrikethroughProperty.CreateStyleEntry(null, hasValue: false);
     private readonly IValueEntry _overline       = TextElement.OverlineProperty.CreateStyleEntry(null, hasValue: false);
     private readonly IValueEntry _inverse        = TextElement.InverseProperty.CreateStyleEntry(null, hasValue: false);
@@ -43,7 +44,7 @@ internal sealed class TextStyleAxisFrame : ValueFrame
     {
         _entries =
         [
-            _weight, _posture, _underline, _underlineBrush, _foreground,
+            _weight, _posture, _underline, _underlineBrush, _foreground, _background,
             _strikethrough, _overline, _inverse, _blink, _concealed,
         ];
         Fold(style); // seed BEFORE install — OnEntryChanged no-ops while Store is null
@@ -64,6 +65,7 @@ internal sealed class TextStyleAxisFrame : ValueFrame
         // Brush channels — the reconciled brush, or no opinion. (Foreground is a real per-axis brush;
         // BrushedStyle.UnderlineColor drives the UnderlineBrush axis.)
         if (style.Foreground     is { } fg) Set(_foreground, fg);     else Unset(_foreground);
+        if (style.Background     is { } bg) Set(_background, bg);     else Unset(_background);
         if (style.UnderlineColor is { } uc) Set(_underlineBrush, uc); else Unset(_underlineBrush);
 
         // Underline: presence + shape unified (the axis is UnderlineStyle?). Applied ⇒ on (the stated

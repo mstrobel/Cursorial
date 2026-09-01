@@ -7,7 +7,7 @@ namespace Cursorial.Rendering.Content;
 /// <summary>
 /// The unifying abstraction for renderable content. An <see cref="IContent"/> decides at paint
 /// time whether to flow through the cell-grid path (<see cref="Fonts.IGlyphFont"/> writes
-/// cells via <see cref="CellBuffer.Set(int, int, string?, in CellStyle)"/>) or the out-of-band path
+/// cells via <see cref="CellBuffer.Set(int, int, ReadOnlySpan{char}, in CellStyle)"/>) or the out-of-band path
 /// (<see cref="Fragments.IBufferFragment"/> attached to the buffer for the renderer to emit as
 /// a protocol payload). Capability-aware fallback also lives here — a single <c>IContent</c>
 /// can try OSC 66, fall back to a Figlet font, then a Braille font, then a placeholder, and

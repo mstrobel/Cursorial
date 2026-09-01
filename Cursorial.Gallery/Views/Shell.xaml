@@ -278,9 +278,9 @@
             <TextBox Grid.Column="2" Grid.Row="0" TabIndex="0"
                      x:Name="NameEditor" Text="{Binding Name, Mode=TwoWay}" Placeholder="full name" />
 
-            <Label Grid.Column="0" Grid.Row="1" Margin="0,1,0,0"
+            <Label Grid.Column="0" Grid.Row="2"
                    Target="{x:Reference PasswordEditor}" Content="_Password" Foreground="{DynamicResource {x:Static ThemeKeys.TextDimBrush}}" />
-            <PasswordBox Grid.Column="2" Grid.Row="1" Margin="0,1,0,0" TabIndex="1"
+            <PasswordBox Grid.Column="2" Grid.Row="2" TabIndex="1"
                          x:Name="PasswordEditor" Text="{Binding Password, Mode=TwoWay}"
                          RevealPassword="{Binding ShowPassword}" Placeholder="password"/>
 
@@ -288,8 +288,9 @@
                    Target="{x:Reference ColorSelector}" Content="_Color"
                    Foreground="{DynamicResource {x:Static ThemeKeys.TextDimBrush}}" />
             <ComboBox Grid.Column="6" Grid.Row="0" HorizontalAlignment="Left" TabIndex="2"
-                      x:Name="ColorSelector" Width="22" IsEditable="False" ItemsSource="{Binding Colors}"
-                      SelectedItem="{Binding SelectedColor, Mode=TwoWay}" PlaceholderText="Select a color...">
+                      x:Name="ColorSelector" Width="24" IsEditable="False" ItemsSource="{Binding Colors}"
+                      SelectedItem="{Binding SelectedColor, Mode=TwoWay}" PlaceholderText="Select a color..."
+                      TextSearch.TextPath="Name">
               <ComboBox.ItemTemplate>
                 <DataTemplate DataType="vm:ColorInfo">
                   <DockPanel x:Name="TemplateRoot" x:DataType="vm:ColorInfo">
@@ -301,15 +302,27 @@
               </ComboBox.ItemTemplate>
             </ComboBox>
 
-            <TextBlock Grid.Column="6" Grid.Row="1"
+            <TextBlock Grid.Column="6" Grid.Row="1" VerticalAlignment="Top"
                        Foreground="{DynamicResource {x:Static ThemeKeys.FaintBrush}}"
                        Text="{Binding Source={x:Reference ColorSelector}, Path=SelectionBoxItem.(vm:ColorInfo.Name), TargetNullValue='No Selection', StringFormat='Selected: {0}'}"/>
 
-            <CheckBox Grid.Column="2" Grid.Row="3" HorizontalAlignment="Left" TabIndex="3"
+            <Label Grid.Column="4" Grid.Row="2"
+                   Target="{x:Reference EditableComboBox}" Content="_Editable:"
+                   Foreground="{DynamicResource {x:Static ThemeKeys.TextDimBrush}}" />
+            <ComboBox Grid.Column="6" Grid.Row="2" HorizontalAlignment="Left" TabIndex="3"
+                      x:Name="EditableComboBox" Width="24" IsEditable="True" StaysOpenOnEdit="True"
+                      ItemsSource="{x:Array Type=x:String, Alpha, Bravo, Charlie, Delta, Echo}"
+                      PlaceholderText="Select or type..." />
+
+            <TextBlock Grid.Column="6" Grid.Row="3" VerticalAlignment="Top"
+                       Foreground="{DynamicResource {x:Static ThemeKeys.FaintBrush}}"
+                       Text="{Binding Source={x:Reference EditableComboBox}, Path=SelectionBoxItem, TargetNullValue='No Selection', StringFormat='Selected: {0}'}"/>
+
+            <CheckBox Grid.Column="2" Grid.Row="3" HorizontalAlignment="Left" TabIndex="4"
                       Content="_Reveal password" Margin="0,1,0,0" IsChecked="{Binding ShowPassword, Mode=TwoWay}" />
-            <CheckBox Grid.Column="2" Grid.Row="4" HorizontalAlignment="Left" TabIndex="4"
+            <CheckBox Grid.Column="2" Grid.Row="4" HorizontalAlignment="Left" TabIndex="5"
                       Content="Subscribe to _updates" IsChecked="{Binding Subscribed, Mode=TwoWay}" />
-            <CheckBox Grid.Column="2" Grid.Row="5" HorizontalAlignment="Left" TabIndex="5"
+            <CheckBox Grid.Column="2" Grid.Row="5" HorizontalAlignment="Left" TabIndex="6"
                       Content="M_ystery third option" IsThreeState="True" IsChecked="{Binding Mystery, Mode=TwoWay}" />
 
             <Label Grid.Column="0" Grid.Row="6"
@@ -320,7 +333,7 @@
                          Width="4"
                          TextAlignment="Left" Foreground="{DynamicResource {x:Static ThemeKeys.FaintBrush}}" />
               <Slider x:Name="VolumeSlider" Minimum="0" Maximum="100"
-                      Value="{Binding Volume, Mode=TwoWay}" TabIndex="6" />
+                      Value="{Binding Volume, Mode=TwoWay}" TabIndex="7" />
             </DockPanel>
 
             <!-- Journal: the multi-line editing + undo/redo canary. The editor passes itself as the command
@@ -329,9 +342,9 @@
               <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,1">
                 <Label Content="_Journal" Target="{x:Reference JournalEditor}"
                        Foreground="{DynamicResource {x:Static ThemeKeys.TextDimBrush}}" />
-                <Button Margin="2,0,0,0" MinWidth="8" Content="Undo" TabIndex="7"
+                <Button Margin="2,0,0,0" MinWidth="8" Content="Undo" TabIndex="8"
                         Command="{Binding UndoCommand}" CommandParameter="{x:Reference JournalEditor}" />
-                <Button Margin="1,0,0,0" MinWidth="8" Content="Redo" TabIndex="8"
+                <Button Margin="1,0,0,0" MinWidth="8" Content="Redo" TabIndex="9"
                         Command="{Binding RedoCommand}" CommandParameter="{x:Reference JournalEditor}" />
                 <TextBlock Margin="2,0,0,0" VerticalAlignment="Center" Text="Ctrl+Z / Ctrl+Y"
                            Foreground="{DynamicResource {x:Static ThemeKeys.FaintBrush}}" /><!--multi-line · -->
@@ -354,7 +367,7 @@
                   </ComboBox.ItemTemplate>
                 </ComboBox>
               </StackPanel>
-              <TextBox x:Name="JournalEditor" AcceptsReturn="True" TextWrapping="WordWrap" TabIndex="9"
+              <TextBox x:Name="JournalEditor" AcceptsReturn="True" TextWrapping="WordWrap" TabIndex="10"
                        MinLines="3" Text="{Binding Journal, Mode=TwoWay}"
                        Font="{Binding SelectedFont}" TextElement.Sizing="{Binding SelectedTextSize}" />
             </DockPanel>
@@ -1102,7 +1115,7 @@
                                       TextElement.Inverse="{Binding Source={x:Reference TemplateRoot}, Path=(TextElement.Inverse)}"/>
                     <ContentPresenter Content="{Binding Description}"
                                       ForwardTextInverse="True"
-                                      TextElement.Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}"
+                                      TextElement.BaseTextStyle="{DynamicResource {x:Static ThemeKeys.MutedTextStyle}}"
                                       TextElement.Inverse="{Binding Source={x:Reference TemplateRoot}, Path=(TextElement.Inverse)}" />
                   </StackPanel>
                 </DockPanel>

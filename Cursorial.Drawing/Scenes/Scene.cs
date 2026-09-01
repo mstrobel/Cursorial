@@ -25,6 +25,7 @@ public sealed class Scene : IDisposable
 {
     private readonly CellBuffer _buffer;
     private readonly ScenePool? _pool;
+    private DrawingContext? _context;
     private bool _dirty = true;
     private bool _disposed;
     private long _rasterVersion;
@@ -43,7 +44,7 @@ public sealed class Scene : IDisposable
     }
 
     /// <summary>Create a standalone scene of the given cell dimensions (not pooled).</summary>
-    public static Scene Create(int columns, int rows)
+    public static Scene Create(int columns, int rows, IGraphemeCache? graphemeCache = null)
     {
         // Bounds, dirty regions, and fragment footprints all flow through Rect, whose coordinates are
         // ushort — a scene wider/taller than ushort.MaxValue would silently truncate and corrupt layout.
@@ -52,7 +53,7 @@ public sealed class Scene : IDisposable
         ArgumentOutOfRangeException.ThrowIfLessThan(rows, 1);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(columns, ushort.MaxValue);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(rows, ushort.MaxValue);
-        return new(CreateBuffer(columns, rows), null);
+        return new(CreateBuffer(columns, rows, graphemeCache), null);
     }
 
     /// <summary>
@@ -64,8 +65,8 @@ public sealed class Scene : IDisposable
     /// answers <see cref="CellStyle.Default"/> to that question and punches opaque holes into the surface.
     /// Shared with <see cref="ScenePool"/> so the invariant is stated once.
     /// </summary>
-    internal static CellBuffer CreateBuffer(int columns, int rows)
-        => new(columns, rows, defaultStyle: CellStyle.Transparent);
+    internal static CellBuffer CreateBuffer(int columns, int rows, IGraphemeCache? graphemeCache = null)
+        => new(columns, rows, defaultStyle: CellStyle.Transparent, graphemeCache: graphemeCache);
 
     /// <summary>Width of the scene in cells.</summary>
     public int Columns => _buffer.Columns;
@@ -109,12 +110,19 @@ public sealed class Scene : IDisposable
     {
         ArgumentNullException.ThrowIfNull(draw);
         ObjectDisposedException.ThrowIf(_disposed, this);
+
         if (!_dirty) return;
 
         ClearToTransparent();
-        var context = new DrawingContext(this);
+
+        var context = _context;
+
+        if (context is null) _context = context = new DrawingContext(this);
+        else context.Reset();
+
         draw(context);
         context.FlushDeferred();   // resolve deferred sub-cell layers (braille data, box strokes) to cells
+
         _dirty = false;
         _rasterVersion++;
     }

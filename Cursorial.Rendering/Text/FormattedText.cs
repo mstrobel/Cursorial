@@ -292,7 +292,7 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
     /// (<see cref="PartialStyle.Then"/>), left UNRESOLVED. Consumers lift it to a carrier with
     /// <see cref="AsBrushed"/> or fold it at the write boundary, resolving to a whole <c>CellStyle</c> only
     /// where one is genuinely needed. The plain-text arm folds this onto the destination cell at
-    /// <see cref="CellBufferView.Set(int, int, string?, in PartialStyle)"/> — so the value lands at the write
+    /// <see cref="CellBufferView.Set(int, int, ReadOnlySpan{char}, in PartialStyle)"/> — so the value lands at the write
     /// boundary rather than being resolved to a whole <see cref="CellStyle"/> here.
     /// </summary>
     private static PartialStyle ResolveBaseDelta(in BrushedStyle document, in BrushedStyle block, in BrushedStyle carrier, int column, int row, in Rect documentRect, in Rect blockRect, in Rect carrierRect)
@@ -593,7 +593,7 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
                             // The one case where the surface knows better: a wide glyph at the window's
                             // right edge degrades to a blank single, and the next grapheme belongs in the
                             // column it did not occupy.
-                            int written = buffer.Set(cursor, runRow, grapheme.ToString(), style);
+                            int written = buffer.Set(cursor, runRow, grapheme, style);
                             if (written > 0) width = written;
 
                             cursor += width;
@@ -716,7 +716,7 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
                 sb.AppendLine();
         }
     }
-    public string ToPlainText(in Rect? bounds = null, bool? fillEntireBounds = null)
+    public string ToPlainText(in Rect? bounds = null, bool? fillEntireBounds = null, IGraphemeCache? graphemeCache = null)
     {
         var sb = new StringBuilder();
 
@@ -725,7 +725,8 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
                                                  bounds?.ColumnEnd ?? ProvidedColumns,
                                                  bounds?.RowEnd ?? Size.Rows);
 
-        var buffer = new CellBuffer(effectiveBounds.ColumnEnd, effectiveBounds.RowEnd);
+        var buffer = new CellBuffer(effectiveBounds.ColumnEnd, effectiveBounds.RowEnd,
+                                    graphemeCache: graphemeCache);
         var bufferView = buffer.AsView();
 
         Paint(bufferView, effectiveBounds, OutputCapabilities.None);
@@ -851,7 +852,7 @@ public abstract record FormattedRun
 /// A text run — final visible text (post-glyph-map), a <see cref="BrushedStyle"/> carrier, and an
 /// optional OSC&#x202F;8 hyperlink target. The painter resolves the carrier per cell, walks
 /// graphemes, and writes cells through
-/// <see cref="CellBufferView.Set(int, int, string?, in CellStyle)"/>.
+/// <see cref="CellBufferView.Set(int, int, ReadOnlySpan{char}, in CellStyle)"/>.
 /// </summary>
 public sealed record FormattedTextRun : FormattedRun
 {
@@ -859,7 +860,7 @@ public sealed record FormattedTextRun : FormattedRun
     /// A text run — final visible text (post-glyph-map), a <see cref="BrushedStyle"/> carrier, and an
     /// optional OSC&#x202F;8 hyperlink target. The painter resolves the carrier per cell, walks
     /// graphemes, and writes cells through
-    /// <see cref="CellBufferView.Set(int, int, string?, in CellStyle)"/>.
+    /// <see cref="CellBufferView.Set(int, int, ReadOnlySpan{char}, in CellStyle)"/>.
     /// </summary>
     [SetsRequiredMembers]
     public FormattedTextRun(string Text, BrushedStyle Style, string? Hyperlink = null)

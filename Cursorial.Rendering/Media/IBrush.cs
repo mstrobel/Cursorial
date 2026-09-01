@@ -29,16 +29,38 @@ public interface IBrush
     /// </summary>
     double Opacity => 1.0;
 
+    /// <summary>Whether the brush emits only <see cref="Color.Default"/>.</summary>
+    /// <remarks>
+    /// The DEFAULT speaks for <see cref="IsUniform">uniform</see> brushes alone:
+    /// <see cref="ColorAt(int, int, Rect)"/> positional, so the interface cannot know its colors'
+    /// kinds in general — a brush that is nominally non-uniform and may still emit all-default
+    /// colors should overrides this to fold them in. Per-cell decisions must test the SAMPLED color
+    /// (<see cref="Color.IsOpaque"/>), not this bit.
+    /// </remarks>
+    bool IsDefault => IsUniform && ColorAt(0, 0, default).IsDefault;
+
     /// <summary>Whether the brush is opaque.</summary>
     /// <remarks>
     /// The DEFAULT speaks for the <see cref="Opacity"/> knob alone: <see cref="ColorAt(int, int, Rect)"/> is
-    /// positional, so the interface cannot know its colours' alpha in general — a brush whose
-    /// colours themselves carry alpha still reports opaque here (design doc defect 6). An
-    /// implementation that does know its colours (<c>SolidColorBrush</c>) overrides this to fold
-    /// them in. Per-cell decisions must test the SAMPLED colour (<see cref="Color.IsOpaque"/>),
+    /// positional, so the interface cannot know its colors' alpha in general — a brush whose
+    /// colors themselves carry alpha still reports opaque here (design doc defect 6). An
+    /// implementation that does know its colors (<c>SolidColorBrush</c>) overrides this to fold
+    /// them in. Per-cell decisions must test the SAMPLED color (<see cref="Color.IsOpaque"/>),
     /// not this bit.
     /// </remarks>
     bool IsOpaque => Math.Abs(Opacity - 1.0) < double.Epsilon;
+
+    /// <summary>Whether the brush is transparent.</summary>
+    /// <remarks>
+    /// The DEFAULT speaks for the <see cref="Opacity"/> knob alone: <see cref="ColorAt(int, int, Rect)"/> is
+    /// positional, so the interface cannot know its colors' alpha in general — a brush whose
+    /// colors themselves carry alpha still reports opaque here (design doc defect 6). An
+    /// implementation that does know its colors (<c>SolidColorBrush</c>) overrides this to fold
+    /// them in. Per-cell decisions must test the SAMPLED color (<see cref="Color.IsOpaque"/>),
+    /// not this bit.
+    /// </remarks>
+    bool IsTransparent => Math.Abs(Opacity) < double.Epsilon ||
+                          IsUniform && ColorAt(0, 0, default).IsTransparent;
     
     /// <summary>
     /// The color for the cell at (<paramref name="column"/>, <paramref name="row"/>) — scene-local cell

@@ -90,19 +90,21 @@ public sealed class StyleQuantizer
 
         UnderlineStyle underlineStyle = style.UnderlineStyle;
 
-        if (!_cachedCapabilities.HasFlag(CachedCapabilities.ExtendedUnderline) && underlineStyle != UnderlineStyle.Single)
+        ref readonly var cachedCapabilities = ref _cachedCapabilities;
+
+        if (!cachedCapabilities.HasFlag(CachedCapabilities.ExtendedUnderline) && underlineStyle != UnderlineStyle.Single)
             underlineStyle = UnderlineStyle.Single;
 
         Color underlineColor = style.UnderlineColor;
 
-        if (!_cachedCapabilities.HasFlag(CachedCapabilities.ColoredUnderline) && !underlineColor.IsDefault)
+        if (!cachedCapabilities.HasFlag(CachedCapabilities.ColoredUnderline) && !underlineColor.IsDefault)
             underlineColor = Color.Default;
         else if (!underlineColor.IsDefault)
             underlineColor = QuantizeColor(underlineColor);
 
         var link = Hyperlink.None;
 
-        if (_cachedCapabilities.HasFlag(CachedCapabilities.Hyperlinks) && style.Hyperlink is { Uri: not null } hyperlink)
+        if (cachedCapabilities.HasFlag(CachedCapabilities.Hyperlinks) && style.Hyperlink is { Uri: not null } hyperlink)
             link = hyperlink;
 
         return new CellStyle(fg, bg, attrs, underlineStyle, underlineColor, link);
@@ -138,19 +140,21 @@ public sealed class StyleQuantizer
 
         UnderlineStyle underlineStyle = style.UnderlineStyle;
 
-        if (!_cachedCapabilities.HasFlag(CachedCapabilities.ExtendedUnderline) && underlineStyle != UnderlineStyle.Single)
+        ref readonly var cachedCapabilities = ref _cachedCapabilities;
+
+        if (!cachedCapabilities.HasFlag(CachedCapabilities.ExtendedUnderline) && underlineStyle != UnderlineStyle.Single)
             underlineStyle = UnderlineStyle.Single;
 
         Color underlineColor = style.UnderlineColor;
 
-        if (!_cachedCapabilities.HasFlag(CachedCapabilities.ColoredUnderline) && !underlineColor.IsDefault)
+        if (!cachedCapabilities.HasFlag(CachedCapabilities.ColoredUnderline) && !underlineColor.IsDefault)
             underlineColor = Color.Default;
         else if (!underlineColor.IsDefault)
             underlineColor = DitherColor(underlineColor, column, row);
 
         var link = Hyperlink.None;
 
-        if (_cachedCapabilities.HasFlag(CachedCapabilities.Hyperlinks) && style.Hyperlink is { Uri: not null } hyperlink)
+        if (cachedCapabilities.HasFlag(CachedCapabilities.Hyperlinks) && style.Hyperlink is { Uri: not null } hyperlink)
             link = hyperlink;
 
         return new CellStyle(fg, bg, attrs, underlineStyle, underlineColor, link);
@@ -199,11 +203,13 @@ public sealed class StyleQuantizer
 
     private Color QuantizeColor(Color color)
     {
-        var depth = _cachedCapabilities.HasFlag(CachedCapabilities.Truecolor)
+        ref readonly var cachedCapabilities = ref _cachedCapabilities;
+
+        var depth = cachedCapabilities.HasFlag(CachedCapabilities.Truecolor)
                         ? ColorDepth.Truecolor
-                        : _cachedCapabilities.HasFlag(CachedCapabilities.Ansi256)
+                        : cachedCapabilities.HasFlag(CachedCapabilities.Ansi256)
                             ? ColorDepth.Ansi256
-                            : _cachedCapabilities.HasFlag(CachedCapabilities.Ansi16)
+                            : cachedCapabilities.HasFlag(CachedCapabilities.Ansi16)
                                 ? ColorDepth.Ansi16
                                 : ColorDepth.NoColor;
 
@@ -234,13 +240,15 @@ public sealed class StyleQuantizer
 
     private TextAttributes QuantizeAttributes(TextAttributes attributes)
     {
+        ref readonly var cachedCapabilities = ref _cachedCapabilities;
+
         // Drop attributes the terminal doesn't honor. Bold/Faint/Blink/Inverse/Hidden are
         // assumed present on anything with SGR support at all — we surface only the attributes
         // whose capability is reported separately.
-        if (!_cachedCapabilities.HasFlag(CachedCapabilities.Italic)) attributes &= ~TextAttributes.Italic;
-        if (!_cachedCapabilities.HasFlag(CachedCapabilities.Underline)) attributes &= ~TextAttributes.Underline;
-        if (!_cachedCapabilities.HasFlag(CachedCapabilities.Strikethrough)) attributes &= ~TextAttributes.Strikethrough;
-        if (!_cachedCapabilities.HasFlag(CachedCapabilities.Overline)) attributes &= ~TextAttributes.Overline;
+        if (!cachedCapabilities.HasFlag(CachedCapabilities.Italic)) attributes &= ~TextAttributes.Italic;
+        if (!cachedCapabilities.HasFlag(CachedCapabilities.Underline)) attributes &= ~TextAttributes.Underline;
+        if (!cachedCapabilities.HasFlag(CachedCapabilities.Strikethrough)) attributes &= ~TextAttributes.Strikethrough;
+        if (!cachedCapabilities.HasFlag(CachedCapabilities.Overline)) attributes &= ~TextAttributes.Overline;
 
         return attributes;
     }

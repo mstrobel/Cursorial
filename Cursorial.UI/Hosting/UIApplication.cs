@@ -51,6 +51,7 @@ public sealed partial class UIApplication : IAsyncDisposable
     private readonly ConcurrentQueue<InputEvent> _inputQueue = new();
     private readonly ConcurrentQueue<Action<IBufferWriter<byte>>> _controlSequences = new();
     private readonly ArrayBufferWriter<byte> _scratch = new(16 * 1024); // pooled across frames
+    private readonly Dictionary<Type, object> _services = [];
     private readonly object _responseSinkLock = new();
     private Action<DeviceResponseEvent>[] _responseSinks = [];
 
@@ -148,6 +149,10 @@ public sealed partial class UIApplication : IAsyncDisposable
     internal UIApplication(UIApplicationOptions options)
     {
         _options = options;
+
+        foreach (var (type, service) in options.Services)
+            _services[type] = service;
+
         ApplicationModel = _options.Model;
         IsPresentingInline = _options.Inline; // Inline + InlineWithSwitching start inline; FullScreen never is
         Dispatcher = new UIDispatcher();
@@ -176,6 +181,9 @@ public sealed partial class UIApplication : IAsyncDisposable
         _caretService.StateChanged = RequestRender; // a pure caret move must arm Phase 6 (§5.9)
         InlineExitBehavior = options.InlineExitBehavior;
         _current = this; // Build-thread Current: pre-run UIObject construction is legal from here
+        
+        foreach (var (type, service) in options.DeferredServices)
+            _services[type] = service(this);
     }
 
     /// <summary>Creates the application builder.</summary>
@@ -189,11 +197,13 @@ public sealed partial class UIApplication : IAsyncDisposable
     /// <see cref="UIApplicationBuilder.WithFrameRate(int)">WithFrameRate</see> call).
     /// </remarks>
     public static UIApplicationBuilder DefaultBuilder()
-        => CreateBuilder().WithFrameRate(60)            // 60fps recommended
-                          .WithKeyReleaseSynthesis()    // synthesize key-up if not natively supported
-                          .WithNumpadKeyTranslation()   // translate numpad keys to their main key area counterparts
-                          .UseAlternateScreen()         // use alternate screen for rendering
-                          .WithUserConfiguration();     // enable the user configuration system
+        => CreateBuilder()
+          .WithFrameRate(60)                                // 60fps recommended
+          .WithService<IGraphemeCache>(new GraphemeCache()) // with grapheme cache
+          .WithKeyReleaseSynthesis()                        // synthesize key-up if not natively supported
+          .WithNumpadKeyTranslation()                       // translate numpad keys to their main key area counterparts
+          .UseAlternateScreen()                             // use alternate screen for rendering
+          .WithUserConfiguration();                         // enable the user configuration system
 
     /// <summary>
     /// The thread-local current application: the Build thread pre-run, the UI thread after; null
@@ -438,6 +448,10 @@ public sealed partial class UIApplication : IAsyncDisposable
     }
 
     // ───────────────────────────── thread-safe surface ─────────────────────────────
+
+    /// <summary>Returns a service provided by the application, if available; otherwise, <c>null</c>.</summary>
+    public TService? GetService<TService>() where TService : class
+        => _services.TryGetValue(typeof(TService), out var service) ? (TService?)service : null;
 
     /// <summary>Requests shutdown. Thread-safe; idempotent — the first exit code wins.</summary>
     public void Shutdown(int exitCode = 0)

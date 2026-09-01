@@ -94,6 +94,7 @@ public sealed class MessageBoxShutdownTests
         // reporting a dismissal.
         var host = new SyntheticTerminalHost(HeadlessCapabilities.KittyTruecolor, new Size(80, 24));
         var application = UIApplication.CreateBuilder()
+                                       .WithService<IGraphemeCache>(new GraphemeCache())
                                        .WithTerminalHost(host, disposeWithApp: true)
                                        .Build();
 

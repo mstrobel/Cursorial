@@ -41,10 +41,13 @@ public sealed class UIHeadlessHost : IAsyncDisposable, IDisposable
         options ??= new UIHeadlessHostOptions();
         var time = new FakeTimeProvider();
         var terminal = new SyntheticTerminalHost(options.Capabilities, options.InitialSize, time);
+
         var builder = UIApplication.CreateBuilder()
-            .WithTerminalHost(terminal, disposeWithApp: true)
-            .WithTimeProvider(time)
-            .UseAlternateScreen(options.UseAlternateScreen);
+                                   .WithService<IGraphemeCache>(new GraphemeCache())
+                                   .WithTerminalHost(terminal, disposeWithApp: true)
+                                   .WithTimeProvider(time)
+                                   .UseAlternateScreen(options.UseAlternateScreen);
+
         options.ConfigureBuilder?.Invoke(builder);
         var application = builder.Build();
         var host = new UIHeadlessHost(options, terminal, time, application);

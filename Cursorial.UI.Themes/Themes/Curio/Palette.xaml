@@ -37,7 +37,8 @@
 
     <!-- NoColor (every color role → Default; ASCII pens) -->
     <ResourceDictionary x:Key="NoColor">
-      <x:Null x:Key="{x:Static ThemeKeys.ElevationPopup}" />
+<!--      <SolidColorBrush x:Key="{x:Static ThemeKeys.ElevationPopup}"                 Color="{x:Static Colors.Default}"/>-->
+<!--      <SolidColorBrush x:Key="{x:Static ThemeKeys.ElevationDialog}"                Color="{x:Static Colors.Default}"/>-->
     </ResourceDictionary>
 
   </ResourceDictionary.ThemeDictionaries>

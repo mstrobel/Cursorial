@@ -83,6 +83,7 @@ public sealed class TextPresenterLineBaseTests
             Width = 30,
             HorizontalAlignment = HorizontalAlignment.Left,
             VerticalAlignment = VerticalAlignment.Top,
+            SelectedTextStyle = BrushedStyle.Identity
         };
 
         if (foreground is not null)
@@ -370,7 +371,7 @@ public sealed class TextPresenterLineBaseTests
     public void Selection_TintsOverAGradientBase_WithoutFlatteningIt()
     {
         var (host, box) = Shown(PlainText, Ramp(),
-                                b => b.SelectionBrush = new SolidColorBrush(Selection), focus: true);
+                                b => b.SelectionFill = new SolidColorBrush(Selection), focus: true);
         using var _ = host;
 
         box.SelectionStart = 2;
@@ -407,7 +408,7 @@ public sealed class TextPresenterLineBaseTests
     public void Selection_SurvivesAnUnresolvableForegroundBrush()
     {
         var (host, box) = Shown(PlainText, foreground: null,
-                                b => b.SelectionBrush = new SolidColorBrush(Selection), focus: true);
+                                b => b.SelectionFill = new SolidColorBrush(Selection), focus: true);
         using var _ = host;
 
         // Kill BOTH of the presenter's routes to a foreground brush: the box's own property, and the

@@ -13,14 +13,17 @@ namespace Cursorial.Drawing;
 /// overstrikes the text. <c>default(PanelTitle)</c> has null text (no title) — a default value draws a
 /// plain box.
 /// </summary>
-public readonly record struct PanelTitle
+public readonly ref struct PanelTitle
 {
     /// <summary>Create a left-aligned title over <paramref name="text"/>, colored by the pen.</summary>
-    public PanelTitle(string? text) => Text = text;
+    public PanelTitle(ReadOnlySpan<char> text) => Text = text;
 
     /// <summary>The label text; null or empty draws no title (plain border). Newlines are not interpreted.</summary>
-    public string? Text { get; init; }
+    public ReadOnlySpan<char> Text { get; init; }
 
+    /// <summary>Indicates whether this <see cref="PanelTitle"/> is empty, i.e., if it has no text.</summary>
+    public bool IsEmpty => Text.IsEmpty;
+    
     /// <summary>Color source for the title; null (default) inherits the pen's resolved brush.</summary>
     public IBrush? Brush { get; init; }
 
@@ -31,7 +34,7 @@ public readonly record struct PanelTitle
     public TextAttributes Attributes { get; init; }
 
     /// <summary>Implicit lift from a string for the common left-aligned case.</summary>
-    public static implicit operator PanelTitle(string? text) => new(text);
+    public static implicit operator PanelTitle(ReadOnlySpan<char> text) => new(text);
 
     /// <summary>Return a copy with a different <see cref="Brush"/>.</summary>
     public PanelTitle WithBrush(IBrush? brush) => this with { Brush = brush };

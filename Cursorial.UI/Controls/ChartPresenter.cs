@@ -109,7 +109,8 @@ public class ChartPresenter : DrawnContentPresenter
         // DefaultStyle true here — the answer everything that blanks a cell of its own accord reads.
         var buffer = new CellBuffer(size.Columns, size.Rows,
                                     TerminalCapabilities.None with { Output = context.Capabilities },
-                                    defaultStyle: Output.CellStyle.Transparent);
+                                    defaultStyle: Output.CellStyle.Transparent,
+                                    graphemeCache: UIApplication.Current?.GetService<IGraphemeCache>());
 
         _buffer = buffer;
         _bufferCapabilities = context.Capabilities;

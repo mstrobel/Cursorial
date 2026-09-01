@@ -101,8 +101,8 @@ public sealed class XamlPaletteValidationTests
 
     [Fact] // overriding InputBackgroundNormal under the overlay theme re-skins a TextBox's resting fill.
     public void XamlOverlay_InputBackgroundNormalOverride_ReSkinsTextBox()
-        => AssertOverlayKeyDrivesControl(
-            ThemeKeys.InputBackgroundNormal,
+        => AssertTextStyleOverlayKeyDrivesControl(
+            ThemeKeys.InputNormalTextStyle,
             new UIControls.TextBox { Text = "hi" },
             target: "h", fill: true);
 
@@ -140,6 +140,36 @@ public sealed class XamlPaletteValidationTests
         host.Application.Resources[perControlKey] = new SolidColorBrush(custom);
         host.RunFrame();
         Assert.Equal(custom, Sample()); // the overlay's setter referenced perControlKey → the control re-skinned
+    }
+
+    private static void AssertTextStyleOverlayKeyDrivesControl(string perControlKey, UIControls.Control control, string target, bool fill)
+    {
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(20, 4) });
+        host.Application.Theme = CursorialDefaultTheme.LoadTheme();
+        host.Application.RequestedThemeBase = ThemeBase.Dark;
+        host.ShowRoot(control);
+        Assert.True(host.RunUntilIdle());
+
+        var custom = SolidColorBrush.FromRgb(0xCC, 0x33, 0x99);
+        Color Sample()
+        {
+            for (var r = 0; r < host.FrameBuffer.Rows; r++)
+            for (var c = 0; c < host.FrameBuffer.Columns; c++)
+            {
+                var cell = host.GetCell(c, r);
+                if (cell.Grapheme is { Length: > 0 } g && g[0] == target[0])
+                    return fill ? cell.Style.Background : cell.Style.Foreground;
+            }
+            return Color.Default;
+        }
+
+        Assert.NotEqual(custom.Color, Sample()); // not already the override
+
+        host.Application.Resources[perControlKey] = fill
+                                                        ? BrushedStyle.Identity.WithBackground(custom)
+                                                        : BrushedStyle.Identity.WithForeground(custom);
+        host.RunFrame();
+        Assert.Equal(custom.Color, Sample()); // the overlay's setter referenced perControlKey → the control re-skinned
     }
 
     private static (string Glyph, Color Fg, Color Bg)[] RenderButton(bool xaml, ThemeBase @base, ColorDepth tier)

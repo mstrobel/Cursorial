@@ -436,4 +436,11 @@ public readonly record struct BrushedStyle
                { PaletteIndex: var i } when MarkupColor.IsThemePaletteIndex(i) => SolidColorBrush.FromPalette(i),
                { PaletteIndex: var p }                                         => ColorPalette.Ansi256[p],
            };
+
+    /// <summary>
+    /// Indicates whether this style has an opinion on <em>all</em> the specified <paramref name="attributes"/>,
+    /// i.e., whether they exist in either the <see cref="AppliedAttributes">applied</see> or
+    /// <see cref="ToggledAttributes">toggled</see> sets.
+    /// </summary>
+    public bool HasOpinion(TextAttributes attributes) => Xor.HasFlag(attributes); 
 }

@@ -155,7 +155,7 @@ public class DialogsViewModel : PageViewModel
     {
         try
         {
-            if (Application is not {} app)
+            if (Application is not {} app || app.GetService<ITaskDialogService>() is not {} dialogService)
                 return;
 
             if (_isDialogShowing) return;
@@ -232,7 +232,7 @@ public class DialogsViewModel : PageViewModel
                                                              TimeSpan.FromMilliseconds(30d));
             }
 
-            var result = await TaskDialog.ShowAsync(app, r, app.Dispatcher.ShutdownToken);
+            var result = await dialogService.ShowAsync(r, app.Dispatcher.ShutdownToken);
 
             if (timer is not null)
                 await timer.DisposeAsync();
@@ -265,7 +265,7 @@ public class DialogsViewModel : PageViewModel
     {
         try
         {
-            if (Application is not {} app)
+            if (Application?.GetService<IFileDialogService>() is not {} dialogService)
                 return;
 
             if (_isDialogShowing) return;
@@ -278,8 +278,7 @@ public class DialogsViewModel : PageViewModel
 
             var filters = MakeFileFilters();
 
-            var result = await FileOpenDialog.ShowAsync(
-                             app,
+            var result = await dialogService.ShowOpenAsync(
                              new FileOpenDialogRequest("Open File")
                              {
                                  FileSystem = fileSystem,
@@ -308,7 +307,7 @@ public class DialogsViewModel : PageViewModel
     {
         try
         {
-            if (Application is not {} app)
+            if (Application?.GetService<IFileDialogService>() is not {} dialogService)
                 return;
 
             if (_isDialogShowing) return;
@@ -321,8 +320,7 @@ public class DialogsViewModel : PageViewModel
 
             var filters = MakeFileFilters();
 
-            var result = await FileSaveDialog.ShowAsync(
-                             app,
+            var result = await dialogService.ShowSaveAsync(
                              new FileSaveDialogRequest("Save File")
                              {
                                  FileSystem = fileSystem,

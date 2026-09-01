@@ -11,7 +11,8 @@ namespace Cursorial.Rendering.Fonts;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Fonts operate exclusively through the cell-grid model — they call <see cref="CellBuffer.Set(int, int, string?, in CellStyle)"/>
+/// Fonts operate exclusively through the cell-grid model — they call
+/// <see cref="CellBuffer.Set(int, int, ReadOnlySpan{char}, in CellStyle)"/>
 /// (or write through the indexer) and otherwise know nothing about escape sequences, terminal
 /// protocols, or capabilities. That keeps the abstraction simple and lets the rendering layer
 /// reuse wide-cell handling, the blending stack, diff rendering, and capability-aware
@@ -86,7 +87,7 @@ public interface IGlyphFont
     /// </para>
     /// <para>
     /// Fonts must respect the buffer's active blending mode by routing all cell writes through
-    /// <see cref="CellBuffer.Set(int, int, string?, in CellStyle)"/> rather than the raw indexer. Coordinates beyond the buffer's
+    /// <see cref="CellBuffer.Set(int, int, ReadOnlySpan{char}, in CellStyle)"/> rather than the raw indexer. Coordinates beyond the buffer's
     /// extent are silently clipped — implementations should not throw on out-of-range targets,
     /// they should paint what fits.
     /// </para>
@@ -114,7 +115,7 @@ public interface IGlyphFont
     /// <para>
     /// <b>There is no base parameter.</b> The channels <paramref name="baseStyle"/> declines to state fall
     /// through to the DESTINATION CELLS, through the delta write primitives
-    /// (<see cref="CellBuffer.Set(int, int, string?, in PartialStyle)"/> and the fold it is built on) — the
+    /// (<see cref="CellBuffer.Set(int, int, ReadOnlySpan{char}, in PartialStyle)"/> and the fold it is built on) — the
     /// painted cluster keeps whatever color, attribute or link the caller said nothing about. A caller
     /// holding a whole-style base that must survive over cells styled differently restates it UNDER the
     /// delta instead (<see cref="BrushedStyle.From(in CellStyle)"/> / <see cref="BrushedStyle.FromInk"/>

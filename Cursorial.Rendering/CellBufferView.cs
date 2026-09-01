@@ -19,13 +19,13 @@ namespace Cursorial.Rendering;
 /// <para>
 /// <b>Coordinate translation.</b> The view's <c>(0, 0)</c> maps to
 /// <c>(<see cref="OffsetRow"/>, <see cref="OffsetColumn"/>)</c> on the backing buffer. All
-/// coordinate-bearing operations on the view — <see cref="Set(int, int, string?, in CellStyle)"/>, the indexer,
+/// coordinate-bearing operations on the view — <see cref="Set(int, int, ReadOnlySpan{char}, in CellStyle)"/>, the indexer,
 /// <see cref="Fill(in Cell)"/>, <see cref="Clear"/>, fragment / dirty-region calls — accept view-local
 /// coordinates and translate them to backing-buffer coordinates internally.
 /// </para>
 /// <para>
 /// <b>Clipping.</b> Writes outside <c>[0, Columns) × [0, Rows)</c> are silently dropped by
-/// <see cref="Set(int, int, string?, in CellStyle)"/>, <see cref="Fill(in Cell)"/>, <see cref="Clear"/>, and the fragment / dirty-region
+/// <see cref="Set(int, int, ReadOnlySpan{char}, in CellStyle)"/>, <see cref="Fill(in Cell)"/>, <see cref="Clear"/>, and the fragment / dirty-region
 /// methods. (On a view re-based via <see cref="WithOrigin"/> the addressable local range moves with
 /// the origin; writes always clip to the same backing window.) The indexer (<c>view[r, c]</c>) instead <em>validates</em> coordinates and throws on
 /// out-of-bounds access — it is the explicit form for when the caller has already proven the
@@ -41,7 +41,7 @@ namespace Cursorial.Rendering;
 /// </para>
 /// <para>
 /// <b>Wide cells</b> that would extend past the view's right edge degrade to a blank single
-/// cell, mirroring how <see cref="CellBuffer.Set(int, int, string?, in CellStyle)"/> handles the buffer's own right edge. This
+/// cell, mirroring how <see cref="CellBuffer.Set(int, int, ReadOnlySpan{char}, in CellStyle)"/> handles the buffer's own right edge. This
 /// keeps the view safe to use as a coordinate filter without leaking wide-cell continuations
 /// outside its bounds.
 /// </para>
@@ -137,7 +137,7 @@ public readonly struct CellBufferView : ICellSurface
     /// <remarks>
     /// <see cref="Bounds"/> (anchored at <c>(0, 0)</c>) is <b>not</b> meaningful on a re-based view —
     /// the addressable local rectangle starts at the window's local position, not at the origin. The
-    /// coordinate-bearing operations (<see cref="Set(int, int, string?, in CellStyle)"/>,
+    /// coordinate-bearing operations (<see cref="Set(int, int, ReadOnlySpan{char}, in CellStyle)"/>,
     /// <see cref="Write(int, int, ReadOnlySpan{char}, in CellStyle)"/>, the indexer, fills, fragments,
     /// dirty regions) all honor the re-based mapping.
     /// </remarks>
@@ -265,7 +265,7 @@ public readonly struct CellBufferView : ICellSurface
     /// </summary>
     public int CursorRow
     {
-        get => _buffer is null ? 0 : _buffer.CursorRow - OffsetRow;
+        get => _buffer?.CursorRow - OffsetRow ?? 0;
         set
         {
             if (value < LocalRowStart || value >= LocalRowEnd)
@@ -279,7 +279,7 @@ public readonly struct CellBufferView : ICellSurface
     /// <summary>Cursor column in view-local coordinates. See <see cref="CursorRow"/> for semantics.</summary>
     public int CursorColumn
     {
-        get => _buffer is null ? 0 : _buffer.CursorColumn - OffsetColumn;
+        get => _buffer?.CursorColumn - OffsetColumn ?? 0;
         set
         {
             if (value < LocalColumnStart || value >= LocalColumnEnd)
@@ -300,7 +300,7 @@ public readonly struct CellBufferView : ICellSurface
     /// <summary>Cursor shape. Forwards directly to the backing buffer.</summary>
     public CursorShape CursorShape
     {
-        get => _buffer is null ? default : _buffer.CursorShape;
+        get => _buffer?.CursorShape ?? default;
         set { if (_buffer is not null) _buffer.CursorShape = value; }
     }
 
@@ -319,13 +319,13 @@ public readonly struct CellBufferView : ICellSurface
 
     /// <summary>
     /// Direct cell access in view-local coordinates. Validates the coordinates and throws on
-    /// out-of-bounds — for clipping semantics, use <see cref="Set(int, int, string?, in CellStyle)"/> instead. The setter bypasses
+    /// out-of-bounds — for clipping semantics, use <see cref="Set(int, int, ReadOnlySpan{char}, in CellStyle)"/> instead. The setter bypasses
     /// the active blending mode (matching <see cref="CellBuffer"/>'s indexer), but it does NOT
     /// bypass wide-cell consistency: the backing indexer keeps pairs consistent, and a leading half
     /// at the view's own right edge degrades to a blank single here — the view is a clip, so a
     /// pair-write must never land in the column past its window (the backing buffer applies the
     /// same rule at its edge; this is the view's version, anchored on the view's, exactly as
-    /// <see cref="Set(int, int, string?, in CellStyle)"/> does).
+    /// <see cref="Set(int, int, ReadOnlySpan{char}, in CellStyle)"/> does).
     /// </summary>
     public Cell this[int column, int row]
     {
@@ -352,13 +352,13 @@ public readonly struct CellBufferView : ICellSurface
     /// past the view's right edge degrade to a blank single cell. Returns the number of cells
     /// the placement occupied (0, 1, or 2).
     /// </summary>
-    public int Set(int column, int row, string? grapheme, in CellStyle style)
+    public int Set(int column, int row, ReadOnlySpan<char> grapheme, in CellStyle style)
         => SetCore(column, row, grapheme, style, delta: null);
 
     /// <summary>
-    /// As <see cref="Set(int, int, string?, in CellStyle)"/>, but <paramref name="style"/> is a DELTA
+    /// As <see cref="Set(int, int, ReadOnlySpan{char}, in CellStyle)"/>, but <paramref name="style"/> is a DELTA
     /// applied to the <b>cell already there</b> — see
-    /// <see cref="CellBuffer.Set(int, int, string?, in PartialStyle)"/> for the base and why an absent
+    /// <see cref="CellBuffer.Set(int, int, ReadOnlySpan{char}, in PartialStyle)"/> for the base and why an absent
     /// channel means "leave it".
     /// </summary>
     /// <remarks>
@@ -367,21 +367,21 @@ public readonly struct CellBufferView : ICellSurface
     /// nobody stated can still come back changed. The background is the one channel guaranteed, and it
     /// is guaranteed by mechanism. Which channels move, and when, is pinned by
     /// <c>CellBufferDeltaWriteTests</c> rather than restated here; the reasoning is on
-    /// <see cref="CellBuffer.Set(int, int, string?, in PartialStyle)"/>.
+    /// <see cref="CellBuffer.Set(int, int, ReadOnlySpan{char}, in PartialStyle)"/>.
     /// </remarks>
-    public int Set(int column, int row, string? grapheme, in PartialStyle style)
+    public int Set(int column, int row, ReadOnlySpan<char> grapheme, in PartialStyle style)
         => SetCore(column, row, grapheme, default, style);
 
     // One placement for both overloads: the clip, the minimum width and the right-edge degrade are the
     // view's own rules and must not exist twice. `delta` selects which backing Set the cell goes through
     // — and it goes through the SAME cell either way, which is what keeps the two overloads' answers
     // identical once the delta is folded.
-    private int SetCore(int column, int row, string? grapheme, in CellStyle style, in PartialStyle? delta)
+    private int SetCore(int column, int row, ReadOnlySpan<char> grapheme, in CellStyle style, in PartialStyle? delta)
     {
         if (_buffer is null) return 0;
         if (!Contains(column, row)) return 0;
 
-        int width = string.IsNullOrEmpty(grapheme) ? 1 : GraphemeWidth.ClusterWidth(grapheme.AsSpan());
+        int width = grapheme.IsEmpty ? 1 : GraphemeWidth.ClusterWidth(grapheme);
         if (width < 1) width = 1;
 
         // If the wide right-half would land outside the view, degrade to single-cell blank — we
@@ -399,7 +399,7 @@ public readonly struct CellBufferView : ICellSurface
     /// <summary>
     /// Write the grapheme clusters of <paramref name="text"/> across a single row starting at the
     /// view-local <c>(column, row)</c>, advancing the column by each cluster's width (1 or 2) and
-    /// applying the active blending mode per cell — see <see cref="Set(int, int, string?, in CellStyle)"/>.
+    /// applying the active blending mode per cell — see <see cref="Set(int, int, ReadOnlySpan{char}, in CellStyle)"/>.
     /// A start outside the view is dropped (returns 0); a cluster that would not fit in the
     /// remaining columns stops the write rather than being clipped. The write is single-row by
     /// contract: it <b>stops at the first C0/C1 control character</b> (including newlines and tabs)
@@ -412,12 +412,12 @@ public readonly struct CellBufferView : ICellSurface
 
     /// <summary>
     /// As <see cref="Write(int, int, ReadOnlySpan{char}, in CellStyle)"/>, but each cluster goes through
-    /// <see cref="Set(int, int, string?, in PartialStyle)"/> — so the delta is folded onto EACH
+    /// <see cref="Set(int, int, ReadOnlySpan{char}, in PartialStyle)"/> — so the delta is folded onto EACH
     /// destination cell in turn, not resolved once for the run.
     /// </summary>
     /// <remarks>
     /// Which also means the qualification on what a declined channel actually keeps applies here PER
-    /// CELL — see the remarks on <see cref="Set(int, int, string?, in PartialStyle)"/>.
+    /// CELL — see the remarks on <see cref="Set(int, int, ReadOnlySpan{char}, in PartialStyle)"/>.
     /// </remarks>
     public int Write(int column, int row, ReadOnlySpan<char> text, in PartialStyle style)
         => WriteCore(column, row, text, default, style);
@@ -443,9 +443,9 @@ public readonly struct CellBufferView : ICellSurface
             // Stop at the view's right edge rather than placing a degraded glyph.
             if (column + width > LocalColumnEnd) break;
 
-            column += delta is { } d
-                          ? Set(column, row, cluster.ToString(), d)
-                          : Set(column, row, cluster.ToString(), style);
+            column += delta is {} d
+                          ? Set(column, row, cluster, d)
+                          : Set(column, row, cluster, style);
         }
 
         return column - start;

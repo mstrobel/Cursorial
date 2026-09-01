@@ -1433,10 +1433,22 @@ public sealed class FrameRenderer
     /// to gate the ambiguous-width cursor defense in <see cref="EmitDiff"/>. An empty grapheme
     /// (blank cell rendered as a space) is unambiguously narrow.
     /// </summary>
-    private static bool IsAmbiguousWidthGrapheme(string? grapheme)
+    private static bool IsAmbiguousWidthGrapheme(ReadOnlySpan<char> grapheme)
     {
-        if (string.IsNullOrEmpty(grapheme)) return false;
-        return GraphemeWidth.IsAmbiguousWidth(char.ConvertToUtf32(grapheme, 0));
+        if (grapheme.IsEmpty) return false;
+
+        int cp;
+
+        if (grapheme.Length > 2)
+            cp = char.ConvertToUtf32(grapheme.ToString(), 0);
+        else if (Rune.DecodeFromUtf16(grapheme, out Rune rune, out _) is OperationStatus.Done)
+            cp = rune.Value;
+        else if (grapheme.Length == 2)
+            cp = char.ConvertToUtf32(grapheme[0], grapheme[1]);
+        else
+            cp = grapheme[0];
+;
+        return GraphemeWidth.IsAmbiguousWidth(cp);
     }
 
     private void EmitCursor(CellBuffer back, IBufferWriter<byte> output)

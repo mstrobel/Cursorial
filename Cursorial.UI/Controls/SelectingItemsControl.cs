@@ -152,7 +152,7 @@ public abstract class SelectingItemsControl : ItemsControl
 
     /// <summary>Applies a pointer/keyboard selection gesture at <paramref name="index"/> per the modifiers
     /// (Ctrl = toggle, Shift = range-from-anchor, otherwise replace) — the input mapping onto the model primitives.</summary>
-    protected void SelectByGesture(int index, KeyModifiers modifiers)
+    protected virtual void SelectByGesture(int index, KeyModifiers modifiers)
     {
         if (!IsIndexSelectable(index))
             return; // a non-selectable container (a command tab) is focus-only — a gesture never selects it
@@ -613,7 +613,7 @@ public abstract class SelectingItemsControl : ItemsControl
             dispatcher.Post(() => ApplyFocus(pendingIndex, pendingFocus.Value));
     }
 
-    private bool IsValidIndex(int index)
+    protected bool IsValidIndex(int index)
         => index >= 0 && index < ItemContainerGenerator.ItemCount;
 
     private void TryEnsureContainerInView(UIElement container)

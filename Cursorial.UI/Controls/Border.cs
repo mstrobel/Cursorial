@@ -164,7 +164,7 @@ public class Border : Decorator
 
         // The box: a titled frame is DrawTitledBox; a plain frame is DrawBox. An occluding surface
         // overwrites (the floating-surface recipe); a tint does not.
-        PanelTitle? optionalTitle = null;
+        PanelTitle optionalTitle = default;
 
         if (Title is { Length: > 0 } title)
         {
@@ -179,15 +179,15 @@ public class Border : Decorator
 
         if (BorderPen is {} pen)
         {
-            if (optionalTitle is {} panelTitle)
-                context.DrawTitledBox(bounds, panelTitle, pen, overwrite: occludes);
+            if (optionalTitle.IsEmpty is false)
+                context.DrawTitledBox(bounds, optionalTitle, pen, overwrite: occludes);
             else
                 context.DrawBox(bounds, pen, overwrite: occludes);
         }
-        else if (optionalTitle is {} panelTitle)
+        else if (optionalTitle.IsEmpty is false)
         {
             // A title without an explicit pen still draws the framing edge (the GroupBox top row).
-            context.DrawTitledBox(bounds, panelTitle, Pens.None, overwrite: occludes);
+            context.DrawTitledBox(bounds, optionalTitle, Pens.None, overwrite: occludes);
         }
     }
 

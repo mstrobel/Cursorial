@@ -71,7 +71,8 @@ public static class CursorialTheme
         ThemeKeys.ScrollBarTrackBrush, ThemeKeys.ScrollBarThumbNormalBrush, ThemeKeys.ScrollBarThumbHoverBrush,
         ThemeKeys.ScrollBarThumbDragBrush, ThemeKeys.ElevationPopup, ThemeKeys.ElevationDesktop,
         ThemeKeys.ElevationDialog, ThemeKeys.ElevationHighest, ThemeKeys.ElevationRaised, ThemeKeys.ElevationWell,
-        ThemeKeys.ElevationWindow, ThemeKeys.BaseTextStyle
+        ThemeKeys.ElevationWindow, ThemeKeys.BaseTextStyle, ThemeKeys.FaintTextStyle, ThemeKeys.HeaderTextStyle,
+        ThemeKeys.MutedTextStyle
     ];
 
     private static readonly ResourceDictionary BuiltInDictionary = CreateSealed();
@@ -237,7 +238,20 @@ public static class CursorialTheme
         noColor[ThemeKeys.BaseTextStyle] = BrushedStyle.Identity
                                                        .WithForeground(Brushes.Default)
                                                        .WithBackground(Brushes.Default);
-        
+
+        noColor[ThemeKeys.FaintTextStyle] = BrushedStyle.Identity
+                                                        .WithForeground(Brushes.Default)
+                                                        .WithBackground(Brushes.Default)
+                                                        .Weighing(TextWeight.Faint);
+
+        noColor[ThemeKeys.MutedTextStyle] = BrushedStyle.Identity
+                                                        .WithForeground(Brushes.Default)
+                                                        .WithBackground(Brushes.Default)
+                                                        .Weighing(TextWeight.Faint);
+
+        AddInputTextStyles(noColor, noColor: true);
+        AddListItemTextStyles(noColor, noColor: true);
+
         dict.ThemeDictionaries[new ThemeVariantKey(null, ColorDepth.NoColor)] = noColor;
 
         // The color-tier floor for the cue pair. The CD8 probe DESCENDS tiers
@@ -413,6 +427,8 @@ public static class CursorialTheme
         Alias(ThemeKeys.InfoDarkBrush, ThemeKeys.InfoInverseBrush);
 
         Alias(ThemeKeys.HeaderTextStyle, ThemeKeys.BaseTextStyle);
+        Alias(ThemeKeys.FaintTextStyle, ThemeKeys.BaseTextStyle);
+        Alias(ThemeKeys.MutedTextStyle, ThemeKeys.BaseTextStyle);
     }
 
     private static void AddTierPalette(ResourceDictionary dict, ThemeBase @base)
@@ -565,9 +581,18 @@ public static class CursorialTheme
         rgb[ThemeKeys.BaseTextStyle] = BrushedStyle.Identity
                                                    .WithForeground((IBrush)rgb[ThemeKeys.TextBrush]!);
 
+        rgb[ThemeKeys.FaintTextStyle] = BrushedStyle.Identity
+                                                   .WithForeground((IBrush)rgb[ThemeKeys.FaintBrush]!);
+
+        rgb[ThemeKeys.MutedTextStyle] = BrushedStyle.Identity
+                                                   .WithForeground((IBrush)rgb[ThemeKeys.MutedBrush]!);
+
         rgb[ThemeKeys.HeaderTextStyle] = BrushedStyle.Identity
                                                      .WithForeground((IBrush) rgb[ThemeKeys.AccentBrush]!)
                                                      .Weighing(TextWeight.Bold);
+
+        AddInputTextStyles(rgb, rgb: true);
+        AddListItemTextStyles(rgb);
 
         rgb[ThemeKeys.AnsiBlack] = SolidColorBrush.FromPalette(234);
         rgb[ThemeKeys.AnsiRed] = SolidColorBrush.FromPalette(167);
@@ -607,7 +632,7 @@ public static class CursorialTheme
         ansi16[ThemeKeys.WellBrush] = Palette(dark ? Ansi.Black : Ansi.LightWhite);
         ansi16[ThemeKeys.SelectionBrush] = Palette(Ansi.LightBlue);
         ansi16[ThemeKeys.SelectionInk] = Palette(Ansi.Black);
-        ansi16[ThemeKeys.SelectionInactiveBrush] = Palette(Ansi.LightBlack);
+        ansi16[ThemeKeys.SelectionInactiveBrush] = Palette(Ansi.Black);
         ansi16[ThemeKeys.AlternateRowBrush] = Palette(dark ? Ansi.Black : Ansi.LightWhite);
         ansi16[ThemeKeys.AlternateRowInk] = null;//Palette(Ansi.Black);
         ansi16[ThemeKeys.HoverBrush] = Palette(dark ? Ansi.White : Ansi.LightBlack);
@@ -690,11 +715,22 @@ public static class CursorialTheme
         ansi16[ThemeKeys.InteractiveCueWeight] = TextWeight.Bold;
         ansi16[ThemeKeys.InteractiveCueUnderline] = UnderlineStyle.Single;
 
-        ansi16[ThemeKeys.BaseTextStyle] = BrushedStyle.Identity.WithForeground((IBrush)ansi16[ThemeKeys.TextBrush]!);
+        ansi16[ThemeKeys.BaseTextStyle] = BrushedStyle.Identity.WithForeground((IBrush) ansi16[ThemeKeys.TextBrush]!);
+
+        ansi16[ThemeKeys.FaintTextStyle] = BrushedStyle.Identity
+                                                       .WithForeground(dark ? Brushes.White : Brushes.LightBlack)
+                                                       .Weighing(TextWeight.Faint);
+
+        ansi16[ThemeKeys.MutedTextStyle] = BrushedStyle.Identity
+                                                       .WithForeground(dark ? Brushes.White : Brushes.LightBlack)
+                                                       .Weighing(TextWeight.Faint);
 
         ansi16[ThemeKeys.HeaderTextStyle] = BrushedStyle.Identity
                                                         .WithForeground((IBrush) ansi16[ThemeKeys.AccentBrush]!)
                                                         .Weighing(TextWeight.Bold);
+
+        AddInputTextStyles(ansi16);
+        AddListItemTextStyles(ansi16);
 
         ansi16[ThemeKeys.AnsiBlack] = Palette(Ansi.Black);
         ansi16[ThemeKeys.AnsiRed] = Palette(Ansi.Red);
@@ -722,6 +758,56 @@ public static class CursorialTheme
 
         dict.ThemeDictionaries[new ThemeVariantKey(@base, ColorDepth.Ansi16)] = ansi16;
     }
+
+    private static void AddInputTextStyles(ResourceDictionary r, bool noColor = false, bool rgb = false)
+    {
+        const TextAttributes n = TextAttributes.None;
+
+        TextAttributes i = noColor ? TextAttributes.Inverse : TextAttributes.None;
+        TextAttributes f = noColor ? TextAttributes.Faint : TextAttributes.None;
+
+        var selectionInk = rgb ? null : ThemeKeys.SelectionInk;
+        var inactiveSelectionInk = rgb ? null : ThemeKeys.TextBrush;
+
+        Add(r, ThemeKeys.InputNormalTextStyle, ThemeKeys.TextBrush, ThemeKeys.ElevationHighest);
+        Add(r, ThemeKeys.InputFocusTextStyle, ThemeKeys.TextBrush, ThemeKeys.WellBrush);
+        Add(r, ThemeKeys.InputDisabledTextStyle, ThemeKeys.DisabledForegroundBrush, ThemeKeys.DisabledBackgroundBrush);
+        Add(r, ThemeKeys.InputSelectionTextStyle, selectionInk, ThemeKeys.SelectionBrush, n, i);
+        Add(r, ThemeKeys.InputSelectionInactiveTextStyle, inactiveSelectionInk, ThemeKeys.SelectionInactiveBrush, f, i);
+        Add(r, ThemeKeys.InputHoverTextStyle, ThemeKeys.OnHoverBrush, ThemeKeys.HoverBrush);
+    }
+
+    private static void AddListItemTextStyles(ResourceDictionary r, bool noColor = false)
+    {
+        TextAttributes a = noColor ? TextAttributes.Inverse : TextAttributes.None;
+        TextAttributes i = noColor ? TextAttributes.Inverse | TextAttributes.Faint : TextAttributes.None;
+
+        Add(r, ThemeKeys.ListItemNormalTextStyle, ThemeKeys.TextBrush, ThemeKeys.WellBrush);
+        Add(r, ThemeKeys.ListItemFocusTextStyle, ThemeKeys.OnAccentBrush, ThemeKeys.TextBrush, a);
+        Add(r, ThemeKeys.ListItemDisabledTextStyle, ThemeKeys.DisabledForegroundBrush, null);
+        Add(r, ThemeKeys.ListItemSelectedTextStyle, ThemeKeys.SelectionInk, ThemeKeys.SelectionBrush, a);
+        Add(r, ThemeKeys.ListItemSelectedInactiveTextStyle, ThemeKeys.SelectionInk, ThemeKeys.SelectionInactiveBrush, i);
+        Add(r, ThemeKeys.ListItemHoverTextStyle, ThemeKeys.OnHoverBrush, ThemeKeys.HoverBrush);
+    }
+
+    private static void Add(ResourceDictionary r, string key, string? fgKey, string? bgKey,
+                            TextAttributes attributes = TextAttributes.None,
+                            TextAttributes toggledAttributes = TextAttributes.None)
+    {
+        var fg = fgKey is null ? null : (IBrush?) r[fgKey] ??
+                                        throw new ArgumentException($"Could not resolve brush resource '{fgKey}'.");
+
+        var bg = bgKey is null ? null : (IBrush?) r[bgKey] ??
+                                        throw new ArgumentException($"Could not resolve brush resource '{bgKey}'.");
+
+        r.Add(key,
+              BrushedStyle.Identity
+                          .WithForeground(fg)
+                          .WithBackground(bg)
+                          .Imposing(attributes)
+                          .Toggling(toggledAttributes));
+    }
+
 
     private static SolidColorBrush Palette(int index) => new(Color.FromPalette((byte)index));
 

@@ -48,7 +48,7 @@ public abstract class TextElement
     public static readonly AttachedProperty<IBrush?> ForegroundProperty =
         UIProperty.RegisterAttached<TextElement, UIElement, IBrush?>(
             "Foreground",
-            new PropertyMetadata<IBrush?>(Brushes.Default) { DefaultResourceKey = Themes.ThemeKeys.TextBrush },
+            new PropertyMetadata<IBrush?>(Brushes.Default) { DefaultResourceKey = ThemeKeys.TextBrush },
             inherits: true);
 
     static TextElement()
@@ -279,7 +279,7 @@ public abstract class TextElement
     public static BrushedStyle GetBaseTextStyle(UIElement element) =>
         element.GetValue(BaseTextStyleProperty);
 
-    private static void OnBaseTextStyleChanged(UIObject sender, BrushedStyle oldValue, BrushedStyle newValue)
+    internal static void OnBaseTextStyleChanged(UIObject sender, BrushedStyle oldValue, BrushedStyle newValue)
     {
         var existing = sender.GetValue(BaseTextStyleFramePropertyKey.Property);
 
@@ -449,30 +449,37 @@ public abstract class TextElement
     /// aggregate 'OR'd in (the bridge term is deleted at P5). <c>Concealed</c> maps to
     /// <see cref="TextAttributes.Hidden"/> (SGR 8 "conceal").
     /// </summary>
-    public static ResolvedTextAttributes ComposeAttributes(UIElement element)
+    /// <remarks>
+    /// By default, post-animation values are read. To read the pre-animation value, specify
+    /// <c>readBaseValues: true</c>.
+    /// </remarks>
+    public static ResolvedTextAttributes ComposeAttributes(UIElement element, bool readBaseValues = false)
     {
         ArgumentNullException.ThrowIfNull(element);
 
-        var flags = element.GetValue(TextWeightProperty) switch
-        {
-            TextWeight.Bold  => TextAttributes.Bold,
-            TextWeight.Faint => TextAttributes.Faint,
-            _                => TextAttributes.None,
-        };
+        var flags = Read(element, TextWeightProperty, readBaseValues) switch
+                    {
+                        TextWeight.Bold  => TextAttributes.Bold,
+                        TextWeight.Faint => TextAttributes.Faint,
+                        _                => TextAttributes.None,
+                    };
 
         // @formatter:off
-        var underline = element.GetValue(UnderlineProperty);
-        if (underline is not null)                                   flags |= TextAttributes.Underline;
-        if (element.GetValue(TextStyleProperty) == TextStyle.Italic) flags |= TextAttributes.Italic;
-        if (element.GetValue(StrikethroughProperty))                 flags |= TextAttributes.Strikethrough;
-        if (element.GetValue(OverlineProperty))                      flags |= TextAttributes.Overline;
-        if (element.GetValue(InverseProperty))                       flags |= TextAttributes.Inverse;
-        if (element.GetValue(BlinkProperty))                         flags |= TextAttributes.Blink;
-        if (element.GetValue(ConcealedProperty))                     flags |= TextAttributes.Hidden;
+        var underline = Read(element, UnderlineProperty, readBaseValues);
+        if (underline is not null)                                                flags |= TextAttributes.Underline;
+        if (Read(element, TextStyleProperty, readBaseValues) == TextStyle.Italic) flags |= TextAttributes.Italic;
+        if (Read(element, StrikethroughProperty, readBaseValues))                 flags |= TextAttributes.Strikethrough;
+        if (Read(element, OverlineProperty, readBaseValues))                      flags |= TextAttributes.Overline;
+        if (Read(element, InverseProperty, readBaseValues))                       flags |= TextAttributes.Inverse;
+        if (Read(element, BlinkProperty, readBaseValues))                         flags |= TextAttributes.Blink;
+        if (Read(element, ConcealedProperty, readBaseValues))                     flags |= TextAttributes.Hidden;
         // @formatter:on
 
         return new ResolvedTextAttributes(flags, underline ?? UnderlineStyle.Single);
     }
+    
+    private static T Read<T>(UIElement element, StyledProperty<T> property, bool readBaseValue = false)
+            => readBaseValue ? element.GetBaseValue(property) : element.GetValue(property);
 
     /// <summary>
     /// The eight per-axis attribute properties, in fold order — the delivery/forwarding surface

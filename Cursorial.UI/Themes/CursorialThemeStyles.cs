@@ -49,16 +49,14 @@ internal static class CursorialThemeStyles
                    Key = "Theme.ActiveSelectionStyle",
                    Children =
                    {
-                       // new Style("^ :is(ListBoxItem):selected, " +
-                       //           "^ :is(TreeViewItem):selected, " +
-                       //           "^ :is(ListViewItem):selected")
-                       //    .SetResource(Panel.BackgroundProperty, ThemeKeys.ListItemBackgroundSelected)
-                       //    .SetResource(TextElement.ForegroundProperty, ThemeKeys.ListItemForegroundSelected),
-                       // new Style("^ :is(ListBoxItem):focus-visible:selected, " +
-                       //           "^ :is(TreeViewItem):focus-visible:selected, " +
-                       //           "^ :is(ListViewItem):focus-visible:selected")
-                       //    .SetResource(Panel.BackgroundProperty, ThemeKeys.ListItemBackgroundFocus)
-                       //    .SetResource(TextElement.ForegroundProperty, ThemeKeys.ListItemForegroundFocus)
+                       new Style("^ :is(ListBoxItem):selected, " +
+                                 "^ :is(TreeViewItem):selected, " +
+                                 "^ :is(ListViewItem):selected")
+                          .SetResource(TextElement.BaseTextStyleProperty, ThemeKeys.ListItemSelectedTextStyle),
+                       new Style("^ :is(ListBoxItem):focus-visible:selected, " +
+                                 "^ :is(TreeViewItem):focus-visible:selected, " +
+                                 "^ :is(ListViewItem):focus-visible:selected")
+                          .SetResource(TextElement.BaseTextStyleProperty, ThemeKeys.ListItemFocusTextStyle)
                    }
                };
     }

@@ -13,14 +13,136 @@
   <ResourceDictionary.ThemeDictionaries>
     <ResourceDictionary x:Key="Dark+Truecolor">
       <SolidColorBrush x:Key="{x:Static ThemeKeys.TextBrush}"                      Color="#c0caf5"/>
-      <SolidColorBrush x:Key="{x:Static ThemeKeys.SelectionInk}"                   Color="#c0caf5"/>
-      <SolidColorBrush x:Key="{x:Static ThemeKeys.OnHoverBrush}"                   Color="#c0caf5"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.SelectionInk}"                   Color="#e4e4e4"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.OnHoverBrush}"                   Color="#e4e4e4"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.WellBrush}"                      Color="#0d0f19"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.SelectionBrush}"                 Color="#33467c"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.SelectionInactiveBrush}"         Color="#30364d"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.HoverBrush}"                     Color="#414868"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.ElevationWell}"                  Color="#0d0f19"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.ElevationHighest}"               Color="#24283b"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.DisabledBackgroundBrush}"        Color="#1f2335"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.DisabledForegroundBrush}"        Color="#565f89"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.OnAccentBrush}"                  Color="#0d0f19"/>
+
+      <!-- Input Element Styles -->
+
+      <BrushedStyle    x:Key="{x:Static ThemeKeys.InputNormalTextStyle}"
+                       Foreground="{StaticResource {x:Static ThemeKeys.TextBrush}}"
+                       Background="{StaticResource {x:Static ThemeKeys.ElevationHighest}}" />
+
+      <BrushedStyle    x:Key="{x:Static ThemeKeys.InputFocusTextStyle}"
+                       Foreground="{StaticResource {x:Static ThemeKeys.TextBrush}}"
+                       Background="{StaticResource {x:Static ThemeKeys.WellBrush}}" />
+
+      <BrushedStyle    x:Key="{x:Static ThemeKeys.InputDisabledTextStyle}"
+                       Foreground="{StaticResource {x:Static ThemeKeys.DisabledForegroundBrush}}"
+                       Background="{StaticResource {x:Static ThemeKeys.DisabledBackgroundBrush}}" />
+
+      <BrushedStyle    x:Key="{x:Static ThemeKeys.InputSelectionTextStyle}"
+                       Foreground="{x:Null}"
+                       Background="{StaticResource {x:Static ThemeKeys.SelectionBrush}}" />
+
+      <BrushedStyle    x:Key="{x:Static ThemeKeys.InputSelectionInactiveTextStyle}"
+                       Foreground="{x:Null}"
+                       Background="{StaticResource {x:Static ThemeKeys.SelectionInactiveBrush}}" />
+
+      <BrushedStyle    x:Key="{x:Static ThemeKeys.InputHoverTextStyle}"
+                       Foreground="{StaticResource {x:Static ThemeKeys.OnHoverBrush}}"
+                       Background="{StaticResource {x:Static ThemeKeys.HoverBrush}}" />
+
+      <!-- List Item Styles -->
+
+      <BrushedStyle    x:Key="{x:Static ThemeKeys.ListItemNormalTextStyle}"
+                       Foreground="{StaticResource {x:Static ThemeKeys.TextBrush}}"
+                       Background="{StaticResource {x:Static ThemeKeys.WellBrush}}" />
+
+      <BrushedStyle    x:Key="{x:Static ThemeKeys.ListItemFocusTextStyle}"
+                       Foreground="{StaticResource {x:Static ThemeKeys.OnAccentBrush}}"
+                       Background="{StaticResource {x:Static ThemeKeys.TextBrush}}" />
+
+      <BrushedStyle    x:Key="{x:Static ThemeKeys.ListItemDisabledTextStyle}"
+                       Foreground="{StaticResource {x:Static ThemeKeys.DisabledForegroundBrush}}"
+                       Background="{x:Null}" />
+
+      <BrushedStyle    x:Key="{x:Static ThemeKeys.ListItemSelectedTextStyle}"
+                       Foreground="{StaticResource {x:Static ThemeKeys.SelectionInk}}"
+                       Background="{StaticResource {x:Static ThemeKeys.SelectionBrush}}" />
+
+      <BrushedStyle    x:Key="{x:Static ThemeKeys.ListItemSelectedInactiveTextStyle}"
+                       Foreground="{StaticResource {x:Static ThemeKeys.SelectionInk}}"
+                       Background="{StaticResource {x:Static ThemeKeys.SelectionInactiveBrush}}" />
+
+      <BrushedStyle    x:Key="{x:Static ThemeKeys.ListItemHoverTextStyle}"
+                       Foreground="{StaticResource {x:Static ThemeKeys.OnHoverBrush}}"
+                       Background="{StaticResource {x:Static ThemeKeys.HoverBrush}}" />
     </ResourceDictionary>
 
     <ResourceDictionary x:Key="Light+Truecolor">
       <SolidColorBrush x:Key="{x:Static ThemeKeys.TextBrush}"                      Color="#343b58"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.SelectionInk}"                   Color="#343b58"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.OnHoverBrush}"                   Color="#343b58"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.WellBrush}"                      Color="#f6f6f8"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.SelectionBrush}"                 Color="#a8aecb"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.SelectionInactiveBrush}"         Color="#d3d5dd"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.HoverBrush}"                     Color="#bfc0c6"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.ElevationWell}"                  Color="#f6f6f8"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.ElevationHighest}"               Color="#cbccd2"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.DisabledBackgroundBrush}"        Color="#dcdde2"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.DisabledForegroundBrush}"        Color="#9699a3"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.OnAccentBrush}"                  Color="#e9e9ed"/>
+
+      <!-- Input Element Styles -->
+
+      <BrushedStyle    x:Key="{x:Static ThemeKeys.InputNormalTextStyle}"
+                       Foreground="{StaticResource {x:Static ThemeKeys.TextBrush}}"
+                       Background="{StaticResource {x:Static ThemeKeys.ElevationHighest}}" />
+
+      <BrushedStyle    x:Key="{x:Static ThemeKeys.InputFocusTextStyle}"
+                       Foreground="{StaticResource {x:Static ThemeKeys.TextBrush}}"
+                       Background="{StaticResource {x:Static ThemeKeys.WellBrush}}" />
+
+      <BrushedStyle    x:Key="{x:Static ThemeKeys.InputDisabledTextStyle}"
+                       Foreground="{StaticResource {x:Static ThemeKeys.DisabledForegroundBrush}}"
+                       Background="{StaticResource {x:Static ThemeKeys.DisabledBackgroundBrush}}" />
+
+      <BrushedStyle    x:Key="{x:Static ThemeKeys.InputSelectionTextStyle}"
+                       Foreground="{x:Null}"
+                       Background="{StaticResource {x:Static ThemeKeys.SelectionBrush}}" />
+
+      <BrushedStyle    x:Key="{x:Static ThemeKeys.InputSelectionInactiveTextStyle}"
+                       Foreground="{x:Null}"
+                       Background="{StaticResource {x:Static ThemeKeys.SelectionInactiveBrush}}" />
+
+      <BrushedStyle    x:Key="{x:Static ThemeKeys.InputHoverTextStyle}"
+                       Foreground="{StaticResource {x:Static ThemeKeys.OnHoverBrush}}"
+                       Background="{StaticResource {x:Static ThemeKeys.HoverBrush}}" />
+
+      <!-- List Item Styles -->
+
+      <BrushedStyle    x:Key="{x:Static ThemeKeys.ListItemNormalTextStyle}"
+                       Foreground="{StaticResource {x:Static ThemeKeys.TextBrush}}"
+                       Background="{StaticResource {x:Static ThemeKeys.WellBrush}}" />
+
+      <BrushedStyle    x:Key="{x:Static ThemeKeys.ListItemFocusTextStyle}"
+                       Foreground="{StaticResource {x:Static ThemeKeys.OnAccentBrush}}"
+                       Background="{StaticResource {x:Static ThemeKeys.TextBrush}}" />
+
+      <BrushedStyle    x:Key="{x:Static ThemeKeys.ListItemDisabledTextStyle}"
+                       Foreground="{StaticResource {x:Static ThemeKeys.DisabledForegroundBrush}}"
+                       Background="{x:Null}" />
+
+      <BrushedStyle    x:Key="{x:Static ThemeKeys.ListItemSelectedTextStyle}"
+                       Foreground="{StaticResource {x:Static ThemeKeys.SelectionInk}}"
+                       Background="{StaticResource {x:Static ThemeKeys.SelectionBrush}}" />
+
+      <BrushedStyle    x:Key="{x:Static ThemeKeys.ListItemSelectedInactiveTextStyle}"
+                       Foreground="{StaticResource {x:Static ThemeKeys.SelectionInk}}"
+                       Background="{StaticResource {x:Static ThemeKeys.SelectionInactiveBrush}}" />
+
+      <BrushedStyle    x:Key="{x:Static ThemeKeys.ListItemHoverTextStyle}"
+                       Foreground="{StaticResource {x:Static ThemeKeys.OnHoverBrush}}"
+                       Background="{StaticResource {x:Static ThemeKeys.HoverBrush}}" />
     </ResourceDictionary>
 
     <ResourceDictionary x:Key="Truecolor">
@@ -122,6 +244,68 @@
 
       <BrushedStyle    x:Key="{x:Static ThemeKeys.BaseTextStyle}"
                        Foreground="{StaticResource {x:Static ThemeKeys.TextBrush}}" />
+
+      <BrushedStyle    x:Key="{x:Static ThemeKeys.FaintTextStyle}"
+                       Foreground="{StaticResource {x:Static ThemeKeys.FaintBrush}}" />
+
+      <BrushedStyle    x:Key="{x:Static ThemeKeys.MutedTextStyle}"
+                       Foreground="{StaticResource {x:Static ThemeKeys.MutedBrush}}" />
+
+      <BrushedStyle    x:Key="{x:Static ThemeKeys.HeaderTextStyle}"
+                       Foreground="{StaticResource {x:Static ThemeKeys.AccentBrush}}"
+                       Weight="Bold" />
+      
+      <!-- Input Element Styles -->
+
+      <BrushedStyle    x:Key="{x:Static ThemeKeys.InputNormalTextStyle}"
+                       Foreground="{StaticResource {x:Static ThemeKeys.TextBrush}}"
+                       Background="{StaticResource {x:Static ThemeKeys.ElevationHighest}}" />
+
+      <BrushedStyle    x:Key="{x:Static ThemeKeys.InputFocusTextStyle}"
+                       Foreground="{StaticResource {x:Static ThemeKeys.TextBrush}}"
+                       Background="{StaticResource {x:Static ThemeKeys.WellBrush}}" />
+
+      <BrushedStyle    x:Key="{x:Static ThemeKeys.InputDisabledTextStyle}"
+                       Foreground="{StaticResource {x:Static ThemeKeys.DisabledForegroundBrush}}"
+                       Background="{StaticResource {x:Static ThemeKeys.DisabledBackgroundBrush}}" />
+
+      <BrushedStyle    x:Key="{x:Static ThemeKeys.InputSelectionTextStyle}"
+                       Foreground="{x:Null}"
+                       Background="{StaticResource {x:Static ThemeKeys.SelectionBrush}}" />
+
+      <BrushedStyle    x:Key="{x:Static ThemeKeys.InputSelectionInactiveTextStyle}"
+                       Foreground="{x:Null}"
+                       Background="{StaticResource {x:Static ThemeKeys.SelectionInactiveBrush}}" />
+
+      <BrushedStyle    x:Key="{x:Static ThemeKeys.InputHoverTextStyle}"
+                       Foreground="{StaticResource {x:Static ThemeKeys.OnHoverBrush}}"
+                       Background="{StaticResource {x:Static ThemeKeys.HoverBrush}}" />
+
+      <!-- List Item Styles -->
+
+      <BrushedStyle    x:Key="{x:Static ThemeKeys.ListItemNormalTextStyle}"
+                       Foreground="{StaticResource {x:Static ThemeKeys.TextBrush}}"
+                       Background="{StaticResource {x:Static ThemeKeys.WellBrush}}" />
+
+      <BrushedStyle    x:Key="{x:Static ThemeKeys.ListItemFocusTextStyle}"
+                       Foreground="{StaticResource {x:Static ThemeKeys.OnAccentBrush}}"
+                       Background="{StaticResource {x:Static ThemeKeys.TextBrush}}" />
+
+      <BrushedStyle    x:Key="{x:Static ThemeKeys.ListItemDisabledTextStyle}"
+                       Foreground="{StaticResource {x:Static ThemeKeys.DisabledForegroundBrush}}"
+                       Background="{x:Null}" />
+
+      <BrushedStyle    x:Key="{x:Static ThemeKeys.ListItemSelectedTextStyle}"
+                       Foreground="{StaticResource {x:Static ThemeKeys.SelectionInk}}"
+                       Background="{StaticResource {x:Static ThemeKeys.SelectionBrush}}" />
+
+      <BrushedStyle    x:Key="{x:Static ThemeKeys.ListItemSelectedInactiveTextStyle}"
+                       Foreground="{StaticResource {x:Static ThemeKeys.SelectionInk}}"
+                       Background="{StaticResource {x:Static ThemeKeys.SelectionInactiveBrush}}" />
+
+      <BrushedStyle    x:Key="{x:Static ThemeKeys.ListItemHoverTextStyle}"
+                       Foreground="{StaticResource {x:Static ThemeKeys.OnHoverBrush}}"
+                       Background="{StaticResource {x:Static ThemeKeys.HoverBrush}}" />
     </ResourceDictionary>
 
     <!-- ───────────────────────────── Light · Ansi256 (RGB) ───────────────────────────── -->
@@ -203,6 +387,68 @@
 
       <BrushedStyle    x:Key="{x:Static ThemeKeys.BaseTextStyle}"
                        Foreground="{StaticResource {x:Static ThemeKeys.TextBrush}}" />
+
+      <BrushedStyle    x:Key="{x:Static ThemeKeys.FaintTextStyle}"
+                       Foreground="{StaticResource {x:Static ThemeKeys.FaintBrush}}" />
+
+      <BrushedStyle    x:Key="{x:Static ThemeKeys.MutedTextStyle}"
+                       Foreground="{StaticResource {x:Static ThemeKeys.MutedBrush}}" />
+
+      <BrushedStyle    x:Key="{x:Static ThemeKeys.HeaderTextStyle}"
+                       Foreground="{StaticResource {x:Static ThemeKeys.AccentBrush}}"
+                       Weight="Bold" />
+
+      <!-- Input Element Styles -->
+
+      <BrushedStyle    x:Key="{x:Static ThemeKeys.InputNormalTextStyle}"
+                       Foreground="{StaticResource {x:Static ThemeKeys.TextBrush}}"
+                       Background="{StaticResource {x:Static ThemeKeys.ElevationHighest}}" />
+
+      <BrushedStyle    x:Key="{x:Static ThemeKeys.InputFocusTextStyle}"
+                       Foreground="{StaticResource {x:Static ThemeKeys.TextBrush}}"
+                       Background="{StaticResource {x:Static ThemeKeys.WellBrush}}" />
+
+      <BrushedStyle    x:Key="{x:Static ThemeKeys.InputDisabledTextStyle}"
+                       Foreground="{StaticResource {x:Static ThemeKeys.DisabledForegroundBrush}}"
+                       Background="{StaticResource {x:Static ThemeKeys.DisabledBackgroundBrush}}" />
+
+      <BrushedStyle    x:Key="{x:Static ThemeKeys.InputSelectionTextStyle}"
+                       Foreground="{x:Null}"
+                       Background="{StaticResource {x:Static ThemeKeys.SelectionBrush}}" />
+
+      <BrushedStyle    x:Key="{x:Static ThemeKeys.InputSelectionInactiveTextStyle}"
+                       Foreground="{x:Null}"
+                       Background="{StaticResource {x:Static ThemeKeys.SelectionInactiveBrush}}" />
+
+      <BrushedStyle    x:Key="{x:Static ThemeKeys.InputHoverTextStyle}"
+                       Foreground="{StaticResource {x:Static ThemeKeys.OnHoverBrush}}"
+                       Background="{StaticResource {x:Static ThemeKeys.HoverBrush}}" />
+
+      <!-- List Item Styles -->
+
+      <BrushedStyle    x:Key="{x:Static ThemeKeys.ListItemNormalTextStyle}"
+                       Foreground="{StaticResource {x:Static ThemeKeys.TextBrush}}"
+                       Background="{StaticResource {x:Static ThemeKeys.WellBrush}}" />
+
+      <BrushedStyle    x:Key="{x:Static ThemeKeys.ListItemFocusTextStyle}"
+                       Foreground="{StaticResource {x:Static ThemeKeys.OnAccentBrush}}"
+                       Background="{StaticResource {x:Static ThemeKeys.TextBrush}}" />
+
+      <BrushedStyle    x:Key="{x:Static ThemeKeys.ListItemDisabledTextStyle}"
+                       Foreground="{StaticResource {x:Static ThemeKeys.DisabledForegroundBrush}}"
+                       Background="{x:Null}" />
+
+      <BrushedStyle    x:Key="{x:Static ThemeKeys.ListItemSelectedTextStyle}"
+                       Foreground="{StaticResource {x:Static ThemeKeys.SelectionInk}}"
+                       Background="{StaticResource {x:Static ThemeKeys.SelectionBrush}}" />
+
+      <BrushedStyle    x:Key="{x:Static ThemeKeys.ListItemSelectedInactiveTextStyle}"
+                       Foreground="{StaticResource {x:Static ThemeKeys.SelectionInk}}"
+                       Background="{StaticResource {x:Static ThemeKeys.SelectionInactiveBrush}}" />
+
+      <BrushedStyle    x:Key="{x:Static ThemeKeys.ListItemHoverTextStyle}"
+                       Foreground="{StaticResource {x:Static ThemeKeys.OnHoverBrush}}"
+                       Background="{StaticResource {x:Static ThemeKeys.HoverBrush}}" />
     </ResourceDictionary>
 
     <ResourceDictionary x:Key="Ansi256">
@@ -417,6 +663,70 @@
 
       <BrushedStyle    x:Key="{x:Static ThemeKeys.BaseTextStyle}"
                        Foreground="{StaticResource {x:Static ThemeKeys.TextBrush}}" />
+
+      <BrushedStyle    x:Key="{x:Static ThemeKeys.FaintTextStyle}"
+                       Foreground="{x:Static Brushes.White}"
+                       Weight="Faint "/>
+
+      <BrushedStyle    x:Key="{x:Static ThemeKeys.MutedTextStyle}"
+                       Foreground="{x:Static Brushes.LightWhite}"
+                       Weight="Faint "/>
+
+      <BrushedStyle    x:Key="{x:Static ThemeKeys.HeaderTextStyle}"
+                       Foreground="{StaticResource {x:Static ThemeKeys.AccentBrush}}"
+                       Weight="Bold" />
+
+      <!-- Input Element Styles -->
+
+      <BrushedStyle    x:Key="{x:Static ThemeKeys.InputNormalTextStyle}"
+                       Foreground="{StaticResource {x:Static ThemeKeys.TextBrush}}"
+                       Background="{StaticResource {x:Static ThemeKeys.ElevationHighest}}" />
+
+      <BrushedStyle    x:Key="{x:Static ThemeKeys.InputFocusTextStyle}"
+                       Foreground="{StaticResource {x:Static ThemeKeys.TextBrush}}"
+                       Background="{StaticResource {x:Static ThemeKeys.WellBrush}}" />
+
+      <BrushedStyle    x:Key="{x:Static ThemeKeys.InputDisabledTextStyle}"
+                       Foreground="{StaticResource {x:Static ThemeKeys.DisabledForegroundBrush}}"
+                       Background="{StaticResource {x:Static ThemeKeys.DisabledBackgroundBrush}}" />
+
+      <BrushedStyle    x:Key="{x:Static ThemeKeys.InputSelectionTextStyle}"
+                       Foreground="{StaticResource {x:Static ThemeKeys.SelectionInk}}"
+                       Background="{StaticResource {x:Static ThemeKeys.SelectionBrush}}" />
+
+      <BrushedStyle    x:Key="{x:Static ThemeKeys.InputSelectionInactiveTextStyle}"
+                       Foreground="{StaticResource {x:Static ThemeKeys.TextBrush}}"
+                       Background="{StaticResource {x:Static ThemeKeys.SelectionInactiveBrush}}" />
+
+      <BrushedStyle    x:Key="{x:Static ThemeKeys.InputHoverTextStyle}"
+                       Foreground="{StaticResource {x:Static ThemeKeys.OnHoverBrush}}"
+                       Background="{StaticResource {x:Static ThemeKeys.HoverBrush}}" />
+
+      <!-- List Item Styles -->
+
+      <BrushedStyle    x:Key="{x:Static ThemeKeys.ListItemNormalTextStyle}"
+                       Foreground="{StaticResource {x:Static ThemeKeys.TextBrush}}"
+                       Background="{StaticResource {x:Static ThemeKeys.WellBrush}}" />
+
+      <BrushedStyle    x:Key="{x:Static ThemeKeys.ListItemFocusTextStyle}"
+                       Foreground="{StaticResource {x:Static ThemeKeys.OnAccentBrush}}"
+                       Background="{StaticResource {x:Static ThemeKeys.TextBrush}}" />
+
+      <BrushedStyle    x:Key="{x:Static ThemeKeys.ListItemDisabledTextStyle}"
+                       Foreground="{StaticResource {x:Static ThemeKeys.DisabledForegroundBrush}}"
+                       Background="{x:Null}" />
+
+      <BrushedStyle    x:Key="{x:Static ThemeKeys.ListItemSelectedTextStyle}"
+                       Foreground="{StaticResource {x:Static ThemeKeys.SelectionInk}}"
+                       Background="{StaticResource {x:Static ThemeKeys.SelectionBrush}}" />
+
+      <BrushedStyle    x:Key="{x:Static ThemeKeys.ListItemSelectedInactiveTextStyle}"
+                       Foreground="{StaticResource {x:Static ThemeKeys.SelectionInk}}"
+                       Background="{StaticResource {x:Static ThemeKeys.SelectionInactiveBrush}}" />
+
+      <BrushedStyle    x:Key="{x:Static ThemeKeys.ListItemHoverTextStyle}"
+                       Foreground="{StaticResource {x:Static ThemeKeys.OnHoverBrush}}"
+                       Background="{StaticResource {x:Static ThemeKeys.HoverBrush}}" />
     </ResourceDictionary>
 
     <!-- ───────────────────────────── Light · Ansi16 (palette indices) ───────────────────────────── -->
@@ -501,6 +811,70 @@
 
       <BrushedStyle    x:Key="{x:Static ThemeKeys.BaseTextStyle}"
                        Foreground="{StaticResource {x:Static ThemeKeys.TextBrush}}" />
+
+      <BrushedStyle    x:Key="{x:Static ThemeKeys.FaintTextStyle}"
+                       Foreground="{x:Static Brushes.LightBlack}"
+                       Weight="Faint "/>
+
+      <BrushedStyle    x:Key="{x:Static ThemeKeys.MutedTextStyle}"
+                       Foreground="{x:Static Brushes.Black}"
+                       Weight="Faint "/>
+
+      <BrushedStyle    x:Key="{x:Static ThemeKeys.HeaderTextStyle}"
+                       Foreground="{StaticResource {x:Static ThemeKeys.AccentBrush}}"
+                       Weight="Bold" />
+
+      <!-- Input Element Styles -->
+
+      <BrushedStyle    x:Key="{x:Static ThemeKeys.InputNormalTextStyle}"
+                       Foreground="{StaticResource {x:Static ThemeKeys.TextBrush}}"
+                       Background="{StaticResource {x:Static ThemeKeys.ElevationHighest}}" />
+
+      <BrushedStyle    x:Key="{x:Static ThemeKeys.InputFocusTextStyle}"
+                       Foreground="{StaticResource {x:Static ThemeKeys.TextBrush}}"
+                       Background="{StaticResource {x:Static ThemeKeys.WellBrush}}" />
+
+      <BrushedStyle    x:Key="{x:Static ThemeKeys.InputDisabledTextStyle}"
+                       Foreground="{StaticResource {x:Static ThemeKeys.DisabledForegroundBrush}}"
+                       Background="{StaticResource {x:Static ThemeKeys.DisabledBackgroundBrush}}" />
+
+      <BrushedStyle    x:Key="{x:Static ThemeKeys.InputSelectionTextStyle}"
+                       Foreground="{StaticResource {x:Static ThemeKeys.SelectionInk}}"
+                       Background="{StaticResource {x:Static ThemeKeys.SelectionBrush}}" />
+
+      <BrushedStyle    x:Key="{x:Static ThemeKeys.InputSelectionInactiveTextStyle}"
+                       Foreground="{StaticResource {x:Static ThemeKeys.TextBrush}}"
+                       Background="{StaticResource {x:Static ThemeKeys.SelectionInactiveBrush}}" />
+
+      <BrushedStyle    x:Key="{x:Static ThemeKeys.InputHoverTextStyle}"
+                       Foreground="{StaticResource {x:Static ThemeKeys.OnHoverBrush}}"
+                       Background="{StaticResource {x:Static ThemeKeys.HoverBrush}}" />
+
+      <!-- List Item Styles -->
+
+      <BrushedStyle    x:Key="{x:Static ThemeKeys.ListItemNormalTextStyle}"
+                       Foreground="{StaticResource {x:Static ThemeKeys.TextBrush}}"
+                       Background="{StaticResource {x:Static ThemeKeys.WellBrush}}" />
+
+      <BrushedStyle    x:Key="{x:Static ThemeKeys.ListItemFocusTextStyle}"
+                       Foreground="{StaticResource {x:Static ThemeKeys.OnAccentBrush}}"
+                       Background="{StaticResource {x:Static ThemeKeys.TextBrush}}" />
+
+      <BrushedStyle    x:Key="{x:Static ThemeKeys.ListItemDisabledTextStyle}"
+                       Foreground="{StaticResource {x:Static ThemeKeys.DisabledForegroundBrush}}"
+                       Background="{x:Null}" />
+
+      <BrushedStyle    x:Key="{x:Static ThemeKeys.ListItemSelectedTextStyle}"
+                       Foreground="{StaticResource {x:Static ThemeKeys.SelectionInk}}"
+                       Background="{StaticResource {x:Static ThemeKeys.SelectionBrush}}" />
+
+      <BrushedStyle    x:Key="{x:Static ThemeKeys.ListItemSelectedInactiveTextStyle}"
+                       Foreground="{StaticResource {x:Static ThemeKeys.SelectionInk}}"
+                       Background="{StaticResource {x:Static ThemeKeys.SelectionInactiveBrush}}" />
+
+      <BrushedStyle    x:Key="{x:Static ThemeKeys.ListItemHoverTextStyle}"
+                       Foreground="{StaticResource {x:Static ThemeKeys.OnHoverBrush}}"
+                       Background="{StaticResource {x:Static ThemeKeys.HoverBrush}}" />
     </ResourceDictionary>
 
     <ResourceDictionary x:Key="Ansi16">
@@ -652,8 +1026,6 @@
     
     <!-- ───────────────────────────── NoColor (every color role → Default; ASCII pens) ───────────────────────────── -->
     <ResourceDictionary x:Key="NoColor">
-      <BrushedStyle    x:Key="{x:Static ThemeKeys.BaseTextStyle}"
-                       Foreground="{StaticResource {x:Static ThemeKeys.TextBrush}}" />
       <SolidColorBrush x:Key="{x:Static ThemeKeys.WindowBackground}"        Color="Default"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.SurfaceBrush}"            Color="Default"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.PanelBrush}"              Color="Default"/>
@@ -693,6 +1065,80 @@
       <Pen             x:Key="{x:Static ThemeKeys.FocusPen}"                GlyphSet="Ascii" Weight="Heavy" />
       <SolidColorBrush x:Key="{x:Static ThemeKeys.ObscuredOverlayBrush}"    Color="Transparent"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.AccessKeyIndicatorBrush}" Color="Default"/>
+
+      <BrushedStyle    x:Key="{x:Static ThemeKeys.BaseTextStyle}"
+                       Foreground="Default" />
+
+      <BrushedStyle    x:Key="{x:Static ThemeKeys.FaintTextStyle}"
+                       Foreground="Default"
+                       Weight="Faint "/>
+
+      <BrushedStyle    x:Key="{x:Static ThemeKeys.MutedTextStyle}"
+                       Foreground="Default"
+                       Weight="Faint "/>
+
+      <BrushedStyle    x:Key="{x:Static ThemeKeys.HeaderTextStyle}"
+                       Foreground="Default"
+                       Weight="Bold" />
+
+      <!-- Input Element Styles -->
+
+      <BrushedStyle    x:Key="{x:Static ThemeKeys.InputNormalTextStyle}"
+                       Foreground="Default"
+                       Background="Default" />
+
+      <BrushedStyle    x:Key="{x:Static ThemeKeys.InputFocusTextStyle}"
+                       Foreground="Default"
+                       Background="Default" />
+
+      <BrushedStyle    x:Key="{x:Static ThemeKeys.InputDisabledTextStyle}"
+                       Foreground="Default"
+                       Background="Default" />
+
+      <BrushedStyle    x:Key="{x:Static ThemeKeys.InputSelectionTextStyle}"
+                       Foreground="Default"
+                       Background="Default"
+                       Toggle="Inverse" />
+
+      <BrushedStyle    x:Key="{x:Static ThemeKeys.InputSelectionInactiveTextStyle}"
+                       Foreground="Default"
+                       Background="Default"
+                       Toggle="Inverse"
+                       Weight="Faint" />
+
+      <BrushedStyle    x:Key="{x:Static ThemeKeys.InputHoverTextStyle}"
+                       Foreground="Default"
+                       Background="Default" />
+
+      <!-- List Item Styles -->
+
+      <BrushedStyle    x:Key="{x:Static ThemeKeys.ListItemNormalTextStyle}"
+                       Foreground="Default"
+                       Background="Default" />
+
+      <BrushedStyle    x:Key="{x:Static ThemeKeys.ListItemFocusTextStyle}"
+                       Foreground="Default"
+                       Background="Default"
+                       Apply="Inverse" />
+
+      <BrushedStyle    x:Key="{x:Static ThemeKeys.ListItemDisabledTextStyle}"
+                       Foreground="Default"
+                       Background="{x:Null}" />
+
+      <BrushedStyle    x:Key="{x:Static ThemeKeys.ListItemSelectedTextStyle}"
+                       Foreground="Default"
+                       Background="Default"
+                       Apply="Inverse" />
+
+      <BrushedStyle    x:Key="{x:Static ThemeKeys.ListItemSelectedInactiveTextStyle}"
+                       Foreground="Default"
+                       Background="Default"
+                       Apply="Inverse"
+                       Weight="Faint" />
+
+      <BrushedStyle    x:Key="{x:Static ThemeKeys.ListItemHoverTextStyle}"
+                       Foreground="Default"
+                       Background="Default" />
 
       <!--  Base / shared — the 3 spec-named aliases whose guide name differs from our role token. -->
       <DynamicResource x:Key="{x:Static ThemeKeys.AccentForegroundBrush}" ResourceKey="{x:Static ThemeKeys.OnAccentBrush}" />

@@ -90,11 +90,29 @@ public abstract class BarDropDownButton : ButtonBase
     /// <inheritdoc cref="IsDropDownOpenProperty"/>
     public bool IsDropDownOpen { get => _isDropDownOpen; set => SetDropDownOpen(value); }
 
-    /// <summary>Raised when the dropdown opens (<see cref="IsDropDownOpen"/> ⇒ true) — the WPF <c>RibbonMenuButton.DropDownOpened</c> analog. Inherited by <see cref="BarPopupButton"/> and <see cref="BarSplitButton"/>.</summary>
-    public event EventHandler? DropDownOpened;
+    /// <summary>Raised when the dropdown opens (<see cref="IsDropDownOpen"/> ⇒ true; direct — no route walk) — the WPF
+    /// <c>RibbonMenuButton.DropDownOpened</c> analog. Inherited by <see cref="BarPopupButton"/> and <see cref="BarSplitButton"/>.</summary>
+    public static readonly RoutedEvent<RoutedEventArgs> DropDownOpenedEvent =
+        RoutedEvent<RoutedEventArgs>.Register(nameof(DropDownOpened), RoutingStrategy.Direct, typeof(BarDropDownButton));
 
-    /// <summary>Raised when the dropdown closes (<see cref="IsDropDownOpen"/> ⇒ false), for every close path — the WPF <c>RibbonMenuButton.DropDownClosed</c> analog.</summary>
-    public event EventHandler? DropDownClosed;
+    /// <summary>Raised when the dropdown closes (<see cref="IsDropDownOpen"/> ⇒ false; direct — no route walk), for
+    /// every close path — the WPF <c>RibbonMenuButton.DropDownClosed</c> analog.</summary>
+    public static readonly RoutedEvent<RoutedEventArgs> DropDownClosedEvent =
+        RoutedEvent<RoutedEventArgs>.Register(nameof(DropDownClosed), RoutingStrategy.Direct, typeof(BarDropDownButton));
+
+    /// <summary>CLR sugar over <see cref="DropDownOpenedEvent"/>.</summary>
+    public event EventHandler<RoutedEventArgs>? DropDownOpened
+    {
+        add => AddHandler(DropDownOpenedEvent, value!);
+        remove => RemoveHandler(DropDownOpenedEvent, value!);
+    }
+
+    /// <summary>CLR sugar over <see cref="DropDownClosedEvent"/>.</summary>
+    public event EventHandler<RoutedEventArgs>? DropDownClosed
+    {
+        add => AddHandler(DropDownClosedEvent, value!);
+        remove => RemoveHandler(DropDownClosedEvent, value!);
+    }
 
     /// <inheritdoc cref="DropDownPlacementProperty"/>
     public PlacementMode DropDownPlacement
@@ -401,11 +419,11 @@ public abstract class BarDropDownButton : ButtonBase
         return null;
     }
 
-    /// <summary>Raises <see cref="DropDownOpened"/>. Override to react to the dropdown opening; call base to keep the event.</summary>
-    protected virtual void OnDropDownOpened() => DropDownOpened?.Invoke(this, EventArgs.Empty);
+    /// <summary>Raises <see cref="DropDownOpenedEvent"/>. Override to react to the dropdown opening; call base to keep the event.</summary>
+    protected virtual void OnDropDownOpened() => RaiseEvent(new RoutedEventArgs(DropDownOpenedEvent, this));
 
-    /// <summary>Raises <see cref="DropDownClosed"/>. Override to react to the dropdown closing; call base to keep the event.</summary>
-    protected virtual void OnDropDownClosed() => DropDownClosed?.Invoke(this, EventArgs.Empty);
+    /// <summary>Raises <see cref="DropDownClosedEvent"/>. Override to react to the dropdown closing; call base to keep the event.</summary>
+    protected virtual void OnDropDownClosed() => RaiseEvent(new RoutedEventArgs(DropDownClosedEvent, this));
 
     private void SetDropDownOpen(bool value)
     {

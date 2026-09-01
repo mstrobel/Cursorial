@@ -71,14 +71,13 @@ public static class TextSizingWriter
     /// payload at grapheme-cluster boundaries (per <see cref="System.Globalization.StringInfo"/>)
     /// to respect the spec's 4096-byte payload cap without breaking a multi-codepoint glyph.
     /// </summary>
-    public static void WriteSplit(IBufferWriter<byte> writer, in TextSizing sizing, string text)
+    public static void WriteSplit(IBufferWriter<byte> writer, in TextSizing sizing, ReadOnlySpan<char> text)
     {
         ArgumentNullException.ThrowIfNull(writer);
-        ArgumentNullException.ThrowIfNull(text);
 
         if (text.Length == 0)
         {
-            Write(writer, sizing, ReadOnlySpan<char>.Empty);
+            Write(writer, sizing, text);
             return;
         }
 
@@ -87,34 +86,46 @@ public static class TextSizingWriter
 
         if (totalUtf8 <= VtOutputSequences.KittyTextSizing.MaxTextBytes)
         {
-            Write(writer, sizing, text.AsSpan());
+            Write(writer, sizing, text);
             return;
         }
 
-        // Split on grapheme cluster boundaries — splitting a UTF-8 sequence mid-glyph would
-        // corrupt the rendered text.
-        var enumerator = text.GetGraphemeEnumerator();
-        var batch = new StringBuilder(capacity: 256);
-        int batchBytes = 0;
+        var array = ArrayPool<char>.Shared.Rent(8192);
 
-        while (enumerator.MoveNext())
+        Span<char> batch = array;
+
+        try
         {
-            var cluster = enumerator.Current;
-            int clusterBytes = Encoding.UTF8.GetByteCount(cluster);
+            // Split on grapheme cluster boundaries — splitting a UTF-8 sequence mid-glyph would
+            // corrupt the rendered text.
+            var enumerator = text.GetGraphemeEnumerator();
+            int batchChars = 0;
+            int batchBytes = 0;
 
-            if (batchBytes + clusterBytes > VtOutputSequences.KittyTextSizing.MaxTextBytes && batchBytes > 0)
+            while (enumerator.MoveNext())
             {
-                Write(writer, sizing, batch.ToString().AsSpan());
-                batch.Clear();
-                batchBytes = 0;
+                var cluster = enumerator.Current;
+                int clusterBytes = Encoding.UTF8.GetByteCount(cluster);
+
+                if (batchBytes + clusterBytes > VtOutputSequences.KittyTextSizing.MaxTextBytes && batchBytes > 0)
+                {
+                    Write(writer, sizing, batch[..batchChars]);
+                    batchBytes = 0;
+                    batchChars = 0;
+                }
+
+                cluster.CopyTo(batch.Slice(batchChars));
+                batchBytes += clusterBytes;
+                batchChars += cluster.Length;
             }
 
-            batch.Append(cluster);
-            batchBytes += clusterBytes;
+            if (batchChars > 0)
+                Write(writer, sizing, batch[..batchChars]);
         }
-
-        if (batchBytes > 0)
-            Write(writer, sizing, batch.ToString().AsSpan());
+        finally
+        {
+            ArrayPool<char>.Shared.Return(array, clearArray: true);
+        }
     }
 
     private static void WriteMetadata(in TextSizing sizing, Span<byte> buffer, ref int written)

@@ -61,17 +61,18 @@ internal sealed class RasterBenchDemo : IDemo
         public override string Description => "";
 
         protected override bool Animated => true;
-        protected override TimeSpan FrameInterval => TimeSpan.FromMilliseconds(33);
+        protected override TimeSpan FrameInterval => TimeSpan.FromMilliseconds(16);
         protected override string IntroMessage =>
             "Live preview — alternates scenario A (whole-zone re-raster dashboard) and scenario B (banded scroll).\n" +
             "Press q or Esc to continue to the measured headless run.";
 
-        private const int PhaseFrames = 150;   // ~5 s per scenario at 33 ms/frame
+        private const int PhaseFrames = 300;   // ~5 s per scenario at 33 ms/frame
 
         private static readonly CellStyle HudStyle = CellStyle.Default
             .WithForeground(Color.FromRgb(13, 15, 24))
             .WithBackground(Color.FromRgb(224, 175, 104));
 
+        private readonly char[] _buffer = new char[1024];
         private DashboardScenario _dashboard = null!;
         private BandScrollScenario _band = null!;
 
@@ -87,36 +88,25 @@ internal sealed class RasterBenchDemo : IDemo
             RasterBenchScenario scenario = dashboardPhase ? _dashboard : _band;
 
             var sample = scenario.Step();
-            Blit(scenario.Target);
+            Buffer.Blit(scenario.Target, Buffer.Bounds);
 
+            Span<char> buffer = _buffer;
+
+            buffer.TryWrite($" {(dashboardPhase ? "A · whole-zone re-raster" : $"B · banded scroll (row {_band.ScrollRow})")}" +
+                            $"  raster {sample.RasterMs,7:F3} ms  composite {sample.CompositeMs,7:F3} ms" +
+                            $"  diff+emit {sample.DiffMs,7:F3} ms  {sample.Bytes,7} B/frame  ·  q = measure",
+                            out int cc);
+            
             string hud = $" {(dashboardPhase ? "A · whole-zone re-raster" : $"B · banded scroll (row {_band.ScrollRow})")}" +
                          $"  raster {sample.RasterMs,7:F3} ms  composite {sample.CompositeMs,7:F3} ms" +
                          $"  diff+emit {sample.DiffMs,7:F3} ms  {sample.Bytes,7} B/frame  ·  q = measure";
+
+            if (cc < Buffer.Columns)
+                buffer.Slice(cc, Buffer.Columns - cc).Fill(' ');
+
             DemoSupport.PaintTextRow(Buffer.AsView(), 0, Buffer.Rows - 1,
-                                     hud.Length > Buffer.Columns ? hud[..Buffer.Columns] : hud.PadRight(Buffer.Columns),
+                                     buffer[..Buffer.Columns],
                                      HudStyle);
-        }
-
-        private void Blit(CellBuffer source)
-        {
-            int columns = Math.Min(Buffer.Columns, source.Columns);
-            int rows = Math.Min(Buffer.Rows, source.Rows);
-            var blank = new Cell(null, CellKind.Single, Style);
-
-            for (int r = 0; r < Buffer.Rows; r++)
-                for (int c = 0; c < Buffer.Columns; c++)
-                {
-                    if (r >= rows || c >= columns)
-                    {
-                        Buffer[c, r] = blank;   // terminal larger than the bench target
-                        continue;
-                    }
-
-                    var cell = source[c, r];
-                    if (cell.Kind == CellKind.WideLeft && c + 1 >= columns)
-                        cell = new Cell(null, CellKind.Single, cell.Style);   // clipped continuation
-                    Buffer[c, r] = cell;
-                }
         }
     }
 }

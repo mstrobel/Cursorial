@@ -31,6 +31,24 @@ internal static class DemoSupport
     /// <inheritdoc cref="Ink(Color, Color?)"/>
     public static BrushedStyle Ink(IBrush foreground, IBrush? background = null) =>
         new() { Foreground = foreground, Background = background ?? Brushes.Transparent };
+    
+    /// <summary>
+    /// The retired two-argument <c>DrawText</c> forms, restated: transparent foreground over a STATED
+    /// background fill — <see cref="Brushes.Transparent"/> when omitted, which was those forms' contract
+    /// verbatim (transparent OVERWRITES the cell's background; it is not absence).
+    /// </summary>
+    public static BrushedStyle Fill(Color background) =>
+        new()
+        {
+            Foreground = Brushes.Transparent,
+            Background = background is { Kind: ColorKind.Palette, PaletteIndex: var i }
+                             ? BrushPalette.Ansi256[i]
+                             : new SolidColorBrush(background)
+        };
+
+    /// <inheritdoc cref="Fill(Color)"/>
+    public static BrushedStyle Fill(IBrush background) =>
+        new() { Foreground = Brushes.Transparent, Background = background };
 
     public static async Task<(TerminalSession session,
                               CellBuffer buffer,
@@ -165,7 +183,10 @@ internal static class DemoSupport
             try { rows = Console.WindowHeight; } catch { rows = 24; }
         }
 
-        var buffer = new CellBuffer(cols, rows, capabilities) { CursorVisible = false };
+        var buffer = new CellBuffer(cols, rows, capabilities, graphemeCache: new GraphemeCache())
+                     {
+                         CursorVisible = false
+                     };
 
         // Hand the renderer the negotiated capabilities so it can quantize cells before emission
         // (RGB → palette where truecolor isn't available, extended underline → Single where the
@@ -276,15 +297,10 @@ internal static class DemoSupport
         return x - startCol;
     }
 
-    public static void PaintTextRow(CellBufferView buffer, int column, int row, string text, in CellStyle style)
+    public static void PaintTextRow(CellBufferView buffer, int column, int row, ReadOnlySpan<char> text, in CellStyle style)
     {
         if (row < 0 || row >= buffer.Rows) return;
-        int x = column;
-        foreach (char c in text)
-        {
-            if (x >= buffer.Columns) break;
-            buffer.Set(x++, row, c.ToString(), style);
-        }
+        buffer.Write(column, row, text, in style);
     }
 
     public static string FormatEvent(InputEvent inputEvent) =>

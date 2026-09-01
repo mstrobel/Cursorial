@@ -77,6 +77,12 @@ public static class ThemeKeys
     /// <summary>Default text base style (foreground, background, weight, posture, etc.).</summary>
     public const string BaseTextStyle = "Theme.BaseTextStyle";
 
+    /// <summary>Faint text base style (foreground, background, weight, posture, etc.).</summary>
+    public const string FaintTextStyle = "Theme.FaintTextStyle";
+
+    /// <summary>Muted text base style (foreground, background, weight, posture, etc.).</summary>
+    public const string MutedTextStyle = "Theme.MutedTextStyle";
+
     /// <summary>Header text base style (foreground, background, weight, posture, etc.).</summary>
     public const string HeaderTextStyle = "Theme.HeaderTextStyle";
 
@@ -414,6 +420,32 @@ public static class ThemeKeys
     public const string ListItemForegroundDisabled = "Theme.ListItemForegroundDisabled";
     /// <summary>Gutter glyph indicating selection.</summary>
     public const string ListItemSelectionGlyph = "Theme.ListItemSelectionGlyph";
+
+    /// <summary>Input normal text base style (foreground, background, weight, posture, etc.).</summary>
+    public const string InputNormalTextStyle = "Theme.InputNormalTextStyle";
+    /// <summary>Input hovered text base style (foreground, background, weight, posture, etc.).</summary>
+    public const string InputHoverTextStyle = "Theme.InputHoverTextStyle";
+    /// <summary>Input disabled text base style (foreground, background, weight, posture, etc.).</summary>
+    public const string InputDisabledTextStyle = "Theme.InputDisabledTextStyle";
+    /// <summary>Input focused text base style (foreground, background, weight, posture, etc.).</summary>
+    public const string InputFocusTextStyle = "Theme.InputFocusTextStyle";
+    /// <summary>Input selected (active) text base style (foreground, background, weight, posture, etc.).</summary>
+    public const string InputSelectionTextStyle = "Theme.InputSelectionTextStyle";
+    /// <summary>Input selected (inactive) text base style (foreground, background, weight, posture, etc.).</summary>
+    public const string InputSelectionInactiveTextStyle = "Theme.InputSelectedInactiveTextStyle";
+
+    /// <summary>List item normal text base style (foreground, background, weight, posture, etc.).</summary>
+    public const string ListItemNormalTextStyle = "Theme.ListItemNormalTextStyle";
+    /// <summary>List item hovered text base style (foreground, background, weight, posture, etc.).</summary>
+    public const string ListItemHoverTextStyle = "Theme.ListItemHoverTextStyle";
+    /// <summary>List item disabled text base style (foreground, background, weight, posture, etc.).</summary>
+    public const string ListItemDisabledTextStyle = "Theme.ListItemDisabledTextStyle";
+    /// <summary>List item focused text base style (foreground, background, weight, posture, etc.).</summary>
+    public const string ListItemFocusTextStyle = "Theme.ListItemFocusTextStyle";
+    /// <summary>List item selected (active) text base style (foreground, background, weight, posture, etc.).</summary>
+    public const string ListItemSelectedTextStyle = "Theme.ListItemSelectedTextStyle";
+    /// <summary>List item selected (inactive) text base style (foreground, background, weight, posture, etc.).</summary>
+    public const string ListItemSelectedInactiveTextStyle = "Theme.ListItemSelectedInactiveTextStyle";
 
     // TreeViewItem.
     /// <summary>Tree-node ink (--text).</summary>

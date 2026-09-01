@@ -20,7 +20,7 @@ namespace Cursorial.Rendering;
 /// we expose row spans later.
 /// </para>
 /// <para>
-/// <b>Wide cells.</b> <see cref="Set(int, int, string, in CellStyle)"/> computes grapheme width via
+/// <b>Wide cells.</b> <see cref="Set(int, int, ReadOnlySpan{char}, in CellStyle)"/> computes grapheme width via
 /// <see cref="GraphemeWidth"/>, stores the cluster at <c>(row, col)</c> as
 /// <see cref="CellKind.WideLeft"/> when its width is 2, and writes the right-half marker
 /// (<see cref="Cell.WideContinuation"/>) into <c>(row, col + 1)</c>. Overwrites also clean up:
@@ -52,7 +52,7 @@ public sealed class CellBuffer : ICellSurface
 {
     /// <summary>
     /// A grapheme that is durable whitespace, meaning it will not be overwritten by any other
-    /// whitespace grapheme when calling <see cref="Set(int, int, string?, in CellStyle)"/>.
+    /// whitespace grapheme when calling <see cref="Set(int, int, ReadOnlySpan{char}, in PartialStyle)"/>.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -78,6 +78,7 @@ public sealed class CellBuffer : ICellSurface
     private Cell[] _cells;
     private int _columns;
     private int _rows;
+    private readonly IGraphemeCache _graphemeCache;
 
     private readonly CellStyle _defaultStyle;
     private readonly Stack<IBlendingMode> _blendStack = new();
@@ -116,6 +117,7 @@ public sealed class CellBuffer : ICellSurface
     /// <see cref="CellStyle.Transparent"/> for an intermediate compositing surface, whose unpainted cells
     /// must contribute nothing when it is blended onwards.
     /// </param>
+    /// <param name="graphemeCache">An optional grapheme cache to reduce string allocations.</param>
     /// <remarks>
     /// The blank style is a <em>constructor argument</em> and <see cref="DefaultStyle"/> is get-only on
     /// purpose. An <c>init</c> setter runs after the constructor body, so
@@ -124,12 +126,14 @@ public sealed class CellBuffer : ICellSurface
     /// declaration disagreeing from birth, which is exactly the lie <see cref="DefaultStyle"/> exists
     /// to prevent. Taking it here makes that state unrepresentable.
     /// </remarks>
-    public CellBuffer(int columns, int rows, TerminalCapabilities? capabilities = null, CellStyle? defaultStyle = null)
+    public CellBuffer(int columns, int rows, TerminalCapabilities? capabilities = null, CellStyle? defaultStyle = null, IGraphemeCache? graphemeCache = null)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(columns);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(rows);
+
         _columns = columns;
         _rows = rows;
+        _graphemeCache = graphemeCache ?? new GraphemeCache();
         _cells = new Cell[checked(columns * rows)];
 
         Capabilities = capabilities;
@@ -211,7 +215,7 @@ public sealed class CellBuffer : ICellSurface
     public TerminalCapabilities? Capabilities { get; }
     
     /// <summary>
-    /// The blending mode applied to each <see cref="Set(int, int, string?, in CellStyle)"/> and <see cref="Fill(in Cell)"/> call. The top
+    /// The blending mode applied to each <see cref="Set(int, int, ReadOnlySpan{char}, in PartialStyle)"/> and <see cref="Fill(in Cell)"/> call. The top
     /// of the buffer's blend stack, or <see cref="BlendingModes.Default"/> when the stack is
     /// empty. <see cref="Clear()"/> and the raw indexer setter do NOT consult this — they assign
     /// cells verbatim.
@@ -219,8 +223,10 @@ public sealed class CellBuffer : ICellSurface
     public IBlendingMode CurrentBlendingMode =>
         _blendStack.Count > 0 ? _blendStack.Peek() : BlendingModes.Default;
 
+    private string? Cache(ReadOnlySpan<char> grapheme) => grapheme.IsEmpty ? null : _graphemeCache.Cache(grapheme);
+
     /// <summary>
-    /// Push a blending mode onto the stack; subsequent <see cref="Set(int, int, string?, in CellStyle)"/> / <see cref="Fill(in Cell)"/>
+    /// Push a blending mode onto the stack; subsequent <see cref="Set(int, int, ReadOnlySpan{char}, in PartialStyle)"/> / <see cref="Fill(in Cell)"/>
     /// calls use it.
     /// </summary>
     public void PushBlendingMode(IBlendingMode mode)
@@ -243,13 +249,13 @@ public sealed class CellBuffer : ICellSurface
 
     /// <summary>
     /// Direct access to a cell. Setting via the indexer bypasses the active blending mode — use
-    /// <see cref="Set(int, int, string, in CellStyle)"/> for normal text content — but it does
+    /// <see cref="Set(int, int, ReadOnlySpan{char}, in CellStyle)"/> for normal text content — but it does
     /// maintain the wide-pair invariant: overwriting either half of an existing pair strips the
     /// orphaned partner to a blank single that keeps its own style (unless the write replaces that
     /// half in kind, which keeps the pair whole — the cell-by-cell pair-copy pattern region blits
     /// use), storing a
     /// <see cref="CellKind.WideLeft"/> writes its continuation (degrading to a blank single at
-    /// the right edge, as <see cref="Set(int, int, string, in CellStyle)"/> does), and storing a
+    /// the right edge, as <see cref="Set(int, int, ReadOnlySpan{char}, in CellStyle)"/> does), and storing a
     /// continuation with no <see cref="CellKind.WideLeft"/> to pair with stores a blank single
     /// instead. The buffer therefore never holds half a wide glyph — the invariant the
     /// <see cref="FrameRenderer"/>'s wide-cell emission contract depends on (a split pair makes
@@ -321,7 +327,7 @@ public sealed class CellBuffer : ICellSurface
     /// to a blank single first (keeping that pair's style) — overwriting a WideLeft with a
     /// continuation would otherwise orphan the cell two columns over.
     /// </summary>
-    private void WriteWidePair(int index, int column, string? grapheme, in CellStyle style)
+    private void WriteWidePair(int index, int column, ReadOnlySpan<char> grapheme, in CellStyle style)
     {
         if (_cells[index + 1].Kind == CellKind.WideLeft && column + 2 < _columns &&
             _cells[index + 2].Kind == CellKind.WideContinuation)
@@ -331,7 +337,7 @@ public sealed class CellBuffer : ICellSurface
             OrphanContinuationToBlankSingle(index + 2, _cells[index + 1].Style);
         }
 
-        _cells[index] = new Cell(grapheme, CellKind.WideLeft, style);
+        _cells[index] = new Cell(Cache(grapheme), CellKind.WideLeft, style);
         // Kind alone. The continuation is a placeholder the renderer never emits — the wide-left's
         // SGR paints both columns — so a style here would be a duplicate to keep in sync, never read.
         _cells[index + 1] = Cell.WideContinuation;
@@ -372,11 +378,11 @@ public sealed class CellBuffer : ICellSurface
     /// handling wide-cell width and adjacent-cell cleanup. Returns the number of cells the
     /// placement occupied (1 or 2).
     /// </summary>
-    public int Set(int column, int row, string? grapheme, in CellStyle style)
+    public int Set(int column, int row, ReadOnlySpan<char> grapheme, in CellStyle style)
     {
         ValidateCoordinates(column, row);
 
-        int width = string.IsNullOrEmpty(grapheme) ? 1 : GraphemeWidth.ClusterWidth(grapheme.AsSpan());
+        int width = grapheme.IsEmpty ? 1 : GraphemeWidth.ClusterWidth(grapheme);
         if (width < 1) width = 1; // Defensive — a "wide" zero-width is meaningless here.
 
         if (width == 2 && column + 1 >= _columns)
@@ -394,7 +400,7 @@ public sealed class CellBuffer : ICellSurface
         // lightens based on the existing color at this position.
         var blended = BlendStyle(style, previous.Style);
         
-        if (string.IsNullOrWhiteSpace(grapheme) &&
+        if (grapheme.IsWhiteSpace() &&
             !(previous.Grapheme.IsWhiteSpace() && previous.Grapheme != DurableEmptyGrapheme) &&
             style.Background.IsOpaque is false)
         {
@@ -426,41 +432,41 @@ public sealed class CellBuffer : ICellSurface
 
         if (width == 2)
         {
-            WriteWidePair(index, column, grapheme, blended);
+            WriteWidePair(index, column, Cache(grapheme), blended);
             return 2;
         }
 
-        _cells[index] = new Cell(grapheme, CellKind.Single, blended);
+        _cells[index] = new Cell(Cache(grapheme), CellKind.Single, blended);
         return 1;
     }
 
     /// <summary>
     /// Place <paramref name="grapheme"/> at <c>(column, row)</c> with <paramref name="style"/> applied to
     /// the <b>cell already there</b>, handling wide-cell width and adjacent-cell cleanup exactly as
-    /// <see cref="Set(int, int, string?, in CellStyle)"/> does. Returns the number of cells the placement
+    /// <see cref="Set(int, int, ReadOnlySpan{char}, in PartialStyle)"/> does. Returns the number of cells the placement
     /// occupied (1 or 2).
     /// </summary>
     /// <remarks>
     /// <para>
     /// The base is the DESTINATION CELL — which is what makes a channel the delta declines to state mean
-    /// "leave it": the grapheme lands carrying whatever colour, attribute or link the caller said nothing
+    /// "leave it": the grapheme lands carrying whatever color, attribute or link the caller said nothing
     /// about. Contrast <c>Clear</c> / <c>ClearCells</c>, where a decline falls through to the surface's own
     /// blank instead, because a clear OVERWRITES.
     /// </para>
     /// <para>
     /// <b>"Leave it" is what the delta ASKS FOR, not a guarantee.</b> The fold puts the cell's own value
-    /// into the style, and <see cref="Set(int, int, string?, in CellStyle)"/> then runs
+    /// into the style, and <see cref="Set(int, int, ReadOnlySpan{char}, in PartialStyle)"/> then runs
     /// <see cref="CellStyle.BlendOver"/> on the whole style against that same cell — so a channel nobody
     /// stated is still handed to the blend, and can come back changed. Known routes: a non-default
-    /// <see cref="CurrentBlendingMode"/>, whose colour math runs on every channel it is handed; a
+    /// <see cref="CurrentBlendingMode"/>, whose color math runs on every channel it is handed; a
     /// NON-OPAQUE value already in the cell, which <see cref="BlendingModes.SourceOver"/> resolves
     /// against the cell's own background rather than skipping; and the whitespace-rescue branch below,
-    /// which can take a declined foreground from the NEIGHBOURING cell.
+    /// which can take a declined foreground from the NEIGHBORING cell.
     /// </para>
     /// <para>
     /// <b>A Mode on the delta scopes the blend.</b> If the delta carries a <see cref="PartialStyle.Mode"/> it
     /// is pushed as the <see cref="CurrentBlendingMode"/> for this one write and popped after, and the fold
-    /// runs flat (<see cref="PartialStyle.ApplyTo"/> with blending deferred). So the delta's stated colours
+    /// runs flat (<see cref="PartialStyle.ApplyTo"/> with blending deferred). So the delta's stated colors
     /// blend foreground-over-BACKGROUND against the cell — the ink meeting what is physically behind it — not
     /// the foreground-over-foreground tint the fold would otherwise apply, and the mode composites exactly
     /// ONCE. A mode-less delta takes the flat path and rides whatever mode is already on the stack.
@@ -473,19 +479,19 @@ public sealed class CellBuffer : ICellSurface
     /// default background — the value that would say so is the value that says nothing.
     /// </para>
     /// <para>
-    /// The exact behaviour is a function of the channel, the mode, the cell's opacity, whether the
-    /// grapheme is whitespace, and what the neighbour holds. <c>CellBufferDeltaWriteTests</c> pins it
+    /// The exact behavior is a function of the channel, the mode, the cell's opacity, whether the
+    /// grapheme is whitespace, and what the neighbor holds. <c>CellBufferDeltaWriteTests</c> pins it
     /// exhaustively — 16,740 (cell, delta) pairs per surface — and is the reference rather than this
     /// comment. Three attempts to state the conditions in prose were each wrong in a different
     /// direction; the tests are cheap to consult and cannot drift from the code.
     /// </para>
     /// </remarks>
-    public int Set(int column, int row, string? grapheme, in PartialStyle style)
+    public int Set(int column, int row, ReadOnlySpan<char> grapheme, in PartialStyle style)
     {
         ValidateCoordinates(column, row);
 
         // A Mode on the delta is not ApplyTo's to consume. Folded through ApplyTo it would combine each
-        // stated colour with the base's SAME channel — foreground-over-foreground, a tint — but a blend
+        // stated color with the base's SAME channel — foreground-over-foreground, a tint — but a blend
         // meets what is physically behind the ink, which on a terminal cell is the BACKGROUND. So a delta
         // that carries a Mode is exactly sugar for "push that mode, write the mode-less delta, pop": the
         // fold overlays the stated channels flat, and the CellStyle write's BlendOver then applies the mode
@@ -495,6 +501,7 @@ public sealed class CellBuffer : ICellSurface
             return Set(column, row, grapheme, FoldOntoCell(_cells[row * _columns + column].Style, style));
 
         PushBlendingMode(mode);
+
         try
         {
             return Set(column, row, grapheme, FoldOntoCell(_cells[row * _columns + column].Style, style, applyBlending: false));
@@ -506,16 +513,16 @@ public sealed class CellBuffer : ICellSurface
     }
 
     /// <summary>
-    /// The style <see cref="Set(int, int, string?, in PartialStyle)"/> hands its
+    /// The style <see cref="Set(int, int, ReadOnlySpan{char}, in PartialStyle)"/> hands its
     /// <see cref="CellStyle"/> sibling: <paramref name="style"/> folded onto <paramref name="backdrop"/>,
     /// the style the destination cell already carries.
     /// </summary>
     /// <remarks>
     /// <para>
     /// An absent BACKGROUND is spelled <see cref="Color.Default"/> rather than read back off the cell,
-    /// because that is already <see cref="Set(int, int, string?, in CellStyle)"/>'s own word for "leave the
+    /// because that is already <see cref="Set(int, int, ReadOnlySpan{char}, in PartialStyle)"/>'s own word for "leave the
     /// background alone" — its blend keeps the backdrop verbatim for <see cref="Color.Default"/> instead of
-    /// compositing. Handing it the cell's actual colour would say the same thing under the default blending
+    /// compositing. Handing it the cell's actual color would say the same thing under the default blending
     /// mode and something else entirely under any other, which is the difference between a stamp and a
     /// stamp that darkens what it lands on.
     /// </para>
@@ -523,8 +530,8 @@ public sealed class CellBuffer : ICellSurface
     /// Exposed rather than kept private because a caller that has already read the cell for reasons of its
     /// own — <c>FigletFont</c> looks the same cell up to decide smushing, then adjusts the folded style
     /// before writing it — must fold by the same rule. The rule and the blend it is paired with belong
-    /// together: a hand-copy of the neighbouring blend rule is what left <see cref="Set(int, int, string?, in CellStyle)"/>
-    /// and <see cref="Fill(in Cell)"/> compositing underline colour differently (see the remarks on the
+    /// together: a hand-copy of the neighboring blend rule is what left <see cref="Set(int, int, ReadOnlySpan{char}, in PartialStyle)"/>
+    /// and <see cref="Fill(in Cell)"/> compositing underline color differently (see the remarks on the
     /// private <c>BlendStyle</c> overload below).
     /// </para>
     /// </remarks>
@@ -535,7 +542,7 @@ public sealed class CellBuffer : ICellSurface
     /// Write the grapheme clusters of <paramref name="text"/> across a single row starting at
     /// <c>(column, row)</c>, advancing the column by each cluster's width (1 for normal, 2 for
     /// wide) and applying the active blending mode per cell — exactly as
-    /// <see cref="Set(int, int, string?, in CellStyle)"/> does for a single cluster. A cluster that
+    /// <see cref="Set(int, int, ReadOnlySpan{char}, in PartialStyle)"/> does for a single cluster. A cluster that
     /// would not fit in the remaining columns stops the write rather than being clipped to a
     /// partial glyph. The write is single-row by contract: it <b>stops at the first C0/C1 control
     /// character</b> (including newlines and tabs) rather than storing it as a junk cell — split
@@ -547,12 +554,12 @@ public sealed class CellBuffer : ICellSurface
 
     /// <summary>
     /// As <see cref="Write(int, int, ReadOnlySpan{char}, in CellStyle)"/>, but each cluster goes through
-    /// <see cref="Set(int, int, string?, in PartialStyle)"/> — so the delta is folded onto EACH
+    /// <see cref="Set(int, int, ReadOnlySpan{char}, in PartialStyle)"/> — so the delta is folded onto EACH
     /// destination cell in turn, not resolved once for the run.
     /// </summary>
     /// <remarks>
     /// Which also means the qualification on what a declined channel actually keeps applies here PER
-    /// CELL — see the remarks on <see cref="Set(int, int, string?, in PartialStyle)"/>.
+    /// CELL — see the remarks on <see cref="Set(int, int, ReadOnlySpan{char}, in PartialStyle)"/>.
     /// </remarks>
     public int Write(int column, int row, ReadOnlySpan<char> text, in PartialStyle style)
         => WriteCore(column, row, text, default, style);
@@ -583,8 +590,8 @@ public sealed class CellBuffer : ICellSurface
             if (column + width > _columns) break;
 
             column += delta is { } d
-                          ? Set(column, row, cluster.ToString(), d)
-                          : Set(column, row, cluster.ToString(), style);
+                          ? Set(column, row, _graphemeCache.Cache(cluster), d)
+                          : Set(column, row, _graphemeCache.Cache(cluster), style);
         }
 
         return column - start;
@@ -921,7 +928,7 @@ public sealed class CellBuffer : ICellSurface
     /// The <see cref="Fill(in Cell)"/> paths hoist <see cref="CurrentBlendingMode"/> out of their loops, so
     /// they need the mode passed in — that is the ONLY reason this overload exists. The rule itself lives in
     /// <see cref="CellStyle.BlendOver"/> and is not restated here: a hand-copy of it drifted off the guarded
-    /// underline rule and left <see cref="Set(int, int, string?, in CellStyle)"/> and <see cref="Fill(in Cell)"/> compositing underline colour
+    /// underline rule and left <see cref="Set(int, int, ReadOnlySpan{char}, in PartialStyle)"/> and <see cref="Fill(in Cell)"/> compositing underline color
     /// differently. <c>CellBufferBlendingTests.SetAndFill_ResolveTheSameSourceOverTheSameBackdropIdentically</c>
     /// pins the two paths together.
     /// </remarks>
@@ -965,7 +972,7 @@ public sealed class CellBuffer : ICellSurface
     /// Reads through the view's own coordinate mapping, so a windowed or re-based view contributes
     /// the cells it addresses, not its backing buffer's corner. Wide-glyph pairs the copy would split
     /// (a leading half whose continuation lands outside the copied rectangle, or a continuation whose
-    /// leading half was cut) degrade to blank singles, mirroring <see cref="CellBufferView.Set(int, int, string?, in CellStyle)"/> —
+    /// leading half was cut) degrade to blank singles, mirroring <see cref="CellBufferView.Set(int, int, ReadOnlySpan{char}, in PartialStyle)"/> —
     /// a blit can never strand half a pair in the destination.
     /// </remarks>
     public void Blit(CellBufferView view, in Rect region)

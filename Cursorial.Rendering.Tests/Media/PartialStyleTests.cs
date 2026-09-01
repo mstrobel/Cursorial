@@ -247,6 +247,9 @@ public class PartialStyleTests
         foreach (var type in new[] { typeof(PartialStyle), typeof(BrushedStyle) })
         foreach (var method in type.GetMethods(BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance))
         {
+            if (method.Name == nameof(BrushedStyle.HasOpinion))
+                continue;
+
             var parameters = method.GetParameters();
             if (parameters is not [{ ParameterType: var p }] || p != typeof(TextAttributes))
                 continue;

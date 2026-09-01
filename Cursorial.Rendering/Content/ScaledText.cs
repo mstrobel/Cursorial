@@ -27,7 +27,7 @@ namespace Cursorial.Rendering.Content;
 /// <para>
 /// <b>Style.</b> The style is applied uniformly across the painted region. When the OSC 66
 /// path fires, it becomes the SGR backdrop for the fragment. When the font path fires, it's
-/// passed to each <see cref="CellBuffer.Set(int, int, string?, in CellStyle)"/> call — so the cell buffer's blending stack
+/// passed to each <see cref="CellBuffer.Set(int, int, ReadOnlySpan{char}, in CellStyle)"/> call — so the cell buffer's blending stack
 /// composes it against whatever's already painted underneath.
 /// </para>
 /// </remarks>

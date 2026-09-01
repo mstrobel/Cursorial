@@ -27,8 +27,8 @@ internal delegate void BrailleCellEmitter(int column, int row, byte dots, Braill
 /// </summary>
 internal sealed class BrailleRaster
 {
-    private readonly int _columns;
-    private readonly int _rows;
+    private int _columns;
+    private int _rows;
     private byte[]? _dots;
     private int[]? _recordId;   // 0 = untouched, else index+1 into _records
     private readonly List<BrailleRecord> _records = [];
@@ -40,6 +40,18 @@ internal sealed class BrailleRaster
         _rows = rows;
     }
 
+    public void Reset(int columns, int rows)
+    {
+        _columns = columns;
+        _rows = rows;
+
+        if (_dots is {} dots) Array.Clear(dots);
+        if (_recordId is {} recordId) Array.Clear(recordId);
+
+        _records.Clear();
+        _touched.Clear();
+    }
+    
     public bool IsEmpty => _touched.Count == 0;
 
     public int AddRecord(in BrailleRecord record)

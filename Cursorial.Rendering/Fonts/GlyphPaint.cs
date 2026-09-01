@@ -10,7 +10,7 @@ namespace Cursorial.Rendering.Fonts;
 /// Shared rather than repeated because the four faces have four separate paint paths — one of them
 /// (<see cref="ShadowedFont"/>) paints twice — and "does a background fill the gaps?" must not have
 /// four answers. The other half — folding the delta onto the cell about to be written — moved into
-/// the write itself (<see cref="CellBuffer.Set(int, int, string?, in PartialStyle)"/>), next to the
+/// the write itself (<see cref="CellBuffer.Set(int, int, ReadOnlySpan{char}, in PartialStyle)"/>), next to the
 /// blend rule it is paired with.
 /// </remarks>
 internal static class GlyphPaint

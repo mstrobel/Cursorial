@@ -24,8 +24,8 @@ internal delegate void StrokeCellEmitter(int column, int row, byte arms, StrokeR
 /// </summary>
 internal sealed class StrokeAccumulator
 {
-    private readonly int _columns;
-    private readonly int _rows;
+    private int _columns;
+    private int _rows;
     private byte[]? _arms;            // per cell: 2 bits/direction (Up/Right/Down/Left)
     private int[]? _recordId;         // per cell: 0 = untouched, else index+1 into _records
     private readonly List<StrokeRecord> _records = [];
@@ -41,6 +41,23 @@ internal sealed class StrokeAccumulator
     {
         _columns = columns;
         _rows = rows;
+    }
+
+    public void Reset(int columns, int rows)
+    {
+        _columns = columns;
+        _rows = rows;
+        _currentFigureId = 0;
+        _nextFigureId = 1;
+        _openFigureFirstRecord = -1;
+        _figureExplicitBounds = null;
+
+        if (_arms is {} arms) Array.Clear(arms);
+        if (_recordId is {} recordId) Array.Clear(recordId);
+
+        _records.Clear();
+        _touched.Clear();
+        _blended?.Clear();
     }
 
     public bool IsEmpty => _touched.Count == 0;

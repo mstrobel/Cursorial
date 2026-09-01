@@ -487,4 +487,11 @@ public readonly record struct PartialStyle
             Xor = (Xor & ~next.Clear) ^ next.Xor,
             Mode = next.Mode ?? Mode,
         };
+    
+    /// <summary>
+    /// Indicates whether this style has an opinion on <em>all</em> the specified <paramref name="attributes"/>,
+    /// i.e., whether they exist in either the <see cref="AppliedAttributes">applied</see> or
+    /// <see cref="ToggledAttributes">toggled</see> sets.
+    /// </summary>
+    public bool HasOpinion(TextAttributes attributes) => Xor.HasFlag(attributes); 
 }

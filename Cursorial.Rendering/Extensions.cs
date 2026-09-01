@@ -16,7 +16,7 @@ public static class Extensions
     /// inherit, and the only thing left for it to fall through to is what this surface calls empty.
     /// </para>
     /// <para>
-    /// This is the opposite base from <see cref="CellBuffer.Set(int, int, string?, in PartialStyle)"/>,
+    /// This is the opposite base from <see cref="CellBuffer.Set(int, int, ReadOnlySpan{char}, in PartialStyle)"/>,
     /// and getting the two backwards is invisible on a surface whose blank happens to equal
     /// <see cref="CellStyle.Default"/> — and wrong on one whose blank is
     /// <see cref="CellStyle.Transparent"/> (a scene or compositing scratch buffer), where inheriting

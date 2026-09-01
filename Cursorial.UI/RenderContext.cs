@@ -152,7 +152,7 @@ public sealed class RenderContext
     /// <b><paramref name="overwrite"/> defaults to <see langword="false"/> here</b>, narrower than the
     /// drawing layer's <see langword="true"/> — the default an element actually reaches for. The narrower
     /// default is load-bearing: <c>TextPresenter</c>'s inverse band fill paints OVER a glyph face, and
-    /// <see cref="CellBuffer.Set(int, int, string, in PartialStyle)"/> rescues the ink underneath only
+    /// <see cref="CellBuffer.Set(int, int, ReadOnlySpan{char}, in PartialStyle)"/> rescues the ink underneath only
     /// on the non-overwriting path.
     /// </remarks>
     public void FillOpaque(in Rect region, in BrushedStyle style, bool overwrite = true)

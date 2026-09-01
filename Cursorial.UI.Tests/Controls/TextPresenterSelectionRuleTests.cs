@@ -96,7 +96,7 @@ public sealed class TextPresenterSelectionRuleTests
         };
 
         if (setSelectionBrush)
-            box.SelectionBrush = selectionBrush;
+            box.SelectionFill = selectionBrush;
 
         configure?.Invoke(box);
 
@@ -122,11 +122,13 @@ public sealed class TextPresenterSelectionRuleTests
     {
         host.Application.Resources[ThemeKeys.SelectionBrush] = Unresolved;
         host.Application.Resources[ThemeKeys.SelectionInactiveBrush] = Unresolved;
-        box.SelectionBrush = null;
+        host.Application.Resources[ThemeKeys.InputSelectionTextStyle] = Unresolved;
+        host.Application.Resources[ThemeKeys.InputSelectionInactiveTextStyle] = Unresolved;
+        box.SelectionFill = null;
         host.RunUntilIdle();
 
         // Reachability, asserted rather than assumed: BOTH of the presenter's routes are dead.
-        Assert.Null(box.SelectionBrush);
+        Assert.Null(box.SelectionFill);
         var presenter = Presenter(box);
         Assert.False(presenter.TryFindResource(ThemeKeys.SelectionBrush, out var active) && active is IBrush,
                      "the presenter still resolves Theme.SelectionBrush");
@@ -319,7 +321,7 @@ public sealed class TextPresenterSelectionRuleTests
                                 Brushes.Default, setSelectionBrush: true);
         using var _ = host;
 
-        Assert.Same(Brushes.Default, box.SelectionBrush); // the local value survived the theme's setter
+        Assert.Same(Brushes.Default, box.SelectionFill); // the local value survived the theme's setter
 
         var defaultBackgrounds = Cells(host, c => c.Style.Background.IsDefault).Count;
         var before = Cells(host, IsInverse);

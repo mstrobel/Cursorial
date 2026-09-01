@@ -16,7 +16,8 @@ namespace Cursorial.Rendering.Fonts;
 /// Grapheme segmentation uses <see cref="StringInfo.GetTextElementEnumerator(string)"/>, so
 /// emoji clusters, CJK, accented Latin, and ZWJ sequences are all treated as single visual
 /// units. Wide-cell handling is the buffer's responsibility — this font just calls
-/// <see cref="CellBuffer.Set(int, int, string?, in CellStyle)"/> per cluster and reads back the advance.
+/// <see cref="CellBuffer.Set(int, int, ReadOnlySpan{char}, in CellStyle)"/> per cluster and
+/// reads back the advance.
 /// </remarks>
 public sealed class MonospaceFont : IGlyphFont
 {
@@ -152,8 +153,8 @@ public sealed class MonospaceFont : IGlyphFont
                 // makes an absent channel mean "leave it": the cluster keeps the colour, attribute or
                 // hyperlink the caller declined to state.
                 int written = ink is { } d
-                                  ? buffer.Set(col, row, cluster.ToString(), d)
-                                  : buffer.Set(col, row, cluster.ToString(), style!.Value.Resolve(col, row, bounds));
+                                  ? buffer.Set(col, row, cluster, d)
+                                  : buffer.Set(col, row, cluster, style!.Value.Resolve(col, row, bounds));
 
                 // The one case where the surface knows better than the layout: a wide glyph at the
                 // window's right edge degrades to a blank single, freeing the column it did not take.

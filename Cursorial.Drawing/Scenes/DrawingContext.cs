@@ -17,7 +17,7 @@ namespace Cursorial.Drawing;
 /// <summary>
 /// The authoring surface handed to <see cref="Scene.Draw"/>. It draws into the scene's backing
 /// buffer — the one place an <see cref="IBrush"/> is resolved to a scalar <see cref="CellStyle"/> before
-/// reaching a cell. It exposes a scalar <see cref="Set(int, int, string?, in PartialStyle)"/>, a styled
+/// reaching a cell. It exposes a scalar <see cref="Set(int, int, ReadOnlySpan{char}, in PartialStyle)"/>, a styled
 /// <see cref="FillRectangle(in Rect, in BrushedStyle)"/> (solid or gradient), a styled
 /// <see cref="DrawText(int, int, ReadOnlySpan{char}, in BrushedStyle)"/>, and
 /// <see cref="Pen"/>-based <see cref="DrawLine(int, int, int, int, in Pen, bool, Arm?)"/> /
@@ -25,7 +25,7 @@ namespace Cursorial.Drawing;
 /// The <see cref="Color"/> draw overloads wrap a <see cref="Pen"/> for the common solid case.
 /// </summary>
 /// <remarks>
-/// <see cref="Set(int, int, string?, in PartialStyle)"/> / <see cref="FillRectangle(in Rect, in BrushedStyle)"/> /
+/// <see cref="Set(int, int, ReadOnlySpan{char}, in PartialStyle)"/> / <see cref="FillRectangle(in Rect, in BrushedStyle)"/> /
 /// <see cref="DrawText(int, int, ReadOnlySpan{char}, in BrushedStyle)"/>
 /// write cells <em>immediately</em>. <see cref="Pen"/> strokes are <em>deferred</em>: they accumulate
 /// so junctions form across separate calls (within a <see cref="BeginFigure()">figure</see>), then
@@ -55,6 +55,13 @@ public sealed class DrawingContext
         _strokes = new StrokeAccumulator(_surface.Columns, _surface.Rows);
     }
 
+    public void Reset()
+    {
+        _openFigureId = -1;
+        _strokes.Reset(_surface.Columns, _surface.Rows);
+        _braille?.Reset(_surface.Columns, _surface.Rows);
+    }
+
     /// <summary>The scene's bounds, in scene-local coordinates.</summary>
     public Rect Bounds { get; }
 
@@ -67,7 +74,7 @@ public sealed class DrawingContext
     /// Nests. An empty intersection means subsequent draws paint nothing.
     /// </summary>
     /// <remarks>
-    /// Honored by <b>every</b> draw path: the per-cell writes (<see cref="Set(int, int, string?, in PartialStyle)"/>,
+    /// Honored by <b>every</b> draw path: the per-cell writes (<see cref="Set(int, int, ReadOnlySpan{char}, in PartialStyle)"/>,
     /// <see cref="FillRectangle(in Rect, in BrushedStyle)"/>, <see cref="FillOpaque(in Rect, in BrushedStyle, bool)"/>,
     /// <see cref="DrawText(int, int, ReadOnlySpan{char}, in BrushedStyle)"/>), the document/content
     /// paths (<see cref="DrawFormattedText(FormattedText, in Rect, OutputCapabilities, in BrushedStyle)"/>,
@@ -170,10 +177,10 @@ public sealed class DrawingContext
     /// <summary>
     /// Scalar write: place <paramref name="grapheme"/> at <paramref name="column"/>,
     /// <paramref name="row"/> with the given <paramref name="style"/>. The style's colors are
-    /// stored as-is (intra-scene composition follows <see cref="CellBuffer.Set(int, int, string?, in CellStyle)"/>'s rules); the
+    /// stored as-is (intra-scene composition follows <see cref="CellBuffer.Set(int, int, ReadOnlySpan{char}, in CellStyle)"/>'s rules); the
     /// scene's source colors are later composited onto a target by <see cref="SceneCompositor"/>.
     /// </summary>
-    public void Set(int column, int row, string? grapheme, in CellStyle style)
+    public void Set(int column, int row, ReadOnlySpan<char> grapheme, in CellStyle style)
     {
         if (_stateStack.Count == 0) { _surface.Set(column, row, grapheme, in style); return; }
         EmitMapped(column, row, grapheme, in style);
@@ -184,7 +191,7 @@ public sealed class DrawingContext
     /// (a channel it declines to state falls through), the base-plus-delta shape the text primitives
     /// take. The upper layers reach for this rather than building a whole <see cref="CellStyle"/> to write.
     /// </summary>
-    public void Set(int column, int row, string? grapheme, in PartialStyle style)
+    public void Set(int column, int row, ReadOnlySpan<char> grapheme, in PartialStyle style)
     {
         if (_stateStack.Count == 0) { _surface.Set(column, row, grapheme, in style); return; }
         EmitMapped(column, row, grapheme, in style);
@@ -193,11 +200,11 @@ public sealed class DrawingContext
     // Translate + clip a single glyph write under an active push. A wide glyph whose right half would fall
     // outside the active clip degrades to a blank single cell (mirroring the surface-edge degrade in
     // CellBufferView.Set), so a clip can never strand a continuation past its edge.
-    private void EmitMapped(int localCol, int localRow, string? grapheme, in CellStyle style)
+    private void EmitMapped(int localCol, int localRow, ReadOnlySpan<char> grapheme, in CellStyle style)
     {
         if (!TryMap(localCol, localRow, out int sc, out int sr)) return;
 
-        if (!string.IsNullOrEmpty(grapheme) && GraphemeWidth.ClusterWidth(grapheme.AsSpan()) == 2 &&
+        if (!grapheme.IsEmpty && GraphemeWidth.ClusterWidth(grapheme) == 2 &&
             sc + 1 >= CurrentState.Clip.ColumnEnd)
         {
             _surface.Set(sc, sr, null, in style);
@@ -208,11 +215,11 @@ public sealed class DrawingContext
     }
 
     // The PartialStyle twin of EmitMapped: same translate + wide-glyph clip degrade, writing the delta.
-    private void EmitMapped(int localCol, int localRow, string? grapheme, in PartialStyle style)
+    private void EmitMapped(int localCol, int localRow, ReadOnlySpan<char> grapheme, in PartialStyle style)
     {
         if (!TryMap(localCol, localRow, out int sc, out int sr)) return;
 
-        if (!string.IsNullOrEmpty(grapheme) && GraphemeWidth.ClusterWidth(grapheme.AsSpan()) == 2 &&
+        if (!grapheme.IsEmpty && GraphemeWidth.ClusterWidth(grapheme) == 2 &&
             sc + 1 >= CurrentState.Clip.ColumnEnd)
         {
             _surface.Set(sc, sr, null, in style);
@@ -242,7 +249,7 @@ public sealed class DrawingContext
     /// <see cref="Color.Transparent"/> — it falls through to a ground that already carries
     /// <c>Default</c>, so it agrees with <c>FillOpaque(…, Color.Default, …)</c> rather than with
     /// <c>DrawText</c>'s brush overload. The two are not interchangeable on the non-overwriting path:
-    /// <see cref="CellBuffer.Set(int, int, string?, in CellStyle)"/> rescues a glyph only under a NON-opaque background, and
+    /// <see cref="CellBuffer.Set(int, int, ReadOnlySpan{char}, in CellStyle)"/> rescues a glyph only under a NON-opaque background, and
     /// <c>Default</c> is opaque.
     /// </para>
     /// <para>
@@ -258,7 +265,7 @@ public sealed class DrawingContext
     /// unrenderable and resolves to Bold rather than to the pair.
     /// </para>
     /// <para>
-    /// Writes via the raw indexer rather than <see cref="CellBuffer.Set(int, int, string?, in CellStyle)"/> so a translucent sampled
+    /// Writes via the raw indexer rather than <see cref="CellBuffer.Set(int, int, ReadOnlySpan{char}, in CellStyle)"/> so a translucent sampled
     /// color is stored <em>verbatim</em> (its alpha preserved for the compositor to blend). Going
     /// through <c>Set</c> would consume the alpha by pre-compositing over the transparent backdrop.
     /// </para>
@@ -347,7 +354,7 @@ public sealed class DrawingContext
     /// <para>
     /// Unlike <see cref="FillRectangle(in Rect, in BrushedStyle)"/>, which intends for blending to
     /// be applied by the compositor across scenes, this method performs blending <em>intra-scene</em> —
-    /// it writes through <see cref="CellBuffer.Set(int, int, string?, in CellStyle)"/>, which is also where the whitespace rescue lives
+    /// it writes through <see cref="CellBuffer.Set(int, int, ReadOnlySpan{char}, in CellStyle)"/>, which is also where the whitespace rescue lives
     /// that leaves a same-scene glyph standing.
     /// </para>
     /// <para>
@@ -692,7 +699,7 @@ public sealed class DrawingContext
     /// instead of per cell — the readability a pair of opaque brushes could not offer.
     /// </para>
     /// <para>
-    /// Glyphs are written through <see cref="CellBuffer.Set(int, int, string?, in CellStyle)"/>, which composites against the
+    /// Glyphs are written through <see cref="CellBuffer.Set(int, int, ReadOnlySpan{char}, in CellStyle)"/>, which composites against the
     /// transparent scene backdrop and stores opaque — so per-cell <em>translucent</em> foreground /
     /// background alpha is consumed here, not preserved for the compositor. For scene-level
     /// translucency use a composite opacity instead. A transparent background correctly lets a prior
@@ -793,7 +800,7 @@ public sealed class DrawingContext
             {
                 // Translate + clip per cluster (the run advances in local columns regardless of clipping).
                 var style = uniform ?? brushedStyle.Resolve(column, row, in bounds).ApplyTo(CellStyle.Default);
-                EmitMapped(column, row, substitute ?? cluster.ToString(), in style);
+                EmitMapped(column, row, substitute ?? cluster, in style);
                 column += width;
             }
             else
@@ -802,7 +809,7 @@ public sealed class DrawingContext
                 if (column + width > _surface.Columns) break;   // right-edge clip (stops the line)
 
                 var style = uniform ?? brushedStyle.Resolve(column, row, in bounds).ApplyTo(CellStyle.Default);
-                column += _surface.Set(column, row, substitute ?? cluster.ToString(), style);
+                column += _surface.Set(column, row, substitute ?? cluster, style);
             }
         }
 
@@ -1438,7 +1445,7 @@ public sealed class DrawingContext
     /// </summary>
     public void DrawTitledBox(in Rect rect, in PanelTitle title, in Pen pen, bool overwrite = false)
     {
-        if (string.IsNullOrEmpty(title.Text)) { DrawBox(rect, pen, overwrite); return; }
+        if (title.Text.IsEmpty) { DrawBox(rect, pen, overwrite); return; }
         DrawTitledBoxCore(rect, title, pen, overwrite);
     }
 
@@ -1495,8 +1502,8 @@ public sealed class DrawingContext
 
         // A title is a single-line slot: sanitize to the first line before truncation/gap math
         // (design doc §13.2). An empty first line degrades to a plain box, like an empty title.
-        string titleText = title.Text!;
-        int breakAt = titleText.AsSpan().IndexOfAny('\r', '\n');
+        var titleText = title.Text;
+        int breakAt = titleText.IndexOfAny('\r', '\n');
         if (breakAt >= 0)
         {
             DrawingDiagnostics.Emit(DrawingDiagnosticKind.MultiLineTextInSingleLineSlot,
@@ -1508,7 +1515,7 @@ public sealed class DrawingContext
         // horizontal arm): the text fits only when its width ≤ Columns − 6. Narrower → plain box, no title.
         int maxText = rect.Columns - 6;
         int textWidth = 0;
-        string text = maxText >= 1 && titleText.Length > 0 ? TruncateToWidth(titleText, maxText, out textWidth) : string.Empty;
+        var text = maxText >= 1 && titleText.Length > 0 ? TruncateToWidth(titleText, maxText, out textWidth) : string.Empty;
         if (text.Length == 0 && recordId >= 0)
         {
             DepositSegment(left, top, right, top, weight, recordId, mode);     // full top — plain box
@@ -1550,11 +1557,11 @@ public sealed class DrawingContext
     // its width. Width accounting matches SanitizedLineWidth / the DrawText draw loop (tab → 1
     // column, other controls → 0) so the title-gap math and the painted label agree — a control
     // character in a title must not leave a hole in the top rule.
-    private static string TruncateToWidth(string text, int maxWidth, out int width)
+    private static ReadOnlySpan<char> TruncateToWidth(ReadOnlySpan<char> text, int maxWidth, out int width)
     {
         width = 0;
         int end = 0;
-        var clusters = text.AsSpan().GetGraphemeEnumerator();
+        var clusters = text.GetGraphemeEnumerator();
         while (clusters.MoveNext())
         {
             var cluster = clusters.Current;
@@ -1588,7 +1595,8 @@ public sealed class DrawingContext
 
         if (_braille is { IsEmpty: false })
             _braille.Flush(EmitBrailleCell);
-        if (!_strokes.IsEmpty)
+
+        if (_strokes.IsEmpty is false)
             _strokes.Flush(EmitStrokeCell);
     }
 
@@ -1619,7 +1627,7 @@ public sealed class DrawingContext
 
     // The shared emit tail for every deferred layer: text-beats-decoration eviction, then write the
     // (already-sampled) color through Set with a transparent background.
-    private void EmitDecorationCell(int column, int row, string glyph, Color color,
+    private void EmitDecorationCell(int column, int row, ReadOnlySpan<char> glyph, Color color,
                                     TextAttributes attributes, bool overwrite)
     {
         var current = _surface[column, row];
@@ -1784,7 +1792,7 @@ public sealed class DrawingContext
     /// <summary>
     /// Copies <paramref name="view"/>'s cells into the scene with <paramref name="region"/>'s top-left
     /// (in current-local coordinates) as the anchor — the bulk-copy counterpart to
-    /// <see cref="Set(int, int, string?, in PartialStyle)"/>, used to land a separately composited surface
+    /// <see cref="Set(int, int, ReadOnlySpan{char}, in PartialStyle)"/>, used to land a separately composited surface
     /// (a layered chart) in one step.
     /// </summary>
     /// <remarks>

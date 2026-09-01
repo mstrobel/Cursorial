@@ -7,6 +7,7 @@ using Cursorial.Rendering.Media;
 using Cursorial.Rendering.Text;
 using Cursorial.Text;
 using Cursorial.UI.Input;
+using Cursorial.UI.Themes;
 
 // ReSharper disable NullCoalescingConditionIsAlwaysNotNullAccordingToAPIContract
 
@@ -55,6 +56,10 @@ public class TextBox : Control
                                              changed: OnTextChanged,
                                              coerce: (_, v) => v ?? "");
 
+    /// <summary>The base text style to use for selected regions of text.</summary>
+    public static readonly StyledProperty<BrushedStyle> SelectedTextStyleProperty =
+        UIProperty.Register<TextBox, BrushedStyle>(nameof(SelectedTextStyle), changed: OnSelectedTextStyleChanged);
+
     /// <summary>Whether the field rejects edits (typing/delete/cut) while staying navigable + copyable (<c>:readonly</c>).</summary>
     public static readonly StyledProperty<bool> IsReadOnlyProperty =
         UIProperty.Register<TextBox, bool>(nameof(IsReadOnly));
@@ -67,9 +72,15 @@ public class TextBox : Control
     public static readonly StyledProperty<string?> PlaceholderProperty =
         UIProperty.Register<TextBox, string?>(nameof(Placeholder), changed: OnPlaceholderChanged);
 
-    /// <summary>The selection-highlight brush (themed to <c>Theme.SelectionBrush</c>; NoColor tier uses Inverse).</summary>
-    public static readonly StyledProperty<IBrush?> SelectionBrushProperty =
-        UIProperty.Register<TextBox, IBrush?>(nameof(SelectionBrush), changed: OnSelectionBrushChanged);
+    /// <summary>The selection-highlight fill (themed to <c>Theme.SelectionFill</c>; NoColor tier uses Inverse).</summary>
+    public static readonly StyledProperty<IBrush?> SelectionFillProperty =
+        UIProperty.Register<TextBox, IBrush?>(nameof(SelectionFill), changed: OnSelectionFillChanged,
+                                              coerce: CoerceSelectionFill);
+
+    /// <summary>The selection-highlight ink (themed to <c>Theme.SelectionFill</c>; NoColor tier uses Inverse).</summary>
+    public static readonly StyledProperty<IBrush?> SelectionInkProperty =
+        UIProperty.Register<TextBox, IBrush?>(nameof(SelectionInk), changed: OnSelectionInkChanged,
+                                              coerce: CoerceSelectionInk);
 
     /// <summary>How long lines are laid out: <see cref="WrapMode.NoWrap"/> (horizontal scroll) or
     /// <see cref="WrapMode.WordWrap"/>/<see cref="WrapMode.CharacterWrap"/> (soft wrap to the field width). With
@@ -185,6 +196,10 @@ public class TextBox : Control
         // default — and the default Text "" must read as :empty for a never-edited field).
         PseudoClassMapping.Register<TextBox>(IsReadOnlyProperty, ":readonly");
         AffectsMeasure<TextBox>(TextProperty, TextWrappingProperty, MinLinesProperty, MaxLinesProperty);
+
+        BaseTextStyleProperty.OverrideMetadata<TextBox>(
+            new PropertyMetadata<BrushedStyle>(Changed: OnBaseTextStyleChanged)
+        );
     }
 
     /// <summary>Creates a text field (the mouse pointer is an i-beam over its content).</summary>
@@ -206,8 +221,14 @@ public class TextBox : Control
     /// <inheritdoc cref="PlaceholderProperty"/>
     public string? Placeholder { get => GetValue(PlaceholderProperty); set => SetValue(PlaceholderProperty, value); }
 
-    /// <inheritdoc cref="SelectionBrushProperty"/>
-    public IBrush? SelectionBrush { get => GetValue(SelectionBrushProperty); set => SetValue(SelectionBrushProperty, value); }
+    /// <inheritdoc cref="SelectionFillProperty"/>
+    public IBrush? SelectionFill { get => GetValue(SelectionFillProperty); set => SetValue(SelectionFillProperty, value); }
+
+    /// <inheritdoc cref="SelectionInkProperty"/>
+    public IBrush? SelectionInk { get => GetValue(SelectionInkProperty); set => SetValue(SelectionInkProperty, value); }
+
+    /// <inheritdoc cref="SelectedTextStyleProperty"/>
+    public BrushedStyle SelectedTextStyle { get => GetValue(SelectedTextStyleProperty); set => SetValue(SelectedTextStyleProperty, value); }
 
     /// <inheritdoc cref="TextWrappingProperty"/>
     public WrapMode TextWrapping { get => GetValue(TextWrappingProperty); set => SetValue(TextWrappingProperty, value); }
@@ -326,6 +347,11 @@ public class TextBox : Control
 
     /// <summary>Selects the whole text (caret at the end).</summary>
     public void SelectAll() => SetCaretAndSelection(anchor: 0, caret: Text.Length);
+
+    /// <summary>Selects <c>[min(anchor,caret), max(anchor,caret))</c> with the caret at <paramref name="caret"/> —
+    /// the anchor/caret order carries the direction (an anchor PAST the caret selects back-to-front, e.g. a
+    /// ComboBox completion trailer the next keystroke overwrites while the caret shows after the typed prefix).</summary>
+    internal void SelectRange(int anchor, int caret) => SetCaretAndSelection(anchor, caret);
 
     /// <summary>Clears the current selection (caret at the end).</summary>
     public void ClearSelection(bool caretToEnd = false)
@@ -638,6 +664,12 @@ public class TextBox : Control
         SetCaretAndSelection(anchor: start, caret: end);
     }
 
+    /// <summary>Whether the text edit currently being applied came from a paste — set for the span of
+    /// <see cref="InsertText"/>'s splice, so the synchronous <see cref="TextChanged"/> raised inside the edit
+    /// funnel can see the provenance (a ComboBox skips its edit-text search for pasted text, the same rule as
+    /// the type-ahead's <c>FromPaste</c> guard).</summary>
+    internal bool IsApplyingPasteInput { get; private set; }
+
     private void InsertText(string input, bool fromPaste)
     {
         if (IsReadOnly)
@@ -655,7 +687,16 @@ public class TextBox : Control
 
         // Typed printable text coalesces into one undo unit; a paste, or typing that replaces a selection, is atomic.
         var kind = fromPaste || SelectionLength > 0 ? UndoKind.Other : UndoKind.Insert;
-        ReplaceCore(filtered, kind);
+
+        IsApplyingPasteInput = fromPaste;
+        try
+        {
+            ReplaceCore(filtered, kind);
+        }
+        finally
+        {
+            IsApplyingPasteInput = false;
+        }
     }
 
     // Replaces the current selection (or inserts at the collapsed caret) with replacement, recording it as kind.
@@ -1137,6 +1178,41 @@ public class TextBox : Control
     private static void OnPlaceholderChanged(UIObject sender, string? oldValue, string? newValue)
         => (sender as TextBox)?._presenter?.InvalidateVisual();
 
-    private static void OnSelectionBrushChanged(UIObject sender, IBrush? oldValue, IBrush? newValue)
+    private static void OnSelectionFillChanged(UIObject sender, IBrush? oldValue, IBrush? newValue)
         => (sender as TextBox)?._presenter?.InvalidateVisual();
+
+    private static IBrush? CoerceSelectionFill(UIObject sender, IBrush? baseValue)
+    {
+        if (sender is not TextBox textBox) return baseValue;
+
+        if (baseValue is null && textBox.SelectedTextStyle is { Background: {} selectionFill })
+            return selectionFill;
+
+        return baseValue;
+    }
+
+    private static void OnSelectionInkChanged(UIObject sender, IBrush? oldValue, IBrush? newValue)
+        => (sender as TextBox)?._presenter?.InvalidateVisual();
+
+    private static IBrush? CoerceSelectionInk(UIObject sender, IBrush? baseValue)
+    {
+        if (sender is not TextBox textBox) return baseValue;
+
+        if (baseValue is null && textBox.SelectedTextStyle is { Foreground: {} selectionInk })
+            return selectionInk;
+
+        return baseValue;
+    }
+
+    private static void OnBaseTextStyleChanged(UIObject sender, BrushedStyle oldValue, BrushedStyle newValue)
+        => (sender as TextBox)?._presenter?.InvalidateVisual();
+
+    private static void OnSelectedTextStyleChanged(UIObject sender, BrushedStyle oldValue, BrushedStyle newValue)
+    {
+        if (sender is not TextBox textBox) return;
+
+        textBox.ForceCoersion(SelectionFillProperty);
+        textBox.ForceCoersion(SelectionInkProperty);
+        textBox._presenter?.InvalidateVisual();
+    }
 }

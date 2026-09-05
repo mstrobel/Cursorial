@@ -36,7 +36,7 @@ public class Icon : Control
 {
     /// <summary>The foreground brush with which to render the glyph/emoji/text tiers.</summary>
     public static readonly StyledProperty<IBrush?> IconBrushProperty =
-        UIProperty.RegisterAttached<Control, UIElement, IBrush?>(
+        UIProperty.RegisterAttached<Icon, UIElement, IBrush?>(
             nameof(IconBrush),
             inherits: true,
             changed: static (sender, _, _) => (sender as Icon)?.UpdateEffectiveIconBrush());
@@ -99,11 +99,8 @@ public class Icon : Control
     // this cache's only failure mode; the census sites gate re-emission, where it is not.
     private IBrush? _cachedEffectiveBrush;
 
-    static Icon()
-    {
-        IconBrushProperty.AddOwner<Icon>();
-    }
-    
+    static Icon() {}
+
     /// <inheritdoc cref="GlyphProperty"/>
     public string? Glyph { get => GetValue(GlyphProperty); set => SetValue(GlyphProperty, value); }
 
@@ -276,7 +273,6 @@ public class Icon : Control
             var text = new TextBlock
                        {
                            TextAlignment = TextAlignment.Center,
-                           Width = GlyphWidth,
                            TextWrapping = WrapMode.NoWrap
                        };
 
@@ -293,7 +289,6 @@ public class Icon : Control
             if (GlyphWidth > 1)
             {
                 text.SetBinding(TextBlock.TextProperty,
-
                                 CompiledBinding.Build((Icon o) => o.GetValue(GlyphProperty),
                                                       source: this,
                                                       stringFormat: "{0}" + new string(' ', GlyphWidth - 1))

@@ -13,13 +13,14 @@ public class StyleTests
 
         Assert.True(s.Foreground.IsTransparent);
         Assert.True(s.Background.IsTransparent);
-        Assert.True(s.UnderlineColor.IsTransparent);
+        Assert.True(s.UnderlineColor.IsDefault); // Default UnderlineColor means "use Foreground", so no need to make
+                                                 // transparent. It creates problems during compositing.
 
         // Distinct from Default (which paints terminal-default colors opaquely).
         Assert.NotEqual(CellStyle.Default, s);
 
         // Hyperlink left at the default (None) so a transparent cell carries no link.
-        Assert.Equal(default(Hyperlink), s.Hyperlink);
+        Assert.Equal(default, s.Hyperlink);
     }
 
     [Fact]

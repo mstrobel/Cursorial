@@ -220,7 +220,7 @@ public class StyledProperty<T> : UIProperty
 
     private sealed record CachedResolution(Type Type, PropertyMetadata<T> Metadata);
 
-    private static PropertyMetadata<T> Merge(PropertyMetadata<T> baseMetadata, PropertyMetadata<T> overrideMetadata) => new(
+    internal static PropertyMetadata<T> Merge(PropertyMetadata<T> baseMetadata, PropertyMetadata<T> overrideMetadata) => new(
         overrideMetadata.DefaultValue, // defaults replace (pinned, design doc §2)
         overrideMetadata.Coerce ?? baseMetadata.Coerce,
         overrideMetadata.Validate ?? baseMetadata.Validate,

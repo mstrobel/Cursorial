@@ -33,15 +33,6 @@ internal static class CursorialThemeStyles
         return style;
     }
 
-    internal static Style AccessKeyCueIndicatorStyle()
-    {
-        return new Style("AccessTextPresenter") { Key = "Theme.AccessKeyCueStyle"}
-              .SetResource(AccessTextPresenter.IndicatorBrushProperty, ThemeKeys.AccessKeyIndicatorBrush)
-              .SetResource(AccessTextPresenter.KeyInverseProperty, ThemeKeys.InteractiveCueInverse)
-              .SetResource(AccessTextPresenter.KeyUnderlineProperty, ThemeKeys.InteractiveCueUnderline)
-              .SetResource(AccessTextPresenter.KeyWeightProperty, ThemeKeys.InteractiveCueWeight);
-    }
-
     internal static Style ActiveSelectionStyles()
     {
         return new Style(":is(ListBox):focus-within, :is(TreeView):focus-within, :is(ListView):focus-within")
@@ -433,6 +424,9 @@ internal static class CursorialThemeStyles
                           .SetResource(Control.BorderPenProperty, ThemeKeys.WarningBorderPen)
                           .SetResource(TextElement.ForegroundProperty, ThemeKeys.WarningBrush),
                        new Style("^Button")
+                          //.Set(AccessTextPresenter.ActiveCueStyleProperty, BrushedStyle.Identity
+                          //                                                             .Applying(TextAttributes.Inverse)
+                          //                                                             .RemovingUnderline())
                           .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentBrush)
                           .SetResource(Panel.BackgroundProperty, ThemeKeys.WarningBrush),
                        new Style("^Button:pointerover")

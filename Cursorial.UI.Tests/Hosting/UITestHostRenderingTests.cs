@@ -52,7 +52,12 @@ public sealed class UITestHostRenderingTests
         var unpainted = host.GetCell(6, 0);
         Assert.Equal(CellKind.Single, unpainted.Kind);
         Assert.True(string.IsNullOrEmpty(unpainted.Grapheme));
-        Assert.Equal(host.FrameBuffer.DefaultStyle.WithForeground(desktop).WithBackground(desktop), unpainted.Style);
+
+        Assert.Equal(host.FrameBuffer.DefaultStyle
+                         .WithForeground(desktop)
+                         .WithBackground(desktop)
+                         .WithUnderlineColor(desktop),
+                     unpainted.Style);
 
         // Byte assertions: the first frame emitted a non-empty delta containing the painted runs.
         var wire = System.Text.Encoding.UTF8.GetString(host.LastFrameBytes.Span);

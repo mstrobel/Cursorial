@@ -23,6 +23,11 @@ public readonly record struct BrushedStyle
 {
     public static readonly BrushedStyle Identity = default;
 
+    /// <summary>The axes that are genuinely independent booleans — the only ones the flag-level
+    /// <see cref="Applying"/>/<see cref="Removing"/>/<see cref="ToggledAttributes"/> factories accept.
+    /// Bold, Faint, Italic and Underline have their own axes and are rejected there.</summary>
+    public const TextAttributes Booleans = PartialStyle.Booleans;
+
     public IBrush?    Foreground     { get; init; }
     public IBrush?    Background     { get; init; }
     public IBrush?    UnderlineColor { get; init; }

@@ -1255,9 +1255,34 @@
         <ContentPresenter x:Name="PART_ContentPresenter" RecognizesAccessKey="True"
                           ShowTrimmedContentInToolTip="True"/>
       </Border>
-      <TextBlock x:Name="PART_Separator" Text="▸"
-                 Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}"/>
+      <Border x:Name="PART_Separator" TextElement.BaseTextStyle="{Binding ElementName=PART_SeparatorGlyph, Path=(TextElement.BaseTextStyle)}">
+        <ContentPresenter x:Name="PART_SeparatorGlyph"
+                          Content="{Icon Glyph='&#xf035f;', GlyphWidth=1, Text='▸'}"
+                          Icon.IconBrush="{Binding RelativeSource={RelativeSource Self}, Path=(TextElement.Foreground)}"
+                          TextElement.Foreground="{TemplateBinding Foreground}"/>
+      </Border>
     </StackPanel>
+    <ControlTemplate.Styles>
+      <Style Selector=":is(BreadcrumbBarItem)">
+        <Style.Children>
+          <Style Selector="^:pointerover /template/ #PART_SeparatorGlyph,
+                           ^:focus-visible /template/ #PART_SeparatorGlyph">
+            <Setter Property="TextElement.BaseTextStyle"
+                    Value="{DynamicResource {x:Static ThemeKeys.BreadcrumbGlyphHintedTextStyle}}" />
+          </Style>
+          <Style Selector="^ /template/ #PART_SeparatorGlyph:pointerover">
+            <Setter Property="TextElement.BaseTextStyle"
+                    Value="{DynamicResource {x:Static ThemeKeys.BreadcrumbGlyphHoverTextStyle}}" />
+          </Style>
+          <Style Selector="^:expanded /template/ #PART_SeparatorGlyph">
+            <Setter Property="ContentPresenter.Content"
+                    Value="{Icon Glyph='&#xf035d;', GlyphWidth=1, Text='▾'}" />
+            <Setter Property="TextElement.BaseTextStyle"
+                    Value="{DynamicResource {x:Static ThemeKeys.BreadcrumbGlyphExpandedTextStyle}}" />
+          </Style>
+        </Style.Children>
+      </Style>
+    </ControlTemplate.Styles>
   </ControlTemplate>
 
   <Style x:Key="{x:Type BreadcrumbBarItem}" TargetType="BreadcrumbBarItem">
@@ -1269,22 +1294,19 @@
            you are. Ordered :current -> :pointerover -> :pressed -> :focus-visible -> :disabled so interaction
            always wins the pseudo-class tie (document order breaks it), matching the code-first append order. -->
       <Style Selector="^:current" TargetType="BreadcrumbBarItem">
-        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.TextBrush}}"/>
+        <Setter Property="TextElement.BaseTextStyle" Value="{DynamicResource {x:Static ThemeKeys.BaseTextStyle}}"/>
       </Style>
       <Style Selector="^:pointerover" TargetType="BreadcrumbBarItem">
-        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.ListItemBackgroundHover}}"/>
-        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.ListItemForegroundHover}}"/>
+        <Setter Property="TextElement.BaseTextStyle" Value="{DynamicResource {x:Static ThemeKeys.ListItemHoverTextStyle}}"/>
       </Style>
       <Style Selector="^:pressed" TargetType="BreadcrumbBarItem">
-        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.ButtonBackgroundPressed}}"/>
-        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.ButtonForegroundPressed}}"/>
+        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.BreadcrumbGlyphExpandedTextStyle}}"/>
       </Style>
       <Style Selector="^:focus-visible" TargetType="BreadcrumbBarItem">
-        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.ListItemBackgroundFocus}}"/>
-        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.ListItemForegroundFocus}}"/>
+        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.ListItemFocusTextStyle}}"/>
       </Style>
       <Style Selector="^:disabled" TargetType="BreadcrumbBarItem">
-        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.ListItemForegroundDisabled}}"/>
+        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.ListItemDisabledTextStyle}}"/>
       </Style>
     </Style.Children>
   </Style>

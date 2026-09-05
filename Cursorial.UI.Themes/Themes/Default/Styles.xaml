@@ -20,17 +20,6 @@
     </Style>
 
     <!--
-     Theme key assignments for AccessTextPresenter display properties (access key/indicator weight, brush,
-     underline style, and reverse-video rendering.
-    -->
-    <Style Selector="AccessTextPresenter">
-      <Setter Property="AccessTextPresenter.IndicatorBrush" Value="{DynamicResource ThemeKeys.AccessKeyIndicatorBrush}" />
-      <Setter Property="AccessTextPresenter.KeyInverse" Value="{DynamicResource ThemeKeys.InteractiveCueInverse}" />
-      <Setter Property="AccessTextPresenter.KeyUnderline" Value="{DynamicResource ThemeKeys.InteractiveCueUnderline}" />
-      <Setter Property="AccessTextPresenter.KeyWeight" Value="{DynamicResource ThemeKeys.InteractiveCueWeight}" />
-    </Style>
-
-    <!--
       Active selection brushes for ListBoxItem, TreeViewItem inside a :focus-within parent. 
     -->
     <Style Selector="ListBox:focus-within, TreeView:focus-within, ListView:focus-within">

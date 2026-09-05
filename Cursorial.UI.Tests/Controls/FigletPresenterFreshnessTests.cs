@@ -92,8 +92,12 @@ public sealed class FigletPresenterFreshnessTests
             for (var c = 0; c < host.FrameBuffer.Columns; c++)
             {
                 var cell = host.GetCell(c, r);
-                if (cell.Style.UnderlineColor != Color.Default && cell.Style.UnderlineColor != Color.Transparent)
+                if (string.IsNullOrWhiteSpace(cell.Grapheme) is false && 
+                    cell.Style.UnderlineColor != Color.Default &&
+                    cell.Style.UnderlineColor != Color.Transparent)
+                {
                     return cell;
+                }
             }
 
         Assert.Fail("No cell carrying an underline color found in the frame.");

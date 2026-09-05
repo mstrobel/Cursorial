@@ -16,7 +16,6 @@
          here proves even the Input-namespace owner is fully data-shippable. -->
     <Style Selector=":access-keys AccessTextPresenter">
       <Setter Property="input:AccessKeyManager.ShowUnderline" Value="true"/>
-      <Setter Property="AccessTextPresenter.IndicatorBrush" Value="{DynamicResource {x:Static ThemeKeys.AccessKeyIndicatorBrush}}"/>
     </Style>
 
     <!-- caps-unicode glyph opt-up (design doc §12.7 / SD14): under .caps-unicode set the ToggleGlyph.Glyphs

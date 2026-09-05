@@ -17,8 +17,8 @@ namespace Cursorial.Tests.UI;
 /// <see cref="Cursorial.Drawing.DrawingContext"/>'s <c>overwrite: true</c> to <c>false</c> at this
 /// boundary, and that narrower default is load-bearing: it is what lets
 /// <c>TextPresenter</c>'s inverse band fill paint OVER a FIGlet face without erasing the ink, because
-/// <see cref="CellBuffer.Set(int, int, string?, in Cursorial.Output.CellStyle)"/> rescues the grapheme only on the
-/// non-overwriting path.
+/// <see cref="CellBuffer.Set(int, int, ReadOnlySpan{char}, in Cursorial.Output.CellStyle)"/> rescues
+/// the grapheme only on the non-overwriting path.
 /// <para>
 /// Every assertion reads the RENDERED frame.
 /// </para>

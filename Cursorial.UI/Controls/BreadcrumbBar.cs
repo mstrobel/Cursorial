@@ -69,6 +69,8 @@ public class BreadcrumbBar : ItemsControl
     private const string PartEditBox = "PART_EditBox";
     private const string PartDropDown = "PART_DropDown";
 
+    private const string ExpandedChipPseudoClass = ":expanded";
+
     /// <summary>Whether the bar offers the raw-text edit mode at all (<c>F2</c> and <see cref="BeginEdit"/> are
     /// inert when false — the default; a host opts in when it can render and parse its own path text).</summary>
     public static readonly StyledProperty<bool> IsEditableProperty =
@@ -498,6 +500,7 @@ public class BreadcrumbBar : ItemsControl
 
         var item = ItemContainerGenerator.ItemFromIndex(index);
         var opening = new BreadcrumbBarDropDownEventArgs(DropDownOpeningEvent, this, item, index, new List<object?>());
+
         RaiseEvent(opening);
 
         if (opening.Children.Count == 0)
@@ -971,6 +974,7 @@ public class BreadcrumbBar : ItemsControl
         // list would come up with the keyboard pointed at whatever the user was on before.
         anchor.Focus(FocusNavigationMethod.Programmatic);
 
+        anchor.PseudoClasses.SetInternal(ExpandedChipPseudoClass, true);
         _dropDown.Anchor = anchor;
         _dropDown.Open();
     }
@@ -1019,8 +1023,11 @@ public class BreadcrumbBar : ItemsControl
         _dropDownEntries.Clear();
         _dropDownItems.Clear();
 
-        if (_dropDown is not null)
+        if (_dropDown is { Anchor: {} anchor })
+        {
+            anchor.PseudoClasses.SetInternal(ExpandedChipPseudoClass, false);
             _dropDown.Anchor = null;
+        }
     }
 
     // ─────────────────────────────────────────────────────────────────────────────────────────────────────

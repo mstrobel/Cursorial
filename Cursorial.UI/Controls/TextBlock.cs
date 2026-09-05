@@ -38,7 +38,7 @@ public class TextBlock : UIElement, ITrimmedTextSource, IRichTextCapable
     // glyphs transparent; the transparent background and underline color stay stated (the
     // compositing identity).
     private static readonly BrushedStyle PlainTextDefaultCarrier =
-        new() { Background = Brushes.Transparent, UnderlineColor = Brushes.Transparent };
+        new() { Background = Brushes.Transparent };
 
     public static readonly StyledProperty<BrushedStyle> BaseTextStyleProperty =
         TextElement.BaseTextStyleProperty.AddOwner<TextBlock>();
@@ -245,9 +245,12 @@ public class TextBlock : UIElement, ITrimmedTextSource, IRichTextCapable
         // Markup wins over Text (doc §12.7), so the key's source is the effective one — a Text
         // change under a set Markup formats identically and may serve the cached layout. The lane
         // bit keeps a literal Text from serving a layout for an IDENTICAL markup string.
+        var style = BrushedStyle.FromElement(this);
+        var combinedStyle = PlainTextDefaultCarrier.Then(style);
+
         var request = new FormattedTextCache.LayoutRequest(
             Markup ?? Text, MarkupLane: Markup is not null, width, height,
-            TextWrapping, TextAlignment, TextTrimming);
+            TextWrapping, TextAlignment, TextTrimming, combinedStyle);
 
         if (Cache.TryGetLayout(in request, out var cached))
             return cached;
@@ -255,7 +258,7 @@ public class TextBlock : UIElement, ITrimmedTextSource, IRichTextCapable
         // M2: a single markup-free line that fits needs no RichText model — the cache constructs
         // the layout directly, byte-identical by construction (FormattedTextFastPathTests proves it
         // cell-for-cell against the pipeline below). Anything ineligible formats exactly as before.
-        var formatted = Cache.TryFormatPlainTextFast(in request, PlainTextDefaultCarrier)
+        var formatted = Cache.TryFormatPlainTextFast(in request, combinedStyle)
                         ?? Format(width, Cache.OutputCapabilities, height);
         Cache.StoreLayout(in request, formatted);
         return formatted;
@@ -276,7 +279,8 @@ public class TextBlock : UIElement, ITrimmedTextSource, IRichTextCapable
                           {
                               BrushResolver = ResourceBrushResolver.Create(this),
                               DefaultTextTrimming = trimmingOverride ?? TextTrimming,
-                              DefaultTextWrapping = wrappingOverride ?? TextWrapping
+                              DefaultTextWrapping = wrappingOverride ?? TextWrapping,
+                              DefaultStyle = PlainTextDefaultCarrier.Then(BaseTextStyle)
                           };
             document = TextMarkup.Parse(markup, options);
         }

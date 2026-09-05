@@ -2,6 +2,7 @@ using Cursorial.Drawing.Media;
 using Cursorial.Input;
 using Cursorial.Input.Events;
 using Cursorial.Media;
+using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.Rendering.Media;
 using Cursorial.Rendering.Text;
@@ -10,6 +11,7 @@ using Cursorial.UI;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Hosting.Headless;
 using Cursorial.UI.Input;
+using Cursorial.UI.Themes;
 
 // ReSharper disable InconsistentNaming
 
@@ -300,19 +302,94 @@ public sealed class Section09_TextBorderAccessKey
     public void C175_AccessTextPresenterUnderlinesWhenCueShown()
     {
         var atp = new AccessTextPresenter(new AccessText("File", 'F', 0));
+
         using var host = Attach(atp);
 
+        var rootStyle = BrushedStyle.FromElement(atp.VisualRoot!);
+        var baseStyle = BrushedStyle.FromElement(atp);
+        var on = rootStyle.Then(baseStyle).Then(atp.ActiveCueStyle);
+        var off = rootStyle.Then(baseStyle).Then(atp.InactiveCueStyle);
+        
         // No cue: no underline on the mnemonic.
-        Assert.False(host.GetCell(0, 0).Style.Attributes.HasFlag(TextAttributes.Underline));
+        // Assert.False(host.GetCell(0, 0).Style.Attributes.HasFlag(TextAttributes.Underline));
+        AssertCueMatch(true, off, host, 0, 0);
 
         // Cue shown: the KeyIndex grapheme is underlined.
         AccessKeyManager.SetShowUnderline(atp, true);
         host.RunFrame();
-        Assert.True(host.GetCell(0, 0).Style.Attributes.HasFlag(TextAttributes.Underline)); // 'F' at index 0
-        Assert.False(host.GetCell(1, 0).Style.Attributes.HasFlag(TextAttributes.Underline)); // 'i' not underlined
+        AssertCueMatch(true, on, host, 0, 0);
+        AssertCueMatch(false, on, host, 1, 0);
+
+        if (atp.InactiveCueStyle.IsIdentity is false)
+            AssertCueMatch(false, off, host, 1, 0);
+        // Assert.True(host.GetCell(0, 0).Style.Attributes.HasFlag(TextAttributes.Underline)); // 'F' at index 0
+        // Assert.False(host.GetCell(1, 0).Style.Attributes.HasFlag(TextAttributes.Underline)); // 'i' not underlined
+
+        var defaultActive = atp.TryFindResource(ThemeKeys.InteractiveCueActiveStyle, out var a) ? (BrushedStyle) a! : default;
+        var defaultInactive = atp.TryFindResource(ThemeKeys.InteractiveCueInactiveStyle, out var i) ? (BrushedStyle) i! : default;
 
         Assert.True(AccessTextPresenter.TextProperty.GetEffects(typeof(AccessTextPresenter)).HasFlag(PropertyEffects.AffectsMeasure));
-        Assert.Equal(UnderlineStyle.Single, new AccessTextPresenter().KeyUnderline); // default
+        // Assert.Equal(UnderlineStyle.Single, new AccessTextPresenter().KeyUnderline); // default
+        Assert.Equal(defaultActive, atp.ActiveCueStyle);
+        Assert.Equal(defaultInactive, atp.InactiveCueStyle);
+    }
+
+    private void AssertCueMatch(bool expectMatch, BrushedStyle cue, UIHeadlessHost host, int col, int row)
+    {
+        var resolved = cue.Resolve(col, row, new Rect(col, row, 1, 1));
+
+        var actualStyle = host.GetCell(col, row).Style;
+        var defaultStyle = host.FrameBuffer.DefaultStyle;
+        var expectedStyle = defaultStyle;
+
+        if (expectMatch) expectedStyle = resolved.ApplyTo(expectedStyle);
+        
+        if (expectedStyle.Foreground == actualStyle.Foreground ^ expectMatch)
+        {
+            Fail(nameof(CellStyle.Foreground),
+                 expectMatch, 
+                 expectedStyle.Foreground.ToString(), 
+                 actualStyle.Foreground.ToString());
+        }
+
+        if (expectedStyle.Background == actualStyle.Background ^ expectMatch)
+        {
+            Fail(nameof(CellStyle.Background),
+                 expectMatch, 
+                 expectedStyle.Background.ToString(), 
+                 actualStyle.Background.ToString());
+        }
+
+        var expectAttr = expectedStyle.Attributes;
+        var actualAttr = actualStyle.Attributes;
+
+        if (((expectMatch
+                  ? expectAttr.HasFlag(TextAttributes.Underline)
+                  : resolved.AppliedAttributes.HasFlag(TextAttributes.Underline)) || 
+             actualAttr.HasFlag(TextAttributes.Underline)) &&
+            expectedStyle.UnderlineColor != defaultStyle.UnderlineColor &&
+            expectedStyle.UnderlineColor == actualStyle.UnderlineColor ^ expectMatch)
+        {
+            Fail(nameof(CellStyle.UnderlineColor),
+                 expectMatch, 
+                 expectedStyle.UnderlineColor.ToString(), 
+                 actualStyle.UnderlineColor.ToString());
+        }
+
+        if ((expectAttr != TextAttributes.None || actualAttr != TextAttributes.None) &&
+            expectAttr == actualAttr ^ expectMatch)
+        {
+            Fail(nameof(CellStyle.Attributes),
+                 expectMatch, 
+                 expectAttr.ToString(), 
+                 actualAttr.ToString());
+        }
+
+        static void Fail(string attribute, bool expectedMatch, string expected, string actual)
+        {
+            Assert.Fail($"Expected {attribute} to {(expectedMatch ? "MATCH" : "NOT MATCH")}; " +
+                        $"expected <{expected}> but found <{actual}>.");
+        }
     }
 
     [Fact] // C176

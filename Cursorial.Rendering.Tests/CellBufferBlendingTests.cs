@@ -379,11 +379,11 @@ public class CellBufferBlendingTests
 
     /// <summary>
     /// Resolve <paramref name="source"/> over <paramref name="backdrop"/> twice — once through
-    /// <see cref="CellBuffer.Set(int, int, string?, in CellStyle)"/>, once through <see cref="CellBuffer.Fill(in Cell)"/> — and hand back
+    /// <see cref="CellBuffer.Set(int, int, ReadOnlySpan{char}, in CellStyle)"/>, once through <see cref="CellBuffer.Fill(in Cell)"/> — and hand back
     /// both stored cells. Identical buffer size, identical seeded backdrop (written through the indexer,
     /// which does not blend), identical active mode, identical grapheme and kind: the ONLY thing that can
     /// make the two differ is the blending rule each path applies. A non-blank grapheme keeps
-    /// <see cref="CellBuffer.Set(int, int, string?, in CellStyle)"/> off its blank-rescue path, so both paths reduce to the blend alone.
+    /// <see cref="CellBuffer.Set(int, int, ReadOnlySpan{char}, in CellStyle)"/> off its blank-rescue path, so both paths reduce to the blend alone.
     /// </summary>
     private static (Cell ViaSet, Cell ViaFill) BlendBothWays(CellStyle source, CellStyle backdrop, IBlendingMode mode)
     {
@@ -402,7 +402,7 @@ public class CellBufferBlendingTests
 
     /// <summary>
     /// THE invariant: the same source over the same backdrop under the same blending mode must produce
-    /// the same cell through <see cref="CellBuffer.Set(int, int, string?, in CellStyle)"/> as through <see cref="CellBuffer.Fill(in Cell)"/>.
+    /// the same cell through <see cref="CellBuffer.Set(int, int, ReadOnlySpan{char}, in CellStyle)"/> as through <see cref="CellBuffer.Fill(in Cell)"/>.
     /// One rule — <see cref="CellStyle.BlendOver"/> — encoded once. The two paths formerly held private
     /// copies of it that drifted apart on the underline colour; every channel is asserted here, not just
     /// the one that drifted, so a copy re-introduced anywhere in the style is caught.

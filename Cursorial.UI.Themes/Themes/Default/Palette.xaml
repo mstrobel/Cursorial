@@ -55,7 +55,7 @@
 
       <BrushedStyle    x:Key="{x:Static ThemeKeys.ListItemNormalTextStyle}"
                        Foreground="{StaticResource {x:Static ThemeKeys.TextBrush}}"
-                       Background="{StaticResource {x:Static ThemeKeys.WellBrush}}" />
+                       Background="{x:Null}" />
 
       <BrushedStyle    x:Key="{x:Static ThemeKeys.ListItemFocusTextStyle}"
                        Foreground="{StaticResource {x:Static ThemeKeys.OnAccentBrush}}"
@@ -122,7 +122,7 @@
 
       <BrushedStyle    x:Key="{x:Static ThemeKeys.ListItemNormalTextStyle}"
                        Foreground="{StaticResource {x:Static ThemeKeys.TextBrush}}"
-                       Background="{StaticResource {x:Static ThemeKeys.WellBrush}}" />
+                       Background="{x:Null}" />
 
       <BrushedStyle    x:Key="{x:Static ThemeKeys.ListItemFocusTextStyle}"
                        Foreground="{StaticResource {x:Static ThemeKeys.OnAccentBrush}}"
@@ -285,7 +285,7 @@
 
       <BrushedStyle    x:Key="{x:Static ThemeKeys.ListItemNormalTextStyle}"
                        Foreground="{StaticResource {x:Static ThemeKeys.TextBrush}}"
-                       Background="{StaticResource {x:Static ThemeKeys.WellBrush}}" />
+                       Background="{x:Null}" />
 
       <BrushedStyle    x:Key="{x:Static ThemeKeys.ListItemFocusTextStyle}"
                        Foreground="{StaticResource {x:Static ThemeKeys.OnAccentBrush}}"
@@ -428,7 +428,7 @@
 
       <BrushedStyle    x:Key="{x:Static ThemeKeys.ListItemNormalTextStyle}"
                        Foreground="{StaticResource {x:Static ThemeKeys.TextBrush}}"
-                       Background="{StaticResource {x:Static ThemeKeys.WellBrush}}" />
+                       Background="{x:Null}" />
 
       <BrushedStyle    x:Key="{x:Static ThemeKeys.ListItemFocusTextStyle}"
                        Foreground="{StaticResource {x:Static ThemeKeys.OnAccentBrush}}"
@@ -706,7 +706,7 @@
 
       <BrushedStyle    x:Key="{x:Static ThemeKeys.ListItemNormalTextStyle}"
                        Foreground="{StaticResource {x:Static ThemeKeys.TextBrush}}"
-                       Background="{StaticResource {x:Static ThemeKeys.WellBrush}}" />
+                       Background="{x:Null}" />
 
       <BrushedStyle    x:Key="{x:Static ThemeKeys.ListItemFocusTextStyle}"
                        Foreground="{StaticResource {x:Static ThemeKeys.OnAccentBrush}}"
@@ -854,7 +854,7 @@
 
       <BrushedStyle    x:Key="{x:Static ThemeKeys.ListItemNormalTextStyle}"
                        Foreground="{StaticResource {x:Static ThemeKeys.TextBrush}}"
-                       Background="{StaticResource {x:Static ThemeKeys.WellBrush}}" />
+                       Background="{x:Null}" />
 
       <BrushedStyle    x:Key="{x:Static ThemeKeys.ListItemFocusTextStyle}"
                        Foreground="{StaticResource {x:Static ThemeKeys.OnAccentBrush}}"

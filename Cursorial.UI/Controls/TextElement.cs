@@ -1,5 +1,3 @@
-
-using Cursorial.Output;
 using Cursorial.Rendering.Fonts;
 using Cursorial.Rendering.Media;
 using Cursorial.Rendering.Text;
@@ -523,11 +521,10 @@ public abstract class TextElement
     /// PD26). Call INSIDE the control-template build. Faces honor only <see cref="InverseProperty"/>
     /// (the fill's one flag), so a face forwards Inverse alone via <see cref="ForwardInverse"/>.
     /// </summary>
-    public static void ForwardAllAxes(UIObject part, UIObject? source = null, bool forwardInverse = true)
+    public static void ForwardAllAxes(UIObject part, UIObject? source = null, bool forwardInverse = true,
+                                      bool onlyIfUnset = false)
     {
         ArgumentNullException.ThrowIfNull(part);
-
-        var relativeSource = source is null ? RelativeSource.TemplatedParent : null;
 
         #if DEBUG
         System.Diagnostics.Debug.Assert(AllAxisProperties.Length == 9,
@@ -538,24 +535,30 @@ public abstract class TextElement
         // the source has no opinion on the axis, so the part's OWN base look (a BaseTextStyle at 150) promotes
         // rather than a forwarded DEFAULT (e.g. a null UnderlineBrush / Normal weight) shadowing it from a
         // stronger lane. A real source opinion (LocalValue…BaseTextStyle) still forwards and wins as before.
-        void ForwardAxis<T>(StyledProperty<T> axis)
-        {
-            var forward = CompiledBinding.For(axis, source: source, relativeSource: relativeSource);
-            forward.OpinionGateFloor = BindingPriority.BaseTextStyle;
-            part.SetBinding(axis, forward);
-        }
 
-        ForwardAxis(TextWeightProperty);
-        ForwardAxis(TextStyleProperty);
-        ForwardAxis(UnderlineProperty);
-        ForwardAxis(StrikethroughProperty);
-        ForwardAxis(OverlineProperty);
-        ForwardAxis(BlinkProperty);
-        ForwardAxis(ConcealedProperty);
-        ForwardAxis(UnderlineBrushProperty);
+        Forward(TextWeightProperty, part, source, onlyIfUnset, BindingPriority.BaseTextStyle);
+        Forward(TextStyleProperty, part, source, onlyIfUnset, BindingPriority.BaseTextStyle);
+        Forward(UnderlineProperty, part, source, onlyIfUnset, BindingPriority.BaseTextStyle);
+        Forward(StrikethroughProperty, part, source, onlyIfUnset, BindingPriority.BaseTextStyle);
+        Forward(OverlineProperty, part, source, onlyIfUnset, BindingPriority.BaseTextStyle);
+        Forward(BlinkProperty, part, source, onlyIfUnset, BindingPriority.BaseTextStyle);
+        Forward(ConcealedProperty, part, source, onlyIfUnset, BindingPriority.BaseTextStyle);
+        Forward(UnderlineBrushProperty, part, source, onlyIfUnset, BindingPriority.BaseTextStyle);
 
         if (forwardInverse)
-            ForwardAxis(InverseProperty);
+            Forward(InverseProperty, part, source, onlyIfUnset, BindingPriority.BaseTextStyle);
+    }
+
+    private static BindingExpressionBase? Forward<T>(StyledProperty<T> axis, UIObject part, UIObject? source,
+                                                     bool onlyIfUnset, BindingPriority? opinionGateFloor = null)
+    {
+        if (onlyIfUnset is true && (part.IsSet(axis) is true || BindingOperations.IsDataBound(part, axis) is true))
+            return null;
+
+        var relativeSource = source is null ? RelativeSource.TemplatedParent : null;
+        var forward = CompiledBinding.For(axis, source: source, relativeSource: relativeSource);
+        forward.OpinionGateFloor = opinionGateFloor;
+        return part.SetBinding(axis, forward);
     }
 
     /// <summary>
@@ -564,28 +567,18 @@ public abstract class TextElement
     /// a control-level cue reaches the part at the Template lane (pierceable by conditional rules, PD26).
     /// Call INSIDE the control-template build.
     /// </summary>
-    public static void ForwardFormatting(UIObject part, UIObject? source = null)
+    public static void ForwardFormatting(UIObject part, UIObject? source = null, bool onlyIfUnset = false)
     {
         ArgumentNullException.ThrowIfNull(part);
-
-        var relativeSource = source is null ? RelativeSource.TemplatedParent : null;
 
 #if DEBUG
         System.Diagnostics.Debug.Assert(AllFormattingProperties.Length == 2,
                                         $"{nameof(AllFormattingProperties)} was updated without updating ForwardFormatting!");
 #endif
         
-        part.SetBinding(
-            TextTrimmingProperty,
-            CompiledBinding.For(TextTrimmingProperty,
-                                source: source,
-                                relativeSource: relativeSource));
-        part.SetBinding(
-            TextWrappingProperty,
-            CompiledBinding.For(TextWrappingProperty,
-                                source: source,
-                                relativeSource: relativeSource));
-
+        
+        Forward(TextTrimmingProperty,  part, source, onlyIfUnset);
+        Forward(TextWrappingProperty,  part, source, onlyIfUnset);
     }
 
     /// <summary>
@@ -594,27 +587,17 @@ public abstract class TextElement
     /// a control-level cue reaches the part at the Template lane (pierceable by conditional rules, PD26).
     /// Call INSIDE the control-template build.
     /// </summary>
-    public static void ForwardTypography(UIObject part, UIObject? source = null)
+    public static void ForwardTypography(UIObject part, UIObject? source = null, bool onlyIfUnset = false)
     {
         ArgumentNullException.ThrowIfNull(part);
-
-        var relativeSource = source is null ? RelativeSource.TemplatedParent : null;
 
 #if DEBUG
         System.Diagnostics.Debug.Assert(AllTypographyProperties.Length == 2,
                                         $"{nameof(AllTypographyProperties)} was updated without updating ForwardTypography!");
 #endif
         
-        part.SetBinding(
-            FontProperty,
-            CompiledBinding.For(FontProperty,
-                                source: source,
-                                relativeSource: relativeSource));
-        part.SetBinding(
-            SizingProperty,
-            CompiledBinding.For(SizingProperty,
-                                source: source,
-                                relativeSource: relativeSource));
+        Forward(FontProperty,  part, source, onlyIfUnset);
+        Forward(SizingProperty,  part, source, onlyIfUnset);
     }
 
     /// <summary>
@@ -622,32 +605,19 @@ public abstract class TextElement
     /// parent onto a text-rendering <paramref name="part"/> (a caret/glyph/icon leaf), via
     /// <c>TemplateBinding</c>. Values with a binding priority of Style or lower will forward. 
     /// </summary>
-    public static void ForwardBaseTextStyle(UIObject part, UIObject? source = null)
+    public static void ForwardBaseTextStyle(UIObject part, UIObject? source = null, bool onlyIfUnset = false)
     {
         ArgumentNullException.ThrowIfNull(part);
-
-        var relativeSource = source is null ? RelativeSource.TemplatedParent : null;
-
-        var binding = CompiledBinding.For(BaseTextStyleProperty,
-                                          source: source,
-                                          relativeSource: relativeSource);
-
-        binding.OpinionGateFloor = BindingPriority.Style;
-
-        part.SetBinding(BaseTextStyleProperty, binding);
+        Forward(BaseTextStyleProperty, part, source, onlyIfUnset, BindingPriority.Style);
     }
 
     /// <summary>Forwards <see cref="InverseProperty"/> alone from the templated parent onto a face part (the fill's one flag).</summary>
-    public static BindingExpressionBase ForwardInverse(UIObject part, UIObject? source = null)
+    public static BindingExpressionBase? ForwardInverse(UIObject part, UIObject? source = null, bool onlyIfUnset = false)
     {
         ArgumentNullException.ThrowIfNull(part);
 
         // Gated at the BaseTextStyle floor too: a face's Inverse is a BaseTextStyle axis, so a no-opinion source
         // must not shadow a BaseTextStyle-imposed Inverse on the face.
-        var forward = CompiledBinding.For(InverseProperty,
-                                          source: source,
-                                          relativeSource: source is null ? RelativeSource.TemplatedParent : null);
-        forward.OpinionGateFloor = BindingPriority.BaseTextStyle;
-        return part.SetBinding(InverseProperty, forward);
+        return Forward(InverseProperty, part, source, onlyIfUnset, BindingPriority.BaseTextStyle);
     }
 }

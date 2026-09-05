@@ -197,36 +197,41 @@ public sealed class Section45_TextAttributeAxes
         var theme = Cursorial.UI.Themes.CursorialTheme.CreateDefault();
 
         var carriers = theme.ThemeDictionaries
-            .Where(kv => kv.Value.ContainsKey(Cursorial.UI.Themes.ThemeKeys.InteractiveCueInverse)
-                      || kv.Value.ContainsKey(Cursorial.UI.Themes.ThemeKeys.InteractiveCueWeight))
+            .Where(kv => kv.Value.ContainsKey(Cursorial.UI.Themes.ThemeKeys.InteractiveCueActiveStyle)
+                      || kv.Value.ContainsKey(Cursorial.UI.Themes.ThemeKeys.InteractiveCueInactiveStyle))
             .ToList();
 
         Assert.NotEmpty(carriers);
+
         Assert.All(carriers, kv =>
         {
-            Assert.True(kv.Value.ContainsKey(Cursorial.UI.Themes.ThemeKeys.InteractiveCueInverse),
-                $"tier {kv.Key} carries CueWeight but not CueInverse");
-            Assert.True(kv.Value.ContainsKey(Cursorial.UI.Themes.ThemeKeys.InteractiveCueWeight),
-                $"tier {kv.Key} carries CueInverse but not CueWeight");
-            Assert.IsType<bool>(kv.Value[Cursorial.UI.Themes.ThemeKeys.InteractiveCueInverse]);
-            Assert.IsType<TextWeight>(kv.Value[Cursorial.UI.Themes.ThemeKeys.InteractiveCueWeight]);
+            Assert.True(kv.Value.ContainsKey(Cursorial.UI.Themes.ThemeKeys.InteractiveCueInactiveStyle),
+                $"tier {kv.Key} carries InteractiveCueActiveStyle but not InteractiveCueInactiveStyle");
+            Assert.True(kv.Value.ContainsKey(Cursorial.UI.Themes.ThemeKeys.InteractiveCueActiveStyle),
+                $"tier {kv.Key} carries InteractiveCueInactiveStyle but not InteractiveCueActiveStyle");
+            Assert.IsType<BrushedStyle>(kv.Value[Cursorial.UI.Themes.ThemeKeys.InteractiveCueActiveStyle]);
+            Assert.IsType<BrushedStyle>(kv.Value[Cursorial.UI.Themes.ThemeKeys.InteractiveCueInactiveStyle]);
         });
 
         // Pin the §2.3 four-row value table verbatim (audit fix — the presence lint above alone let a
         // deleted required pair or a flipped Faint pass): one cue vocabulary per tier, Inverse only
         // where brushes can't speak, Faint only at (Dark|Light, Ansi16).
-        void AssertCue(ThemeVariantKey key, bool inverse, TextWeight weight)
+        void AssertCue(ThemeVariantKey key, bool inverse, TextWeight? weight)
         {
             var dict = theme.ThemeDictionaries[key];
-            Assert.Equal(inverse, dict[Cursorial.UI.Themes.ThemeKeys.InteractiveCueInverse]);
-            Assert.Equal(weight, dict[Cursorial.UI.Themes.ThemeKeys.InteractiveCueWeight]);
+            var cue = (BrushedStyle) dict[Cursorial.UI.Themes.ThemeKeys.InteractiveCueActiveStyle]!;
+            Assert.Equal(inverse, cue.HasOpinion(TextAttributes.Inverse));
+            Assert.Equal(weight, cue.Weight);
         }
 
-        AssertCue(new ThemeVariantKey(null, ColorDepth.NoColor), inverse: true,  weight: TextWeight.Normal); // NoColor: faint
+        AssertCue(new ThemeVariantKey(null, ColorDepth.NoColor), inverse: true,  weight: TextWeight.Faint); // NoColor: faint
         AssertCue(new ThemeVariantKey(null, ColorDepth.Ansi16),  inverse: false, weight: TextWeight.Bold); // CD8 color floor
         AssertCue(new ThemeVariantKey(ThemeBase.Dark,  ColorDepth.Ansi16), inverse: false, weight: TextWeight.Bold);  // 16-color = Bold
         AssertCue(new ThemeVariantKey(ThemeBase.Light, ColorDepth.Ansi16), inverse: false, weight: TextWeight.Bold);
-        AssertCue(new ThemeVariantKey(ThemeBase.Dark,  ColorDepth.Ansi256), inverse: false, weight: TextWeight.Normal); // RGB: brushes are the cue
+        AssertCue(new ThemeVariantKey(ThemeBase.Dark,  ColorDepth.Ansi256), inverse: false, weight: null); // RGB: brushes are the cue
+        AssertCue(new ThemeVariantKey(ThemeBase.Light,  ColorDepth.Ansi256), inverse: false, weight: null); // RGB: brushes are the cue
+        AssertCue(new ThemeVariantKey(ThemeBase.Dark,  ColorDepth.Truecolor), inverse: false, weight: null);
+        AssertCue(new ThemeVariantKey(ThemeBase.Light,  ColorDepth.Truecolor), inverse: false, weight: null);
     }
 
     [Fact] // TA11 — the landed P9.3b (the composability proof): NoColor focus-row = selection Inverse + focus Bold, composed
@@ -329,7 +334,7 @@ public sealed class Section45_TextAttributeAxes
     /// override alone would arm the theme rule without reaching the painter — the capability snapshot is
     /// the only lever that moves both.
     /// </summary>
-    private static Cursorial.Terminal.TerminalCapabilities NoColorTerminal { get; } =
+    private static Terminal.TerminalCapabilities NoColorTerminal { get; } =
         HeadlessCapabilities.KittyTruecolor with
         {
             Output = HeadlessCapabilities.KittyTruecolor.Output with
@@ -339,7 +344,7 @@ public sealed class Section45_TextAttributeAxes
         };
 
     /// <summary>The same, plus OSC 66 text sizing — the lane where <c>EditingSource.PaintsAsCells</c> is false.</summary>
-    private static Cursorial.Terminal.TerminalCapabilities NoColorSizedTerminal { get; } =
+    private static Terminal.TerminalCapabilities NoColorSizedTerminal { get; } =
         NoColorTerminal with
         {
             Output = NoColorTerminal.Output with
@@ -349,11 +354,11 @@ public sealed class Section45_TextAttributeAxes
         };
 
     private static (UIHeadlessHost Host, TextBox Box) NoColorBoldBox(
-        Cursorial.Terminal.TerminalCapabilities capabilities, TextSizing? sizing = null, bool focus = false)
+        Terminal.TerminalCapabilities capabilities, TextSizing? sizing = null, bool focus = false)
     {
         var host = UIHeadlessHost.Create(new UIHeadlessHostOptions
         {
-            InitialSize = new Cursorial.Rendering.Size(30, 6),
+            InitialSize = new Rendering.Size(30, 6),
             Capabilities = capabilities,
         });
 
@@ -510,17 +515,21 @@ public sealed class Section45_TextAttributeAxes
                                                 UnderlineStyle? keyUnderline = UnderlineStyle.Single,
                                                 Color? indicator = null)
     {
+        var indicatorBrush = new SolidColorBrush(indicator ?? Color.FromRgb(0, 200, 40));
+
+        var cue = BrushedStyle.Identity.Underlining(keyUnderline, indicatorBrush);
+
+        if (keyWeight != TextWeight.Normal)
+            cue = cue.Weighing(keyWeight);
+
         var presenter = new AccessTextPresenter
-        {
-            Text                = new AccessText(CueLabelText, CueLabelText[0], 0),
-            KeyWeight           = keyWeight,
-            KeyInverse          = false,
-            KeyUnderline        = keyUnderline,
-            IndicatorBrush      = new SolidColorBrush(indicator ?? Color.FromRgb(0, 200, 40)),
-            Foreground          = Brushes.Red,
-            HorizontalAlignment = HorizontalAlignment.Left,
-            VerticalAlignment   = VerticalAlignment.Top,
-        };
+                        {
+                            Text = new AccessText(CueLabelText, CueLabelText[0], 0),
+                            ActiveCueStyle = cue,
+                            Foreground = Brushes.Red,
+                            HorizontalAlignment = HorizontalAlignment.Left,
+                            VerticalAlignment = VerticalAlignment.Top,
+                        };
 
         // Without this the whole cue block early-outs, and every row below would pass vacuously.
         AccessKeyManager.SetShowUnderline(presenter, true);
@@ -605,7 +614,7 @@ public sealed class Section45_TextAttributeAxes
     {
         using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions
         {
-            InitialSize = new Cursorial.Rendering.Size(30, 6),
+            InitialSize = new Rendering.Size(30, 6),
         });
 
         host.Application.RequestedColorTier = tier;
@@ -636,7 +645,7 @@ public sealed class Section45_TextAttributeAxes
     {
         using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions
         {
-            InitialSize = new Cursorial.Rendering.Size(30, 6),
+            InitialSize = new Rendering.Size(30, 6),
         });
 
         var box = new TextBox

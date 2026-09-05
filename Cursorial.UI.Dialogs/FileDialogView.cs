@@ -225,7 +225,7 @@ public sealed class FileDialogView : Decorator, ISupportInitializeNotification
         toolbar.SetResourceReference(Control.BackgroundProperty, ThemeKeys.PanelBrush);
 
         toolbar.Styles.Add(
-            new Style(":is(ButtonBase)")
+            new Style(":is(BarButton), :is(BarToggleButton)", CursorialBarsTheme.TypeResolver)
                 {
                     Children =
                     {

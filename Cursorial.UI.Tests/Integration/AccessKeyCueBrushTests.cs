@@ -90,11 +90,13 @@ public sealed class AccessKeyCueBrushTests
                             Text = new AccessText(label, label[keyIndex], keyIndex),
                             // Default StartPoint/EndPoint are TopLeft -> TopRight: a horizontal ramp,
                             // so the sampled colour is a direct readout of the column parameter.
-                            IndicatorBrush      = new LinearGradientBrush(Colors.Black, Colors.White),
-                            KeyUnderline        = UnderlineStyle.Single,
-                            Foreground          = Brushes.Red,
+                            ActiveCueStyle = BrushedStyle.Identity
+                                                         .Underlining(UnderlineStyle.Single,
+                                                                      new LinearGradientBrush(
+                                                                          Colors.Black, Colors.White)),
+                            Foreground = Brushes.Red,
                             HorizontalAlignment = HorizontalAlignment.Left,
-                            VerticalAlignment   = VerticalAlignment.Top,
+                            VerticalAlignment = VerticalAlignment.Top,
                         };
 
         // Without this the whole cue block early-outs and every cell reads a transparent underline —

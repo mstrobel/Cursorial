@@ -596,12 +596,20 @@ public sealed class SceneCompositor
                                                 ? defaults.ResolveForeground(targetStyle.Foreground)
                                                 : targetStyle.Foreground;
 
+            var destinationUnderline = intermediate
+                                           ? Color.CompositeOver(targetStyle.UnderlineColor, targetStyle.Background, mode)
+                                           : NeedsBlendBackdrop(sourceStyle.Background)
+                                               ? defaults.ResolveForeground(targetStyle.UnderlineColor)
+                                               : targetStyle.UnderlineColor;
+
             var blendedForeground = CompositeColor(sourceStyle.Background, destinationForeground, mode, intermediate);
+            var blendedUnderline = CompositeColor(sourceStyle.Background, destinationUnderline, mode, intermediate);
 
             var tinted = dst.Style with
                          {
                              Foreground = blendedForeground,
                              Background = mergedBackground,
+                             UnderlineColor = blendedUnderline,
                              // Let certain attributes (like 'Faint') pass through, but no others.
                              Attributes = dst.Style.Attributes | (source.Style.Attributes & PassthroughAttributes)
                          };
@@ -664,11 +672,21 @@ public sealed class SceneCompositor
         var foldBackground = NeedsBlendBackdrop(sourceStyle.Foreground)
                                  ? defaults.ResolveBackground(mergedBackground)
                                  : mergedBackground;
+
         var mergedForeground = intermediate
                                    ? sourceStyle.Foreground
-                                   : Color.Composite(sourceStyle.Foreground, foldBackground, mode);
+                                   : Color.CompositeOver(sourceStyle.Foreground, foldBackground, mode);
 
-        var style = sourceStyle with { Foreground = mergedForeground, Background = mergedBackground };
+        var mergedUnderline = intermediate
+                                  ? sourceStyle.UnderlineColor
+                                  : Color.CompositeOver(sourceStyle.UnderlineColor, foldBackground, mode);
+
+        var style = sourceStyle with
+                    {
+                        Foreground = mergedForeground,
+                        Background = mergedBackground,
+                        UnderlineColor = mergedUnderline
+                    };
 
         if (source.Kind == CellKind.WideLeft)
         {

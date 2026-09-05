@@ -1,16 +1,13 @@
 using System.Globalization;
 using System.Reflection;
-using System.Windows.Input;
 
 using Cursorial.Drawing.Media;
 using Cursorial.Media;
 using Cursorial.Rendering;
 using Cursorial.Rendering.Media;
-using Cursorial.Text;
 using Cursorial.UI;
 using Cursorial.UI.Data;
 using Cursorial.UI.Themes;
-using Cursorial.UI.Themes.IndigoDusk;
 
 namespace Cursorial.Gallery.ViewModels;
 
@@ -124,33 +121,14 @@ public class ThemesViewModel : PageViewModel
 
         if (Entries is not { Count: > 0 } entries)
         {
-            List<ThemeEntry> list =
-            [
-                new() { ResourceKey = "Demo.HeaderStyle" },
-                new() { ResourceKey = "Demo.SubheaderStyle" },
-                new() { ResourceKey = "Demo.TypoStyle" },
-                ..typeof(ThemeKeys).GetFields(BindingFlags.Public | BindingFlags.Static)
-                                   .Where(f => f.FieldType == typeof(string))
-                                   .Select(f => new ThemeEntry { ResourceKey = (string) f.GetValue(null)! })
-            ];
+            var list =
+                typeof(ThemeKeys).GetFields(BindingFlags.Public | BindingFlags.Static)
+                                 .Where(f => f.FieldType == typeof(string))
+                                 .Select(f => new ThemeEntry { ResourceKey = (string) f.GetValue(null)! })
+                                 .ToList();
 
             entries = list;
         }
-
-        app.Resources["Demo.HeaderStyle"] =
-            BrushedStyle.Identity
-                        .WithForeground(Find(app, ThemeKeys.CoolBrush, Brushes.Blue))
-                        .Weighing(TextWeight.Bold);
-
-        app.Resources["Demo.SubheaderStyle"] =
-            BrushedStyle.Identity
-                        .WithForeground(Find(app, ThemeKeys.AmberBrush, Brushes.Yellow))
-                        .Posturing(TextStyle.Italic);
-    
-        app.Resources["Demo.TypoStyle"] =
-            BrushedStyle.Identity
-                        .Underlining(UnderlineStyle.Curly,
-                                     Find(app, ThemeKeys.DangerBrush, Brushes.Red));
 
         foreach (var entry in entries)
         {

@@ -21,11 +21,12 @@ public class GlyphBrushedStylePaintTests
 {
     private static readonly Color Blue = Color.FromRgb(0, 0, 255);
     private static readonly Color Green = Color.FromRgb(0, 200, 0);
+    private static readonly Color Red = Color.FromRgb(255, 0, 0);
 
     /// <summary>A base non-default on every channel a careless delta could drop.</summary>
     private static CellStyle Rich =>
         CellStyle.Default
-                 .WithForeground(Color.FromRgb(255, 0, 0))
+                 .WithForeground(Red)
                  .WithBackground(Blue)
                  .WithAttributes(TextAttributes.Bold | TextAttributes.Underline)
                  .WithUnderlineStyle(UnderlineStyle.Curly)

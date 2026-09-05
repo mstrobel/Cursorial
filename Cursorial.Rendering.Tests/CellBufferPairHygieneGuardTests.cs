@@ -5,7 +5,7 @@ using Cursorial.Rendering;
 namespace Cursorial.Tests.Rendering;
 
 /// <summary>
-/// Both write paths — <see cref="CellBuffer.Set(int, int, string?, in CellStyle)"/> and the raw indexer —
+/// Both write paths — <see cref="CellBuffer.Set(int, int, ReadOnlySpan{char}, in CellStyle)"/> and the raw indexer —
 /// blank the surviving half of a wide pair they break apart. Neither may do that on the word of the
 /// <em>overwritten</em> cell alone: it must first confirm the neighbor really is the pairing half.
 /// The buffer can legitimately be inconsistent when they run — <see cref="CellBuffer.Fill(in Rect, in Cell)"/>

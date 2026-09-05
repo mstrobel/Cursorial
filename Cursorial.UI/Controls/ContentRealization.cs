@@ -64,12 +64,10 @@ internal static class ContentRealization
         {
             var templateContent = template.Build(content, host);
 
-            if (host.ForwardTextInverse &&
-                templateContent.IsSet(TextElement.InverseProperty) is false && 
-                BindingOperations.IsDataBound(templateContent, TextElement.InverseProperty) is false)
-            {
-                ForwardInverseOnly(host, templateContent);
-            }
+            if (host.ForwardTextInverse)
+                ForwardInverseOnly(host, templateContent, onlyIfUnset: true);
+
+            TextElement.ForwardBaseTextStyle(templateContent, ForwardSource(host), onlyIfUnset: true);
 
             return templateContent;
         }
@@ -168,7 +166,7 @@ internal static class ContentRealization
     internal static UIObject ForwardSource(ContentPresenter host)
         => host.ForwardsFromTemplatedParent ? host.TemplatedParent ?? (UIObject) host : host;
 
-    private static UIElement ForwardTextAttributeAxes(ContentPresenter host, UIElement leaf)
+    private static UIElement ForwardTextAttributeAxes(ContentPresenter host, UIElement leaf, bool onlyIfUnset = false)
     {
         var source = ForwardSource(host);
 
@@ -183,13 +181,13 @@ internal static class ContentRealization
         // LocalValue the forward would occlude even conditional rules (LocalValue > StyleTrigger).
         using (TemplateInstantiationScope.Enter())
         {
-            TextElement.ForwardBaseTextStyle(leaf, source);
-            TextElement.ForwardAllAxes(leaf, source, host.ForwardTextInverse);
+            TextElement.ForwardBaseTextStyle(leaf, source, onlyIfUnset);
+            TextElement.ForwardAllAxes(leaf, source, host.ForwardTextInverse, onlyIfUnset);
 
             if (leaf is IRichTextCapable)
             {
-                TextElement.ForwardFormatting(leaf, source);
-                TextElement.ForwardTypography(leaf, source);
+                TextElement.ForwardFormatting(leaf, source, onlyIfUnset);
+                TextElement.ForwardTypography(leaf, source, onlyIfUnset);
             }
         }
 
@@ -200,13 +198,14 @@ internal static class ContentRealization
     // swaps in unison with an inverted face; weight/style/underline don't apply to a glyph. Returns the
     // installed expression so the CALLER (ContentPresenter, for borrowed Icon content) owns its
     // teardown — a source-anchored binding on borrowed content would otherwise leak the Icon.
-    internal static BindingExpressionBase ForwardInverseOnly(ContentPresenter host, UIElement glyph)
+    internal static BindingExpressionBase? ForwardInverseOnly(ContentPresenter host, UIElement glyph,
+                                                              bool onlyIfUnset = false)
     {
         var source = ForwardSource(host);
 
         using (TemplateInstantiationScope.Enter())
         {
-            return TextElement.ForwardInverse(glyph, source);
+            return TextElement.ForwardInverse(glyph, source, onlyIfUnset);
         }
     }
 

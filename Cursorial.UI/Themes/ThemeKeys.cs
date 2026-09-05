@@ -77,6 +77,9 @@ public static class ThemeKeys
     /// <summary>Default text base style (foreground, background, weight, posture, etc.).</summary>
     public const string BaseTextStyle = "Theme.BaseTextStyle";
 
+    /// <summary>Default text dim style (foreground, background, weight, posture, etc.).</summary>
+    public const string DimTextStyle = "Theme.DimTextStyle";
+
     /// <summary>Faint text base style (foreground, background, weight, posture, etc.).</summary>
     public const string FaintTextStyle = "Theme.FaintTextStyle";
 
@@ -344,22 +347,11 @@ public static class ThemeKeys
     /// <summary>SplitButton dropdown indicator zone fill (--dd-zone).</summary>
     public const string SplitButtonDropZoneBrush = "Theme.SplitButtonDropZoneBrush";
 
-    /// <summary>The reverse-video HALF of the per-tier interactive-cue pair (a <c>bool</c> — the
-    /// per-axis split of the former whole-flags <c>InteractiveInverseAttributes</c>, proposal-
-    /// textattributes-decomposition §2.3): <see langword="true"/> under NoColor (colors collapse to
-    /// Default, so reverse-video restores the focus/pressed distinction — the one tier where
-    /// attributes are the cue vocabulary), <see langword="false"/> at every color tier (the palette
-    /// fill IS the cue; one cue vocabulary per tier). Cue rules set BOTH pair keys (the pair-coherence
-    /// theme test walks every tier dictionary).</summary>
-    public const string InteractiveCueInverse = "Theme.InteractiveCueInverse";
+    /// <summary>The base text style applied to the active mnemonic grapheme of the access key cue.</summary>
+    public const string InteractiveCueActiveStyle = "Theme.InteractiveCueActiveStyle";
 
-    /// <summary>The weight HALF of the per-tier interactive-cue pair (a <c>Cursorial.UI.Controls.TextWeight</c>):
-    /// <c>Faint</c> at (Dark|Light, Ansi16) — the 16-color focus cue — and <c>Normal</c> everywhere else.
-    /// Enum-typed so a future Bold-cue tier is a value change, not a third key.</summary>
-    public const string InteractiveCueWeight = "Theme.InteractiveCueWeight";
-
-    /// <summary>The underline style applied to the mnemonic grapheme of the access key cue.</summary>
-    public const string InteractiveCueUnderline = "Theme.InteractiveCueUnderline";
+    /// <summary>The base text style applied to the inactive mnemonic grapheme of the access key cue.</summary>
+    public const string InteractiveCueInactiveStyle = "Theme.InteractiveCueInactiveStyle";
 
     // ToggleSwitch / CheckBox / RadioButton.
     /// <summary>Check/radio glyph + label ink (--text).</summary>
@@ -447,6 +439,15 @@ public static class ThemeKeys
     /// <summary>List item selected (inactive) text base style (foreground, background, weight, posture, etc.).</summary>
     public const string ListItemSelectedInactiveTextStyle = "Theme.ListItemSelectedInactiveTextStyle";
 
+    /// <summary>Breadcrumb glyph normal text base style (foreground, background, weight, posture, etc.).</summary>
+    public const string BreadcrumbGlyphNormalTextStyle = "Theme.BreadcrumbGlyphNormalTextStyle";
+    /// <summary>Breadcrumb glyph hover text base style (foreground, background, weight, posture, etc.).</summary>
+    public const string BreadcrumbGlyphHoverTextStyle = "Theme.BreadcrumbGlyphHoverTextStyle";
+    /// <summary>Breadcrumb glyph expanded text base style (foreground, background, weight, posture, etc.).</summary>
+    public const string BreadcrumbGlyphExpandedTextStyle = "Theme.BreadcrumbGlyphExpandedTextStyle";
+    /// <summary>Breadcrumb glyph hinted text base style (foreground, background, weight, posture, etc.).</summary>
+    public const string BreadcrumbGlyphHintedTextStyle = "Theme.BreadcrumbGlyphHintedTextStyle";
+
     // TreeViewItem.
     /// <summary>Tree-node ink (--text).</summary>
     public const string TreeItemForegroundNormal = "Theme.TreeItemForegroundNormal";
@@ -520,6 +521,8 @@ public static class ThemeKeys
     public const string KeyTipTextWeight = "Theme.KeyTipTextWeight";
     /// <summary>The dimmed ink for a KeyTip badge's already-matched leading letters (multi-letter prefix highlight).</summary>
     public const string KeyTipMatchedBrush = "Theme.KeyTipMatchedBrush";
+    /// <summary>The vibrant ink for a KeyTip badge's not-yet-matched trailing letters (multi-letter prefix highlight).</summary>
+    public const string KeyTipUnmatchedBrush = "Theme.KeyTipUnmatchedBrush";
     /// <summary>A contextual ribbon tab's tinted resting well (--ctx-fill — the purple recess an inactive contextual
     /// tab sits in; the active one drops into <see cref="RibbonTabActiveBrush"/> but keeps its purple ink).</summary>
     public const string RibbonContextualFillBrush = "Theme.RibbonContextualFillBrush";

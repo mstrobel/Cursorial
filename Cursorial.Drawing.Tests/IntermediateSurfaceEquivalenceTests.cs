@@ -107,6 +107,7 @@ public class IntermediateSurfaceEquivalenceTests
 
     private static readonly Color Green = Color.FromRgb(0, 255, 0);
     private static readonly Color Blue = Color.FromRgb(0, 0, 255);
+    private static readonly Color Yellow = Color.FromRgb(255, 255, 0);
     private static readonly Color Red = Color.FromRgb(255, 0, 0);
     private static readonly Color RedHalf = Color.FromRgba(255, 0, 0, 128);
     private static readonly Color BlackHalf = Color.FromRgba(0, 0, 0, 128);
@@ -493,7 +494,7 @@ public class IntermediateSurfaceEquivalenceTests
 
     /// <summary>
     /// <b>RESIDUAL DIVERGENCE — not cell reclassification, and not closed by the replacing-blank marker.</b>
-    /// <see cref="CellBuffer.Set(int, int, string?, in CellStyle)"/> resolves the style it stores against the destination cell
+    /// <see cref="CellBuffer.Set(int, int, ReadOnlySpan{char}, in CellStyle)"/> resolves the style it stores against the destination cell
     /// (<c>Style.BlendOver</c>): an underline color that is not <see cref="Color.Default"/> composites over the
     /// destination's <i>background</i>, one that is inherits the destination's underline color. A wide pair is
     /// the only write the compositor makes through <c>Set</c>, so a wide glyph's underline color is resolved
@@ -513,20 +514,18 @@ public class IntermediateSurfaceEquivalenceTests
     /// to what the flat path stores, and so out of scope for the group work.
     /// </remarks>
     [Fact]
-    public void WidePairSurvivor_ResolvesItsUnderlineColorAtTheSurface()
+    public void WidePairSurvivor_ResolvesItsUnderlineColorAtTheSurface_DefaultColor()
     {
-        var pairStyle = CellStyle.Default.WithForeground(Blue).WithBackground(Red)
-                             .WithUnderlineStyle(UnderlineStyle.Dashed);   // underline color left at Default
+        var pairStyle = CellStyle.Default
+                                 .WithForeground(Blue)
+                                 .WithBackground(Red)
+                                 .WithUnderlineStyle(UnderlineStyle.Dashed);   // underline color left at Default
 
         var (flat, grouped) = BrokenPairOverGreen(pairStyle);
 
-        // Everything except the underline color agrees, including the erasure the marker is there for.
-        Assert.Equal(flat[1, 0] with { Style = flat[1, 0].Style.WithUnderlineColor(Color.Default) },
-                     grouped[1, 0] with { Style = grouped[1, 0].Style.WithUnderlineColor(Color.Default) });
-
-        // Flat resolved it against the screen cell's background; the group against Style.Transparent's.
-        Assert.Equal(Green, flat[1, 0].Style.UnderlineColor);
-        Assert.Equal(Color.Transparent, grouped[1, 0].Style.UnderlineColor);
+        // Both flat and the group maintained their Default color identity, avoiding compositing.
+        Assert.Equal(Color.Default, flat[1, 0].Style.UnderlineColor);
+        Assert.Equal(Color.Default, grouped[1, 0].Style.UnderlineColor);
 
         // A cell that is actually underlined keeps Color.Default through the scene's clear, so both paths
         // resolve it to Color.Default and the divergence is unreachable for any cell that can emit SGR 58.
@@ -534,6 +533,51 @@ public class IntermediateSurfaceEquivalenceTests
             BrokenPairOverGreen(pairStyle.AddAttributes(TextAttributes.Underline));
 
         Assert.Equal(Color.Default, flatUnderlined[1, 0].Style.UnderlineColor);
+        AssertBuffersEqual(flatUnderlined, groupedUnderlined, "underlined wide pair survivor");
+    }
+
+    /// <summary>
+    /// <b>RESIDUAL DIVERGENCE — not cell reclassification, and not closed by the replacing-blank marker.</b>
+    /// <see cref="CellBuffer.Set(int, int, ReadOnlySpan{char}, in CellStyle)"/> resolves the style it stores against the destination cell
+    /// (<c>Style.BlendOver</c>): an underline color that is not <see cref="Color.Default"/> composites over the
+    /// destination's <i>background</i>, one that is inherits the destination's underline color. A wide pair is
+    /// the only write the compositor makes through <c>Set</c>, so a wide glyph's underline color is resolved
+    /// wherever its pair is stored — through a group that is the surface, whose base is
+    /// <see cref="CellStyle.Transparent"/>. An intact pair is re-resolved by the outer <c>Set</c> and agrees; the
+    /// SURVIVING HALF of a pair the hygiene broke leaves the surface as a replacing blank, written through the
+    /// indexer, and carries the surface-resolved value to the screen.
+    /// </summary>
+    /// <remarks>
+    /// Bounded to <see cref="CellStyle.UnderlineColor"/> — grapheme, kind, background, foreground, attributes and
+    /// underline <i>style</i> all agree. It needs an underline color that is still translucent when it reaches
+    /// the compositor, which is what a scene's transparent clear turns <see cref="Color.Default"/> into for a
+    /// cell carrying no <see cref="TextAttributes.Underline"/> — and SGR 58 is only emitted for a cell that
+    /// carries one. A genuinely underlined cell keeps <see cref="Color.Default"/> through the clear and is
+    /// bit-identical on both paths (asserted below), as is any cell with an opaque underline color. Closing it
+    /// means not routing the compositor's already-composited style back through <c>Set</c>'s blend — a change
+    /// to what the flat path stores, and so out of scope for the group work.
+    /// </remarks>
+    [Fact]
+    public void WidePairSurvivor_ResolvesItsUnderlineColorAtTheSurface_RgbColor()
+    {
+        var pairStyle = CellStyle.Default
+                                 .WithForeground(Blue)
+                                 .WithBackground(Red)
+                                 .WithUnderlineColor(Yellow)
+                                 .WithUnderlineStyle(UnderlineStyle.Dashed);   // underline color left at Default
+
+        var (flat, grouped) = BrokenPairOverGreen(pairStyle);
+
+        // Both flat and the group maintained their Yellow color identity.
+        Assert.Equal(Yellow, flat[1, 0].Style.UnderlineColor);
+        Assert.Equal(Yellow, grouped[1, 0].Style.UnderlineColor);
+
+        // A cell that is actually underlined keeps Color.Default through the scene's clear, so both paths
+        // resolve it to Color.Default and the divergence is unreachable for any cell that can emit SGR 58.
+        var (flatUnderlined, groupedUnderlined) =
+            BrokenPairOverGreen(pairStyle.AddAttributes(TextAttributes.Underline));
+
+        Assert.Equal(Yellow, flatUnderlined[1, 0].Style.UnderlineColor);
         AssertBuffersEqual(flatUnderlined, groupedUnderlined, "underlined wide pair survivor");
     }
 

@@ -18,9 +18,9 @@ namespace Cursorial.UI.Bars;
 /// lookup), so the suite renders self-contained — no consumer dictionary merge — over <c>CursorialTheme.BuiltIn</c>.
 /// (A XAML theme-overlay twin, and the split/popup tinted-zone + Ribbon tokens, follow in later phases.)
 /// </summary>
-internal static class CursorialBarsTheme
+public static class CursorialBarsTheme
 {
-    private static readonly ISelectorTypeResolver TypeResolver = new BarsSelectorTypeResolver();
+    public static readonly ISelectorTypeResolver TypeResolver = new BarsSelectorTypeResolver();
 
     // ───────────────────────────── BarButton / BarToggleButton ─────────────────────────────
 

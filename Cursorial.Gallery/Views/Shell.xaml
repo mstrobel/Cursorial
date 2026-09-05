@@ -1058,7 +1058,12 @@
                       ItemsSource="{Binding Themes}" SelectedItem="{Binding SelectedTheme, Mode=TwoWay}" />
           </Grid>
 
-          <ItemsControl Margin="0,1,0,0" ItemsSource="{Binding Entries}" Background="{DynamicResource {x:Static ThemeKeys.ElevationWell}}">
+          <ItemsControl Margin="0,1,0,0" ItemsSource="{Binding Entries}"
+                        Background="{DynamicResource {x:Static ThemeKeys.ElevationWell}}"
+                        IsTextSearchEnabled="True"
+                        IsTextSearchCaseSensitive="False"
+                        TextSearch.TextPath="ResourceKey"
+                        IsTabStop="False">
             <ItemsControl.Resources>
               <DataTemplate DataType="Pen">
                 <Border Width="6" Height="2" BorderPen="{Binding}" TextElement.Inverse="True" Background="{x:Null}" />
@@ -1079,7 +1084,9 @@
                 <TextBlock Text="Ab xy" Underline="{Binding}" />
               </DataTemplate>
               <DataTemplate DataType="BrushedStyle">
-                <TextBlock Text="Ab, xy" BaseTextStyle="{Binding}" />
+                <Border Background="{Binding Background}" VerticalAlignment="Top">
+                  <TextBlock Text="Ab, xy" BaseTextStyle="{Binding}"/>
+                </Border>
               </DataTemplate>
               <DataTemplate DataType="x:Boolean">
                 <TextBlock Text="{Binding Converter={BooleanConverter TrueValue='Y', FalseValue='N'}}" />
@@ -1129,7 +1136,7 @@
               <ItemsControl.Template>
                 <ControlTemplate TargetType="ItemsControl">
                   <Border Background="{TemplateBinding Background}">
-                    <ScrollViewer>
+                    <ScrollViewer Focusable="True">
                       <ItemsPresenter/>
                     </ScrollViewer>
                   </Border>
@@ -1176,7 +1183,8 @@
                  TextSearch.TextPath="Title">
           <ListBox.ItemTemplate>
             <DataTemplate DataType="vm:PageViewModel">
-              <TextBlock x:DataType="vm:PageViewModel" Text="{Binding Title}" />
+              <TextBlock x:DataType="vm:PageViewModel"
+                         Text="{Binding Title}" />
             </DataTemplate>
           </ListBox.ItemTemplate>
         </ListBox>

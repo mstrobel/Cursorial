@@ -891,6 +891,9 @@ public sealed class FrameRenderer
         if (!_terminalDefaultForeground.IsDefault && source.Foreground == _terminalDefaultForeground)
             style = style.WithForeground(Color.Default);
 
+        if (!_terminalDefaultForeground.IsDefault && source.UnderlineColor == _terminalDefaultForeground)
+            style = style.WithUnderlineColor(Color.Default);
+
         if (!_terminalDefaultBackground.IsDefault && source.Background == _terminalDefaultBackground)
             style = style.WithBackground(Color.Default);
 

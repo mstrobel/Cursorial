@@ -1,3 +1,5 @@
+using System.Collections.Immutable;
+
 namespace Cursorial.UI;
 
 public abstract partial class UIElement
@@ -135,6 +137,8 @@ public abstract partial class UIElement
                ? (_interactionState & state) != 0
                : _pseudoClasses?.CustomClasses.Contains(pseudoClass) ?? false;
 
+    public IReadOnlyList<string> CustomPseudoClasses => _pseudoClasses?.CustomClasses ?? ImmutableList<string>.Empty;
+    
     /// <summary>Whether <paramref name="pseudoClass"/> (with leading colon) is set in the custom pseudo set.</summary>
     internal bool HasCustomPseudoClass(string pseudoClass) => _pseudoClasses?.ContainsCustom(pseudoClass) ?? false;
 

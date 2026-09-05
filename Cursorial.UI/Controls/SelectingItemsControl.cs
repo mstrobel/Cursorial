@@ -81,7 +81,6 @@ public abstract class SelectingItemsControl : ItemsControl
     {
         AddGlobalEffects(PropertyEffects.BindsTwoWayByDefault, SelectedItemProperty);
         AddGlobalEffects(PropertyEffects.BindsTwoWayByDefault, SelectedIndexProperty);
-        
     }
 
     /// <inheritdoc cref="SelectionModeProperty"/>
@@ -134,6 +133,8 @@ public abstract class SelectingItemsControl : ItemsControl
 
         return -1;
     }
+
+    protected override UIElement GetContainerForItemOverride() => new ListBoxItem();
 
     // ── selection ops driven by the input layer / containers ──────────────────────────────────────────
 

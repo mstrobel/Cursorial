@@ -63,8 +63,8 @@ public class DialogsViewModel : PageViewModel
         ToggleMessageBoxButtonCommand.RaiseCanExecuteChanged();
     }
 
-    private UIApplication? Application { get; }
-    
+    private UIApplication? Application => field ?? UIApplication.Current;
+
     public ICommand ShowTaskDialogCommand { get; }
 
     public ICommand ShowMessageDialogCommand { get; }

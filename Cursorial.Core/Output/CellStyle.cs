@@ -58,8 +58,8 @@ public readonly record struct CellStyle(
     /// its default (<see cref="Output.Hyperlink.None"/>).
     /// </summary>
     public static CellStyle Transparent { get; } = Default.WithForeground(Color.Transparent)
-                                                      .WithBackground(Color.Transparent)
-                                                      .WithUnderlineColor(Color.Transparent);
+                                                          .WithBackground(Color.Transparent)
+                                                          .WithUnderlineColor(Color.Default);
 
     /// <summary>Replace the foreground color.</summary>
     public CellStyle WithForeground(Color color) => this with { Foreground = color };

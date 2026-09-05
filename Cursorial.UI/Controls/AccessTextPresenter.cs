@@ -3,6 +3,7 @@ using Cursorial.Rendering.Media;
 using Cursorial.Rendering.Text;
 using Cursorial.Text;
 using Cursorial.UI.Input;
+using Cursorial.UI.Themes;
 
 namespace Cursorial.UI.Controls;
 
@@ -10,7 +11,7 @@ namespace Cursorial.UI.Controls;
 /// The access-key label renderer (design doc §12.5): a never-templated leaf that renders its
 /// <see cref="Text"/> through the shared text pipeline (<see cref="FormattedTextCache"/> —
 /// UNIFIED-TEXT-SCOPING M2) and marks the mnemonic grapheme with the access-key cue
-/// (<see cref="KeyUnderlineProperty"/>, default <see cref="UnderlineStyle.Single"/>) when
+/// (<see cref="ActiveCueStyle"/>, default <see cref="UnderlineStyle.Single"/>) when
 /// <see cref="AccessKeyManager.ShowUnderlineProperty"/> is set on it.
 /// </summary>
 /// <remarks>
@@ -36,26 +37,23 @@ public sealed class AccessTextPresenter : UIElement, ITrimmedTextSource, IRichTe
     public static readonly StyledProperty<AccessText> TextProperty =
         UIProperty.Register<AccessTextPresenter, AccessText>(nameof(Text));
 
-    /// <summary>The text weight applied to the mnemonic grapheme when the cue shows (default <see cref="TextWeight.Normal"/>; <c>AffectsRender</c>).</summary>
-    public static readonly StyledProperty<TextWeight> KeyWeightProperty =
-        UIProperty.Register<AccessTextPresenter, TextWeight>(nameof(KeyWeight), defaultValue: TextWeight.Normal);
+    /// <summary>The text style applied to an active access key cue.</summary>
+    public static readonly StyledProperty<BrushedStyle> ActiveCueStyleProperty =
+        UIProperty.Register<AccessTextPresenter, BrushedStyle>(
+            nameof(ActiveCueStyle),
+            new PropertyMetadata<BrushedStyle>{ DefaultResourceKey = ThemeKeys.InteractiveCueActiveStyle },
+            inherits: true);
 
-    /// <summary>The text reverse-video attribute applied to the mnemonic grapheme when the cue shows (default <see langword="false"/>; <c>AffectsRender</c>).</summary>
-    public static readonly StyledProperty<bool> KeyInverseProperty =
-        UIProperty.Register<AccessTextPresenter, bool>(nameof(KeyInverse), defaultValue: false);
-
-    /// <summary>The underline style applied to the mnemonic grapheme when the cue shows (default <see cref="UnderlineStyle.Single"/>; <c>AffectsRender</c>).</summary>
-    public static readonly StyledProperty<UnderlineStyle?> KeyUnderlineProperty =
-        UIProperty.Register<AccessTextPresenter, UnderlineStyle?>(nameof(KeyUnderline),
-                                                                  defaultValue: UnderlineStyle.Single);
+    /// <summary>The text style applied to an inactive access key cue.</summary>
+    public static readonly StyledProperty<BrushedStyle> InactiveCueStyleProperty =
+        UIProperty.Register<AccessTextPresenter, BrushedStyle>(
+            nameof(InactiveCueStyle),
+            new PropertyMetadata<BrushedStyle>{ DefaultResourceKey = ThemeKeys.InteractiveCueInactiveStyle },
+            inherits: true);
 
     /// <summary>The text foreground — <see cref="TextElement.ForegroundProperty"/> <c>AddOwner</c> (inherits).</summary>
     public static readonly StyledProperty<IBrush?> ForegroundProperty =
         TextElement.ForegroundProperty.AddOwner<AccessTextPresenter>();
-
-    /// <summary>The foreground of the access key indicator (underline).</summary>
-    public static readonly StyledProperty<IBrush?> IndicatorBrushProperty =
-        UIProperty.Register<AccessTextPresenter, IBrush?>(nameof(IndicatorBrush));
 
     /// <summary>The wrap mode (<see cref="TextElement.TextWrappingProperty"/> <c>AddOwner</c>;
     /// default <see cref="WrapMode.NoWrap"/> — the label's historical single-line behavior).</summary>
@@ -76,7 +74,8 @@ public sealed class AccessTextPresenter : UIElement, ITrimmedTextSource, IRichTe
         // they change the indicator DELTA, which is a layout-key term, so the repaint re-formats by key
         // miss without a re-measure (the cue never changes the label's geometry).
         AffectsMeasure<AccessTextPresenter>(TextProperty);
-        AffectsRender<AccessTextPresenter>(TextProperty, IndicatorBrushProperty, KeyWeightProperty, KeyInverseProperty, KeyUnderlineProperty);
+
+        AffectsRender<AccessTextPresenter>(TextProperty, ActiveCueStyleProperty, InactiveCueStyleProperty);
     }
 
     // The shared parse/format cache (UNIFIED-TEXT-SCOPING M2). Created lazily so no
@@ -102,21 +101,15 @@ public sealed class AccessTextPresenter : UIElement, ITrimmedTextSource, IRichTe
 
     /// <inheritdoc cref="TextProperty"/>
     public AccessText Text { get => GetValue(TextProperty); set => SetValue(TextProperty, value); }
+    
+    /// <inheritdoc cref="ActiveCueStyleProperty"/>
+    public BrushedStyle ActiveCueStyle { get => GetValue(ActiveCueStyleProperty); set => SetValue(ActiveCueStyleProperty, value); }
 
-    /// <inheritdoc cref="KeyWeightProperty"/>
-    public TextWeight KeyWeight { get => GetValue(KeyWeightProperty); set => SetValue(KeyWeightProperty, value); }
-
-    /// <inheritdoc cref="KeyInverseProperty"/>
-    public bool KeyInverse { get => GetValue(KeyInverseProperty); set => SetValue(KeyInverseProperty, value); }
-
-    /// <inheritdoc cref="KeyUnderlineProperty"/>
-    public UnderlineStyle? KeyUnderline { get => GetValue(KeyUnderlineProperty); set => SetValue(KeyUnderlineProperty, value); }
+    /// <inheritdoc cref="InactiveCueStyleProperty"/>
+    public BrushedStyle InactiveCueStyle { get => GetValue(InactiveCueStyleProperty); set => SetValue(InactiveCueStyleProperty, value); }
 
     /// <inheritdoc cref="ForegroundProperty"/>
     public IBrush? Foreground { get => GetValue(ForegroundProperty); set => SetValue(ForegroundProperty, value); }
-
-    /// <inheritdoc cref="IndicatorBrushProperty"/>
-    public IBrush? IndicatorBrush { get => GetValue(IndicatorBrushProperty); set => SetValue(IndicatorBrushProperty, value); }
 
     /// <inheritdoc cref="TextWrappingProperty"/>
     public WrapMode TextWrapping { get => GetValue(TextWrappingProperty); set => SetValue(TextWrappingProperty, value); }
@@ -184,7 +177,8 @@ public sealed class AccessTextPresenter : UIElement, ITrimmedTextSource, IRichTe
         // fallbacks"), and the cue is an indicator DECLARATION riding the request — both are key
         // terms, so any change re-formats by key miss.
         var carrier = BrushedStyle.FromElement(this);
-        var indicator = ComputeIndicator(label, in carrier);
+        var cueStyle = ResolveCueStyle(in carrier);
+        var indicator = ComputeIndicator(label, in cueStyle);
 
         var request = new FormattedTextCache.LayoutRequest(
             text, MarkupLane: false, width, height,
@@ -194,13 +188,46 @@ public sealed class AccessTextPresenter : UIElement, ITrimmedTextSource, IRichTe
         if (Cache.TryGetLayout(in request, out var cached))
             return cached;
 
-        var formatted = Cache.TryFormatPlainTextFast(in request, in carrier)
-                        ?? Cache.Format(
-                               FormattedTextCache.BuildIndicatorText(text, in carrier, indicator,
-                                                                     TextTrimming, TextWrapping),
-                               width, height, TextAlignment.Left, TextTrimming, TextWrapping);
+        var formatted = Cache.TryFormatPlainTextFast(in request, in carrier) ??
+                        Cache.Format(
+                            FormattedTextCache.BuildIndicatorText(text, in carrier, indicator,
+                                                                  TextTrimming, TextWrapping),
+                            width, height, TextAlignment.Left, TextTrimming, TextWrapping);
+
         Cache.StoreLayout(in request, formatted);
         return formatted;
+    }
+
+    private BrushedStyle ResolveCueStyle(in BrushedStyle labelStyle)
+    {
+        var active = AccessKeyManager.GetShowUnderline(this);
+        var cue = active ? ActiveCueStyle : InactiveCueStyle;
+        
+        var underlineStyle = cue.UnderlineShape;
+
+        if (cue.RemovedAttributes.HasFlag(TextAttributes.Underline))
+            underlineStyle = null;
+
+        var hasKeyUnderline = underlineStyle is not null;
+        var keyUnderlineStyle = underlineStyle ?? UnderlineStyle.Single;
+
+        var cueForeground = cue.Foreground ?? Foreground;
+        var indicatorBrush = cue.UnderlineColor ?? cueForeground;
+
+        // The underline rides the cue when the key states one, and also when the LABEL is underlined —
+        // in which case the cue still owns the shape and the indicator color over its own grapheme.
+        // A shape implies the flag structurally (PartialStyle.ApplyTo), so no `Setting(Underline)` is
+        // needed — and none is possible: Underline owns an axis, so WithSet/Setting reject it.
+        if (hasKeyUnderline || labelStyle.AppliedAttributes.HasFlag(TextAttributes.Underline))
+            cue = cue.Underlining(keyUnderlineStyle, indicatorBrush ?? cueForeground);
+
+        if (active && cue.Foreground is null && indicatorBrush is not null && hasKeyUnderline is false)
+            cue = cue.WithForeground(indicatorBrush); // if no distinguishing cue, paint the entire marker
+
+        if (indicatorBrush is not null && cue.AppliedAttributes.HasFlag(TextAttributes.Underline))
+            cue = cue with { UnderlineColor = indicatorBrush };
+
+        return cue;
     }
 
     /// <summary>
@@ -209,54 +236,16 @@ public sealed class AccessTextPresenter : UIElement, ITrimmedTextSource, IRichTe
     /// delta composes over at paint. <see langword="null"/> when the cue is not showing, the label
     /// has no mnemonic, or the delta would be the identity.
     /// </summary>
-    private FormattedTextCache.TextIndicator? ComputeIndicator(in AccessText label, in BrushedStyle labelStyle)
+    private FormattedTextCache.TextIndicator? ComputeIndicator(in AccessText label, in BrushedStyle cueStyle)
     {
         // The theme's ':access-keys AccessTextPresenter' rule flips ShowUnderline on EVERY presenter
         // under the cue-bearing root regardless of whether its label carries a mnemonic, so the HasKey
         // clause — not a false ShowUnderline — is what guarantees a mnemonic-less label draws no
         // underline even while the cue is active.
-        if (!label.HasKey || !AccessKeyManager.GetShowUnderline(this))
+        if (!label.HasKey || cueStyle.IsIdentity /* i.e., cue is inactive and has no specific inactive presentation */)
             return null;
 
-        var cue = BrushedStyle.Identity;
-
-        var hasKeyUnderline = KeyUnderline is not null;
-        var keyUnderlineStyle = KeyUnderline ?? UnderlineStyle.Single;
-
-        // Reverse-video is a TOGGLE, not a union. If the label's normal presentation is already
-        // reverse-video and the key is supposed to be too, the flag comes back OFF for the
-        // 'double-reverse-video' effect — the delta algebra composing over the document carrier.
-        if (KeyInverse)
-            cue = cue.Toggling(TextAttributes.Inverse);
-
-        // WEIGHT IS AN AXIS, AND THE CUE WINS. Bold and Faint share the SGR 22 reset, so `Bold | Faint`
-        // is not "two attributes" — `Weighing` IMPOSES the cue's weight and clears the other, because
-        // the cue is the later and more specific statement: it is the theme saying "this grapheme is
-        // the mnemonic", against a weight the label states for its text as a whole.
-        //
-        // TextWeight.Normal is deliberately NOT imposed. It is the property's default and the value
-        // every color tier ships, so treating it as an opinion would have the resting cue strip the
-        // weight off the mnemonic of every bold label — "no cue weight" is what Normal has always
-        // meant here.
-        if (KeyWeight is not TextWeight.Normal)
-            cue = cue.Weighing(KeyWeight);
-
-        var indicatorBrush = IndicatorBrush ?? Foreground;
-
-        // The underline rides the cue when the key states one, and also when the LABEL is underlined —
-        // in which case the cue still owns the shape and the indicator color over its own grapheme.
-        // A shape implies the flag structurally (PartialStyle.ApplyTo), so no `Setting(Underline)` is
-        // needed — and none is possible: Underline owns an axis, so WithSet/Setting reject it.
-        if (hasKeyUnderline || labelStyle.AppliedAttributes.HasFlag(TextAttributes.Underline))
-            cue = cue.Underlining(keyUnderlineStyle, indicatorBrush);
-
-        if (indicatorBrush is not null && hasKeyUnderline is false)
-            cue = cue.WithForeground(indicatorBrush); // if no distinguishing cue, paint the entire marker
-
-        if (cue.IsIdentity)
-            return null;
-
-        return new FormattedTextCache.TextIndicator(label.KeyIndex, cue);
+        return new FormattedTextCache.TextIndicator(label.KeyIndex, cueStyle);
     }
 
     // The trimmed-content tooltip payload (moved from ContentPresenter's inline copy — the

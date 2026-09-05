@@ -312,7 +312,7 @@ internal static class ControlThemes
                }
            }
           .SetResource(Control.BackgroundProperty, ThemeKeys.WellBrush) // a list is a recessed well
-          .SetResource(Control.ForegroundProperty, ThemeKeys.TextBrush)
+          .SetResource(Control.BaseTextStyleProperty, ThemeKeys.ListItemNormalTextStyle)
           .Set(Control.TemplateProperty, ListBoxTemplate())
           .Set(ItemsControl.ItemsPanelProperty, VirtualizingItemsPanelTemplate());
 
@@ -725,28 +725,69 @@ internal static class ControlThemes
     // separator stays on the page between two filled chips — a hover that swallowed the separator would read as
     // one wide button rather than a trail. The current (deepest) segment hides its separator; that is driven by
     // BreadcrumbBarItem itself, not by a /template/ rule, so both theme halves behave identically.
-    private static ControlTemplate BreadcrumbBarItemTemplate() => new(ctx =>
+    private static ControlTemplate BreadcrumbBarItemTemplate()
     {
-        var presenter = new ContentPresenter { RecognizesAccessKey = true, ShowTrimmedContentInToolTip = true };
-        ctx.RegisterName("PART_ContentPresenter", presenter);
-        presenter.SetBinding(TextElement.ForegroundProperty, TemplateBinding.From(Control.ForegroundProperty));
-        TextElement.ForwardInverse(presenter);
+        var collapsedGlyph = new IconCarrier { Glyph = "\U000f035f", GlyphWidth = 1, Text = "▸" };
+        var expandedGlyph = new IconCarrier { Glyph = "\U000f035d", GlyphWidth = 1, Text = "▾" };
 
-        var chip = new Border { Child = presenter, Occludes = true };
-        chip.SetBinding(Border.PaddingProperty, TemplateBinding.From(Control.PaddingProperty));
-        chip.SetBinding(Border.BackgroundProperty, TemplateBinding.From(Control.BackgroundProperty));
-        chip.SetBinding(Border.BorderPenProperty, TemplateBinding.From(Control.BorderPenProperty));
-        chip.SetBinding(TextElement.InverseProperty, TemplateBinding.From(TextElement.InverseProperty));
+        var t = new ControlTemplate(
+            ctx =>
+            {
+                var presenter = new ContentPresenter
+                                { RecognizesAccessKey = true, ShowTrimmedContentInToolTip = true };
 
-        var separator = new TextBlock { Text = "▸" };
-        separator.SetResourceReference(TextBlock.ForegroundProperty, ThemeKeys.MutedBrush);
-        ctx.RegisterName("PART_Separator", separator);
+                ctx.RegisterName("PART_ContentPresenter", presenter);
 
-        var row = new StackPanel { Orientation = Orientation.Horizontal };
-        row.Children.Add(chip);
-        row.Children.Add(separator);
-        return row;
-    });
+                presenter.SetBinding(TextElement.ForegroundProperty,
+                                     TemplateBinding.From(Control.ForegroundProperty));
+
+                TextElement.ForwardInverse(presenter);
+
+                var chip = new Border { Child = presenter, Occludes = true };
+                chip.SetBinding(Border.PaddingProperty, TemplateBinding.From(Control.PaddingProperty));
+                chip.SetBinding(Border.BackgroundProperty, TemplateBinding.From(Control.BackgroundProperty));
+                chip.SetBinding(Border.BorderPenProperty, TemplateBinding.From(Control.BorderPenProperty));
+                chip.SetBinding(TextElement.InverseProperty, TemplateBinding.From(TextElement.InverseProperty));
+
+                var glyph = new ContentPresenter { Content = collapsedGlyph };
+                var separator = new Border { Child = glyph, Occludes = true, Padding = Margins.Zero };
+
+                glyph.SetBinding(Icon.IconBrushProperty,
+                                 CompiledBinding.For(TextElement.ForegroundProperty,
+                                                     relativeSource: RelativeSource.Self));
+
+                glyph.SetResourceReference(TextElement.BaseTextStyleProperty,
+                                           ThemeKeys.BreadcrumbGlyphNormalTextStyle);
+
+                TextElement.ForwardBaseTextStyle(separator, source: glyph);
+
+                ctx.RegisterName("PART_Separator", separator);
+                ctx.RegisterName("PART_SeparatorGlyph", glyph);
+
+                var row = new StackPanel { Orientation = Orientation.Horizontal };
+                row.Children.Add(chip);
+                row.Children.Add(separator);
+                return row;
+            });
+
+        t.Styles.Add(
+            new Style(":is(BreadcrumbBarItem)")
+            {
+                Children =
+                {
+                    new Style("^:pointerover /template/ #PART_SeparatorGlyph, " +
+                              "^:focus-visible /template/ #PART_SeparatorGlyph")
+                       .SetResource(TextElement.BaseTextStyleProperty, ThemeKeys.BreadcrumbGlyphHintedTextStyle),
+                    new Style("^ /template/ #PART_SeparatorGlyph:pointerover")
+                       .SetResource(TextElement.BaseTextStyleProperty, ThemeKeys.BreadcrumbGlyphHoverTextStyle),
+                    new Style("^:expanded /template/ #PART_SeparatorGlyph")
+                       .Set(ContentPresenter.ContentProperty, expandedGlyph)
+                       .SetResource(TextElement.BaseTextStyleProperty, ThemeKeys.BreadcrumbGlyphExpandedTextStyle)
+                }
+            });
+        
+        return t;
+    }
 
     private static Style BreadcrumbBarItemTheme()
     {
@@ -754,20 +795,19 @@ internal static class ControlThemes
         // you are. Ordered :current → :pointerover → :pressed → :focus-visible → :disabled, so interaction always
         // wins the pseudo-class tie (document order breaks it).
         var theme = new Style { Key = "Theme.BreadcrumbBarItem" }
-            .SetResource(Control.ForegroundProperty, ThemeKeys.TextDimBrush)
+            .SetResource(Control.BaseTextStyleProperty, ThemeKeys.DimTextStyle)
             .Set(Control.PaddingProperty, new Margins(1, 0))
             .Set(Control.TemplateProperty, BreadcrumbBarItemTemplate());
-        theme.Children.Add(new Style("^:current").SetResource(Control.ForegroundProperty, ThemeKeys.TextBrush));
+        theme.Children.Add(new Style("^:current")
+                              .SetResource(Control.BaseTextStyleProperty, ThemeKeys.BaseTextStyle));
         theme.Children.Add(new Style("^:pointerover")
-                              .SetResource(Control.BackgroundProperty, ThemeKeys.ListItemBackgroundHover)
-                              .SetResource(Control.ForegroundProperty, ThemeKeys.ListItemForegroundHover));
+                              .SetResource(Control.BaseTextStyleProperty, ThemeKeys.ListItemHoverTextStyle));
         theme.Children.Add(new Style("^:pressed")
-                              .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundPressed)
-                              .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundPressed));
+                              .SetResource(Control.BaseTextStyleProperty, ThemeKeys.BreadcrumbGlyphExpandedTextStyle));
         theme.Children.Add(new Style("^:focus-visible")
-                              .SetResource(Control.BackgroundProperty, ThemeKeys.ListItemBackgroundFocus)
-                              .SetResource(Control.ForegroundProperty, ThemeKeys.ListItemForegroundFocus));
-        theme.Children.Add(new Style("^:disabled").SetResource(Control.ForegroundProperty, ThemeKeys.ListItemForegroundDisabled));
+                              .SetResource(Control.BaseTextStyleProperty, ThemeKeys.ListItemFocusTextStyle));
+        theme.Children.Add(new Style("^:disabled")
+                              .SetResource(Control.BaseTextStyleProperty, ThemeKeys.ListItemDisabledTextStyle));
         return theme;
     }
 
@@ -2671,7 +2711,7 @@ public sealed class ToggleGlyph : UIElement, IValueObserver<bool?>
         get => GetValue(GlyphForegroundProperty);
         set => SetValue(GlyphForegroundProperty, value);
     }
-    
+
     // The caps-unicode glyph-set override (design doc §12.7 / SD14): CursorialThemeStyles' `.caps-unicode`
     // rules set this per control type to opt the marks UP from the ASCII resource base to Unicode (✓/▪/●);
     // ToggleGlyph reads it off its Owner, falling back to the glyph-set resource when unset (a caps-ascii
@@ -2749,7 +2789,7 @@ public sealed class ToggleGlyph : UIElement, IValueObserver<bool?>
     protected override Size MeasureOverride(Size availableSize)
     {
         var glyph = Glyphs.ForChecked(IsChecked);
-        return new Size(Text.GraphemeWidth.StringWidth(glyph), 1);
+        return new Size(GraphemeWidth.StringWidth(glyph), 1);
     }
 
     /// <inheritdoc/>
@@ -2761,40 +2801,38 @@ public sealed class ToggleGlyph : UIElement, IValueObserver<bool?>
         if (context.Bounds.IsEffectivelyEmpty)
             return;
 
+        var style = BrushedStyle.FromElement(this);
         var glyph = Glyphs.ForChecked(IsChecked);
-        var foreground = GlyphForeground ?? Owner?.Foreground;
+        var foreground = GlyphForeground ?? style.Foreground ?? Owner?.Foreground;
+
+        if (foreground != style.Foreground)
+            style = style with { Foreground = foreground };
+
         // The glyph honors the effective TextElement attributes (None for an ordinary control), so a
         // NoColor disabled check/radio dims with Faint to match its (Faint) content text — the whole control
         // reads as disabled, not just its label (review #1 follow-up).
-        var attrs = TextElement.ComposeAttributes(this).Flags;
 
         // Bracket-neutral colored mark (gallery idiom): the box "[ ]" / "( )" paints in the inherited
         // foreground while the inner mark (✓ / ▪ / ●) takes its state color — but only when a mark color
         // resolves AND the glyph is the canonical open+mark+close triple. Otherwise the whole glyph paints
         // in the foreground (e.g. unchecked, a custom non-triple glyph, or no mark color configured).
-        if (MarkBrush(IsChecked) is { } mark && glyph.Length >= 3)
+        if (MarkBrush(IsChecked) is {} mark && glyph.Length >= 3)
         {
             var open = glyph[..1];
             var inner = glyph[1..^1];
-            var openWidth = Text.GraphemeWidth.StringWidth(open);
-            DrawAt(context, 0, open, foreground, attrs);
-            DrawAt(context, openWidth, inner, mark, attrs);
-            DrawAt(context, openWidth + Text.GraphemeWidth.StringWidth(inner), glyph[^1..], foreground, attrs);
+            var openWidth = GraphemeWidth.StringWidth(open);
+            DrawAt(context, 0, open, style);
+            DrawAt(context, openWidth, inner, style.WithForeground(mark));
+            DrawAt(context, openWidth + GraphemeWidth.StringWidth(inner), glyph[^1..], style);
             return;
         }
 
-        DrawAt(context, 0, glyph, foreground, attrs);
+        DrawAt(context, 0, glyph, style);
     }
 
-    private static void DrawAt(RenderContext context, int column, string text, IBrush? brush, TextAttributes attributes)
+    private static void DrawAt(RenderContext context, int column, string text, BrushedStyle style)
     {
-        var style = new CellStyle().WithAttributes(attributes);
-        var styleTemplate = BrushedStyle.Identity.Composed(PartialStyle.From(style));
-
-        if (brush != null)
-            styleTemplate = styleTemplate.WithForeground(brush);
-
-        context.DrawText(column, 0, text, styleTemplate);
+        context.DrawText(column, 0, text, style);
     }
 
     // The mark color for the checked / indeterminate states (a ThemeKeys brush resource resolved through

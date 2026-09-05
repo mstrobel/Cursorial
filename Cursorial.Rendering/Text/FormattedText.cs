@@ -711,9 +711,12 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
                 sb.Append(string.IsNullOrEmpty(cell.Grapheme) ? " " : cell.Grapheme);
             }
 
-            // Add newline if not the last row
+            // Add newline if not the last row. A literal '\n' rather than AppendLine (Environment.NewLine)
+            // so the plain-text projection is byte-identical on every platform — this is an in-memory
+            // rendering of a cell grid, not console output, and a Windows '\r\n' here would leak into any
+            // consumer that compares, hashes, or snapshots the result.
             if (row < lastNonEmptyRow)
-                sb.AppendLine();
+                sb.Append('\n');
         }
     }
     public string ToPlainText(in Rect? bounds = null, bool? fillEntireBounds = null, IGraphemeCache? graphemeCache = null)

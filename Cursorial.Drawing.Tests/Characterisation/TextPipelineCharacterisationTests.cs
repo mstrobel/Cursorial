@@ -294,7 +294,12 @@ public class TextPipelineCharacterisationTests
     {
         try
         {
-            return producer();
+            // LF-normalize the producer's own line breaks BEFORE the caller escapes them. Escape() turns a
+            // literal CR into the two-character text "\r", which then survives Approve's late \r\n→\n pass —
+            // so a producer that joins rows with Environment.NewLine (Windows \r\n) would otherwise bake a
+            // platform-dependent "\r" into the dump and diverge from a baseline captured on Unix. This keeps
+            // the harness machine-independent even if a producer is not.
+            return producer().Replace("\r\n", "\n").Replace('\r', '\n');
         }
         catch (Exception ex)
         {

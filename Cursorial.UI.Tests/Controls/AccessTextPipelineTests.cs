@@ -344,7 +344,7 @@ public sealed class AccessTextPipelineTests
 
         var presenter = Presenter("File", 'F', 0);
 
-        presenter.ActiveCueStyle = presenter.ActiveCueStyle with { Foreground = new SolidColorBrush(red) };
+        presenter.ActiveCueStyle = presenter.ActiveCueStyle with { UnderlineColor = new SolidColorBrush(red) };
 
         var (host, _) = Show(presenter, columns: 12, rows: 1);
         using var _1 = host;
@@ -353,7 +353,7 @@ public sealed class AccessTextPipelineTests
 
         // The delta is a layout-key term: the brush swap re-formats on the repaint its
         // AffectsRender lane triggers, and the fresh cue ink lands.
-        presenter.ActiveCueStyle = presenter.ActiveCueStyle with { Foreground = new SolidColorBrush(green) };
+        presenter.ActiveCueStyle = presenter.ActiveCueStyle with { UnderlineColor = new SolidColorBrush(green) };
         host.RunFrame();
         Assert.Equal(green, host.GetCell(0, 0).Style.UnderlineColor);
     }

@@ -211,21 +211,18 @@ public sealed class AccessTextPresenter : UIElement, ITrimmedTextSource, IRichTe
         var hasKeyUnderline = underlineStyle is not null;
         var keyUnderlineStyle = underlineStyle ?? UnderlineStyle.Single;
 
-        var cueForeground = cue.Foreground ?? Foreground;
-        var indicatorBrush = cue.UnderlineColor ?? cueForeground;
-
         // The underline rides the cue when the key states one, and also when the LABEL is underlined —
         // in which case the cue still owns the shape and the indicator color over its own grapheme.
         // A shape implies the flag structurally (PartialStyle.ApplyTo), so no `Setting(Underline)` is
         // needed — and none is possible: Underline owns an axis, so WithSet/Setting reject it.
         if (hasKeyUnderline || labelStyle.AppliedAttributes.HasFlag(TextAttributes.Underline))
-            cue = cue.Underlining(keyUnderlineStyle, indicatorBrush ?? cueForeground);
+            cue = cue.Underlining(keyUnderlineStyle, cue.UnderlineColor);
 
-        if (active && cue.Foreground is null && indicatorBrush is not null && hasKeyUnderline is false)
-            cue = cue.WithForeground(indicatorBrush); // if no distinguishing cue, paint the entire marker
+        if (active && cue.Foreground.IsNullOrDefault && cue.UnderlineColor is not null && hasKeyUnderline is false)
+            cue = cue.WithForeground(cue.UnderlineColor); // if no distinguishing cue, paint the entire marker
 
-        if (indicatorBrush is not null && cue.AppliedAttributes.HasFlag(TextAttributes.Underline))
-            cue = cue with { UnderlineColor = indicatorBrush };
+        if (cue.UnderlineColor is not null && cue.AppliedAttributes.HasFlag(TextAttributes.Underline))
+            cue = cue with { UnderlineColor = cue.UnderlineColor };
 
         return cue;
     }

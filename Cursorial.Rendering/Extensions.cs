@@ -5,6 +5,11 @@ namespace Cursorial.Rendering;
 
 public static class Extensions
 {
+    extension(IBrush? brush)
+    {
+        public bool IsNullOrDefault => brush is null or { IsDefault: true };
+    }
+
     /// <summary>
     /// The blank a delta means on a surface whose own blank is <paramref name="surfaceBlank"/>.
     /// </summary>

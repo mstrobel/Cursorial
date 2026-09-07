@@ -75,6 +75,41 @@ public sealed class WindowPopupTests
         Assert.Equal(ty + target.Bounds.Rows, popup.PopupSurface!.Top);
     }
 
+    [Fact] // inside a popup placed AWAY from the screen origin, screen↔element translation round-trips and
+           // MouseEventArgs.GetPosition reports element-local cells (the popup surface's offset is applied both ways)
+    public void PlacedPopup_TranslateFromScreen_AndGetPosition_AreElementLocal()
+    {
+        var host = NewHost();
+        using var _ = host;
+        var spacer = new UIControls.Border { Width = 30, Height = 5 };
+        var target = new UIControls.Button { Width = 10, Height = 1, Content = "open", Margin = new(7, 0, 0, 0) };
+        var inner = new UIControls.Button { Width = 8, Height = 3, Content = "menu" };
+        var popup = new Popup { Child = inner, PlacementTarget = target };
+        var root = new UIControls.StackPanel();
+        root.Children.Add(spacer);
+        root.Children.Add(target);
+        root.Children.Add(popup);
+        host.ShowRoot(root);
+        Assert.True(host.RunUntilIdle());
+
+        popup.Open();
+        Assert.True(host.RunUntilIdle());
+        var surface = popup.PopupSurface!;
+        Assert.True(surface.Left > 0 && surface.Top > 0, $"the popup should sit away from the origin, was ({surface.Left},{surface.Top})");
+
+        // Round trip: element → screen → element.
+        var (sx, sy) = inner.TranslateToScreen(2, 1);
+        Assert.Equal((surface.Left + 2, surface.Top + 1), (sx, sy));
+        Assert.Equal((2, 1), inner.TranslateFromScreen(sx, sy));
+
+        // The dispatched press reports the same element-local cell.
+        CellPosition? seen = null;
+        inner.AddHandler(UIElement.MouseDownEvent, (_, e) => seen = e.GetPosition(inner), handledEventsToo: true);
+        host.SendMouseDown(sx, sy);
+        Assert.True(host.RunUntilIdle());
+        Assert.Equal(new CellPosition(2, 1), seen);
+    }
+
     [Fact] // an uncaptured press outside the popup light-dismisses it (Closed fires with LightDismiss)
     public void OutsidePress_LightDismisses()
     {

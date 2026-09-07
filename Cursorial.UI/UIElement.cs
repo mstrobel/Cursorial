@@ -896,12 +896,15 @@ public abstract partial class UIElement : UIObject
     {
         (column, row) = TranslateFromWindow(column, row);
 
+        // The surface offset is resolved the same way TranslateToScreen resolves it — through the window manager,
+        // for ANY surface root. A popup's hosted child is its own surface root (the Popup element itself stays in
+        // the owner's tree), so matching on `root is Popup` never fired for popup content: inside a popup placed
+        // away from the screen origin, MouseEventArgs.GetPosition came back offset by the popup's position.
         if (_visualRoot is {} root)
         {
-            if (root is Window { HostSurface: {} windowHost})
-                (column, row) = (column - windowHost.Left, row - windowHost.Top);
-            else if (root is Popup { PopupSurface: {} popupHost})
-                (column, row) = (column - popupHost.Left, row - popupHost.Top);
+            var surface = UIApplication.Current?.WindowManager?.SurfaceForElement(root);
+            if (surface is not null)
+                (column, row) = (column - surface.Left, row - surface.Top);
         }
 
         return (column, row);

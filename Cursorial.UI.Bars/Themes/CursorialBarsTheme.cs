@@ -140,7 +140,6 @@ public static class CursorialBarsTheme
                           .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundPressed));
         theme.Children.Add(new Style("^:disabled")
                           .SetResource(Icon.IconBrushProperty, ThemeKeys.ButtonForegroundDisabled)
-                          .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundDisabled)
                           .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundDisabled));
 
         return theme;
@@ -172,7 +171,6 @@ public static class CursorialBarsTheme
             .SetResource(Control.ForegroundProperty, ThemeKeys.AccentInverseBrush));
         theme.Children.Add(new Style("^:disabled")
                           .SetResource(Icon.IconBrushProperty, ThemeKeys.ButtonForegroundDisabled)
-                          .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundDisabled)
                           .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundDisabled));
         return theme;
     }
@@ -387,7 +385,6 @@ public static class CursorialBarsTheme
                           .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundPressed)
                           .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundPressed));
         theme.Children.Add(new Style("^:disabled")
-                          .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundDisabled)
                           .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundDisabled));
         return theme;
     }
@@ -457,7 +454,6 @@ public static class CursorialBarsTheme
             .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundPressed)
             .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundPressed));
         theme.Children.Add(new Style("^:disabled")
-            .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundDisabled)
             .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundDisabled));
         return theme;
     }
@@ -491,7 +487,6 @@ public static class CursorialBarsTheme
                           .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundPressed)
                           .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundPressed));
         theme.Children.Add(new Style("^Button:disabled")
-                          .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundDisabled)
                           .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundDisabled));
         return theme;
     }

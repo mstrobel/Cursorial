@@ -399,44 +399,53 @@ public sealed class FileDialogView : Decorator, ISupportInitializeNotification
                 Content = new FuncTemplateContent(
                     ctx =>
                     {
-                        var panel = new DockPanel { LastChildFill = true };
+                        var panel = new DockPanel { LastChildFill = false };
 
                         if (ctx.NameScope is {} templateScope)
                             NameScope.SetTemplateNameScope(panel, templateScope);
 
-                        var label = new TextBlock
-                                    {
+                        var label = new ContentPresenter
+                                    { 
                                         Margin = new Margins(0, 0, 1, 0),
-                                        TextTrimming = TextTrimming.CharacterEllipsis,
-                                        TextWrapping = WrapMode.NoWrap
+                                        ShowTrimmedContentInToolTip = true
                                     };
 
-                        var pattern = new TextBlock();
+                        TextElement.SetTextWrapping(label, WrapMode.NoWrap);
+                        TextElement.SetTextTrimming(label, TextTrimming.CharacterEllipsis);
+
+                        var pattern = new ContentPresenter
+                                      {
+                                          HorizontalAlignment = HorizontalAlignment.Right,
+                                          ShowTrimmedContentInToolTip = true
+                                      };
+                        
+                        TextElement.SetTextWrapping(pattern, WrapMode.NoWrap);
+                        TextElement.SetTextTrimming(pattern, TextTrimming.CharacterEllipsis);
 
                         // Display-only (the reflective originals carried no mode): TwoWay here would
                         // compile a LIVE setter — init-only record properties report CanWrite == true,
                         // and Expression.Assign ignores the IsExternalInit modreq — so a target-side
                         // write would mutate the FileDialogFilter record, including the shared
                         // AllFiles singleton whose value-equality identity callers compare against.
-                        label.SetBinding(TextBlock.TextProperty,
+                        label.SetBinding(ContentPresenter.ContentProperty,
                                          CompiledBinding.Build((FileDialogFilter f) => f.Label)
                                                         .Step(nameof(FileDialogFilter.Label))
                                                         .Build());
 
-                        pattern.SetBinding(TextBlock.TextProperty,
+                        pattern.SetBinding(ContentPresenter.ContentProperty,
                                            CompiledBinding.Build((FileDialogFilter f) => f.Pattern)
                                                           .Step(nameof(FileDialogFilter.Pattern))
                                                           .Build());
 
                         TextElement.SetTextWeight(pattern, TextWeight.Faint);
+                        DockPanel.SetDock(label, Dock.Left);
                         DockPanel.SetDock(pattern, Dock.Right);
 
-                        TextElement.ForwardInverse(pattern, panel);
                         TextElement.ForwardInverse(label, panel);
+                        TextElement.ForwardInverse(pattern, panel);
 
-
-                        panel.Children.Add(pattern);
                         panel.Children.Add(label);
+                        panel.Children.Add(pattern);
 
                         return panel;
                     })

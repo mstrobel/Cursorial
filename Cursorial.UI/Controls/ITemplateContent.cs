@@ -48,6 +48,9 @@ public sealed class TemplateBuildContext
     /// <summary>The template's name scope — part names register here, sealed from the document scope (doc §12.2).</summary>
     public INameScope NameScope => _nameScope;
 
+    /// <summary>The data context for which a DataTemplate is being instantiated. Unset for a `ControlTemplate`.</summary>
+    public object? DataContext { get; init; }
+
     /// <summary>
     /// The captured definition-site enclosing-template resource chain (innermost-first) — set by a
     /// <see cref="FuncTemplateContent"/> that was created inside another template's factory, so a

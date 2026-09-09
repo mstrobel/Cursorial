@@ -150,7 +150,7 @@ public sealed class GallerySmokeTests(ITestOutputHelper output)
            // tab switch by click swaps the band
     public void RibbonPage_RendersRibbon_AndSwitchesTabs()
     {
-        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(80, 24) });
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(120, 24) });
         var root = GalleryApp.BuildRoot(host.Application);
         host.ShowRoot(root);
         host.RunUntilIdle();

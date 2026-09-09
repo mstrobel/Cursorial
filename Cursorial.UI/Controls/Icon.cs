@@ -2,6 +2,7 @@ using Cursorial.Markup;
 using Cursorial.Rendering.Imaging;
 using Cursorial.Rendering.Media;
 using Cursorial.Rendering.Text;
+using Cursorial.Text;
 using Cursorial.UI.Data;
 
 namespace Cursorial.UI.Controls;
@@ -43,13 +44,14 @@ public class Icon : Control
 
     /// <summary>The Nerd Font codepoint(s) — the preferred tier when <see cref="UIApplication.NerdFontAvailable"/>.</summary>
     public static readonly StyledProperty<string?> GlyphProperty =
-        UIProperty.Register<Icon, string?>(nameof(Glyph), changed: OnTierInputChanged);
+        UIProperty.Register<Icon, string?>(nameof(Glyph), changed: (s, _, _) => (s as Icon)?.OnGlyphDataChanged());
 
     /// <summary>The total display width of the Nerd Font codepoint(s) — useful for variable-width glyphs.</summary>
     public static readonly StyledProperty<int> GlyphWidthProperty =
         UIProperty.Register<Icon, int>(nameof(GlyphWidth),
                                        defaultValue: 1,
-                                       coerce: (_, baseValue) => Math.Max(1, baseValue));
+                                       coerce: (_, baseValue) => Math.Max(1, baseValue),
+                                       changed: (s, _, _) => (s as Icon)?.OnGlyphDataChanged());
 
     /// <inheritdoc cref="TierProperty"/>
     protected static readonly UIPropertyKey<IconTier> TierPropertyKey =
@@ -228,6 +230,23 @@ public class Icon : Control
     private static void OnTierInputChanged(UIObject sender, object? oldValue, object? newValue)
         => (sender as Icon)?.ResolveTier();
 
+    private void OnGlyphDataChanged()
+    {
+        //
+        // If Glyph or GlyphWidth changed, and we're currently displaying a nerd font glyph, we will need
+        // to reevaluate the text padding.
+        //
+        var rebuildContent = Tier is IconTier.Glyph && ResolvedContent is not null;
+
+        ResolveTier();
+
+        if (rebuildContent)
+        {
+            ResolvedContent = null;
+            EnsureContent();
+        }
+    }
+
     // Picks the highest-preference tier that is both provided and supported; the unicode Text tier is the floor.
     private void ResolveTier()
     {
@@ -286,12 +305,13 @@ public class Icon : Control
                                            .Step(GlyphWidthProperty)
                                            .Build());
 
-            if (GlyphWidth > 1)
+            if (GlyphWidth > 1 && 
+                GlyphWidth - GraphemeWidth.StringWidth(Glyph) - 1 is var padding and > 0)
             {
                 text.SetBinding(TextBlock.TextProperty,
                                 CompiledBinding.Build((Icon o) => o.GetValue(GlyphProperty),
                                                       source: this,
-                                                      stringFormat: "{0}" + new string(' ', GlyphWidth - 1))
+                                                      stringFormat: "{0}" + new string(' ', padding))
                                                .Step(GlyphProperty)
                                                .Build());
             }

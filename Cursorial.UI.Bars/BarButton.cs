@@ -26,6 +26,11 @@ public class BarButton : ButtonBase
     public static readonly StyledProperty<string?> InputGestureTextProperty =
         UIProperty.Register<BarButton, string?>(nameof(InputGestureText));
 
+    public BarButton()
+    {
+        SetPseudoClassFromMapping(":size-medium", true);
+    }
+
     static BarButton()
     {
         // :has-icon marks a bar control carrying an Icon (the shared IconProperty — AddOwner'd by the toggle/dropdown
@@ -35,6 +40,10 @@ public class BarButton : ButtonBase
         // control's Icon is often set (initializer / BarCommand auto-fill) before a Ribbon is ever constructed.
         PseudoClassMapping.Register<UIElement, object?>(
             IconProperty, static icon => icon is not null ? ":has-icon" : null, ":has-icon");
+
+        // :has-label marks a bar control carrying a label.
+        PseudoClassMapping.Register<BarButton, object?>(
+            ContentProperty, static o => o is not (null or "") ? ":has-label" : null, ":has-label");
     }
 
     /// <inheritdoc cref="IconProperty"/>
@@ -108,7 +117,7 @@ public sealed class BarCommandSync
     // LocalValue, so IsSet alone can't (the stale-label bug).
     private static void Apply<T>(ContentControl control, StyledProperty<T> property, T? value, ref bool filled)
     {
-        if (control.IsSet(property) && !filled)
+        if (control.IsSet(property) && (!filled || control.GetValueSource(property) is { IsCurrentValue: false }))
             return; // an explicit author/style value we didn't put there — it wins
 
         if (value is not null)

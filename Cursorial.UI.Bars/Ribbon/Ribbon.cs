@@ -159,7 +159,7 @@ public class Ribbon : TabControl
         // control's style, which flips the size-aware face's Visibility (AffectsMeasure ⇒ the face re-lays-out).
         // Inherited, so a change on a group fans out to every hosted control; a local per-control set stamps the same.
         PseudoClassMapping.Register<UIElement, RibbonButtonSize>(
-            ButtonSizeProperty, ClassifySize, ":size-large", ":size-small");
+            ButtonSizeProperty, ClassifySize, ":size-large", ":size-medium", ":size-small");
 
         // :density-compact fans the band's Compact demotion out to every hosted control (inherited signal → per-control
         // pseudo-class). Orthogonal to :size-large — the BarItemTemplate demotes the large face under it by document
@@ -212,11 +212,11 @@ public class Ribbon : TabControl
     }
 
     private static string? ClassifySize(RibbonButtonSize size) => size switch
-    {
-        RibbonButtonSize.Large => ":size-large",
-        RibbonButtonSize.Small => ":size-small",
-        _ => null,
-    };
+                                                                  {
+                                                                      RibbonButtonSize.Large => ":size-large",
+                                                                      RibbonButtonSize.Small => ":size-small",
+                                                                      _                      => ":size-medium"
+                                                                  };
 
     /// <summary>Creates a ribbon.</summary>
     public Ribbon()

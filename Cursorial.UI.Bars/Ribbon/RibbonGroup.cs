@@ -47,6 +47,11 @@ public class RibbonGroup : HeaderedItemsControl
     public static readonly StyledProperty<bool> HasDialogLauncherProperty =
         UIProperty.Register<RibbonGroup, bool>(nameof(HasDialogLauncher), defaultValue: false, changed: OnHasDialogLauncherChanged);
 
+    /// <summary>Governs whether a ribbon group's header may be trimmed.</summary>
+    /// <remarks>If <c>true</c>, the header measures with zero width and uses only the space available, trimming as necessary.</remarks>
+    public static readonly StyledProperty<bool> IsHeaderTrimmingAllowedProperty =
+        UIProperty.Register<RibbonGroup, bool>(nameof(IsHeaderTrimmingAllowed), defaultValue: false);
+
     private ButtonBase? _launcher;
     private UIElement? _separator;
     private bool _isLastInBand;
@@ -268,6 +273,11 @@ public class RibbonGroup : HeaderedItemsControl
         _groupPanel.SetPopupHost(_density == RibbonGroupDensity.Collapsed ? _collapsedPopupHost : null);
     }
 
+    static RibbonGroup()
+    {
+        AffectsMeasure<RibbonGroup>(IsHeaderTrimmingAllowedProperty);
+    }
+
     /// <summary>Creates a ribbon group hosting bar controls.</summary>
     public RibbonGroup()
     {
@@ -280,6 +290,13 @@ public class RibbonGroup : HeaderedItemsControl
         // the ribbon was entered — from any group control OR the tab strip (see Ribbon.OnKeyDown). A group being Once
         // (a single Tab stop) would also stop the band's directional collection at the group edge — the coupling that
         // made arrows unable to cross groups; leaving it Continue lets directional descend into every control.
+    }
+
+    /// <inheritdoc cref="IsHeaderTrimmingAllowedProperty"/>
+    public bool IsHeaderTrimmingAllowed
+    {
+        get => GetValue(IsHeaderTrimmingAllowedProperty);
+        set => SetValue(IsHeaderTrimmingAllowedProperty, value);
     }
 
     /// <inheritdoc cref="DialogLauncherRequestedEvent"/>

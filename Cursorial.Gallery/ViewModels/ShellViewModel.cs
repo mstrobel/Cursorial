@@ -19,7 +19,6 @@ public sealed class ShellViewModel : ViewModelBase
 
     public ShellViewModel(UIApplication? app)
     {
-        // The ScrollViewer page is first — scrolling is the framework's biggest bug surface (project memory).
         Pages =
         [
             new WelcomeViewModel(),

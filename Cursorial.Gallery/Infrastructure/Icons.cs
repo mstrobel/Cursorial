@@ -1,3 +1,4 @@
+using Cursorial.UI;
 using Cursorial.UI.Themes;
 
 namespace Cursorial.Gallery.Infrastructure;

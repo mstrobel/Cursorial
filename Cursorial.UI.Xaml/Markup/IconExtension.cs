@@ -30,7 +30,7 @@ public sealed class IconExtension : MarkupExtension
     public string? Text { get; set; }
 
     /// <summary>The foreground brush with which to render the glyph/emoji/text tiers.</summary>
-    public IBrush? IconBrush { get; init; }
+    public object? IconBrush { get; init; }
 
     /// <inheritdoc/>
     public override object ProvideValue(IServiceProvider serviceProvider)
@@ -88,8 +88,10 @@ public sealed class IconExtension : MarkupExtension
                        Text = Text
                    };
 
-        if (IconBrush is {} iconBrush)
+        if (IconBrush is IBrush iconBrush)
             Icon.SetIconBrush(icon, iconBrush);
+        else if (IconBrush is ResourceReference rr)
+            icon.SetResourceReference(Icon.IconBrushProperty, rr.Key);
 
         return icon;
     }

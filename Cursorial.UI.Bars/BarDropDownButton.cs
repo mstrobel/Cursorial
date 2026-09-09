@@ -71,9 +71,24 @@ public abstract class BarDropDownButton : ButtonBase
 
     private bool _isDropDownOpen;
     private string _caretGlyph = CaretFor(PlacementMode.Bottom);
-    private bool _pendingEnter; // a side-placement open requested focus-into; completed on Popup.Opened (content laid out)
+
+    private bool
+        _pendingEnter; // a side-placement open requested focus-into; completed on Popup.Opened (content laid out)
+
     private Popup? _popup;
     private ContentPresenter? _contentSite; // PART_DropDownContent — hosts DropDownContent (code-set, see the property)
+
+    protected BarDropDownButton()
+    {
+        SetPseudoClassFromMapping(":size-medium", true);
+    }
+
+    static BarDropDownButton()
+    {
+        // :has-label marks a bar control carrying a label.
+        PseudoClassMapping.Register<BarDropDownButton, object?>(
+            ContentProperty, static o => o is not (null or "") ? ":has-label" : null, ":has-label");
+    }
 
     /// <summary>The shared <see cref="BarCommand"/> auto-fill state for the concrete split/popup buttons.</summary>
     private protected readonly BarCommandSync CommandSync = new();
@@ -151,6 +166,7 @@ public abstract class BarDropDownButton : ButtonBase
             _popup.Opened -= OnPopupOpened;
             _popup.Opened += OnPopupOpened; // a side-placement open enters the content once the surface is laid out
             _popup.SetCurrentValue(Popup.IsOpenProperty, _isDropDownOpen); // sync the part to current state
+            _popup.SetCurrentValue(Ribbon.IsDensityCompactProperty, false);
         }
 
         if (_contentSite is not null)

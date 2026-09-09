@@ -6,6 +6,7 @@ using Cursorial.UI.Controls;
 using Cursorial.UI.Data;
 using Cursorial.UI.Input;
 using Cursorial.UI.Themes;
+using Cursorial.UI.Xaml.Markup;
 
 // ReSharper disable CheckNamespace
 
@@ -24,92 +25,278 @@ public static class CursorialBarsTheme
 
     // ───────────────────────────── BarButton / BarToggleButton ─────────────────────────────
 
+    private enum DropDownKind
+    {
+        None,
+        Shared,
+        Split
+    }
+    
     // The shared bar-button face: a Background-filled Border (padding 1,0) over [icon] [label]. The fill IS the
     // state (no resting border) — :pointerover/:pressed flip the Background, :checked flips to the accent fill, and
     // the label/icon inherit Foreground. The label ContentPresenter auto-aliases the button's Content (access-key
     // literals folded); the icon presenter shows the (shared-identity) Icon property.
-    private static ControlTemplate BarItemTemplate<T>() where T : UIElement => new(ctx =>
-    {
-        var border = new Border { Occludes = true };
-        border.SetBinding(Border.BackgroundProperty, TemplateBinding.From<T, IBrush?>(Control.BackgroundProperty));
-        border.SetBinding(Border.PaddingProperty, TemplateBinding.From<T, Margins>(Control.PaddingProperty));
-        // The bar face forwards the Inverse cue axis (non-inheriting; the labels ride the presenter forwards).
-        border.SetBinding(TextElement.InverseProperty, TemplateBinding.From<T, bool>(TextElement.InverseProperty));
+    private static ControlTemplate BarItemTemplate<T>(DropDownKind dropDownKind = DropDownKind.None) where T : UIElement
+        => new(ctx =>
+               {
+                   var border = new Border { Occludes = true };
 
-        // Medium / Small (the default): the horizontal [icon][label] face — the Toolbar bar-button face verbatim.
-        // With no ribbon size context this is the ONLY visible face (the large face collapses via the size-cascade rules), so a
-        // Toolbar button renders byte-for-byte as before.
-        var row = new DockPanel { LastChildFill = true };
+                   border.SetBinding(Border.BackgroundProperty, TemplateBinding.From(Control.BackgroundProperty));
+                   border.SetBinding(Border.PaddingProperty, TemplateBinding.From(Control.PaddingProperty));
 
-        var icon = new ContentPresenter
+                   // The bar face forwards the Inverse cue axis (non-inheriting; the labels ride the presenter forwards).
+                   border.SetBinding(TextElement.InverseProperty, TemplateBinding.From(TextElement.InverseProperty));
+
+                   // Medium / Small (the default): the horizontal [icon][label] face — the Toolbar bar-button face verbatim.
+                   // With no ribbon size context this is the ONLY visible face (the large face collapses via the size-cascade rules), so a
+                   // Toolbar button renders byte-for-byte as before.
+                   var row = new DockPanel { LastChildFill = true };
+
+                   var icon = new ContentPresenter
+                              {
+                                  Visibility = Visibility.Collapsed,
+                                  ForwardTextInverse = false // we toggle the icon's inverse directly; see `IconToggleStyle()`.
+                              };
+
+                   DockPanel.SetDock(icon, Dock.Left);
+
+                   icon.SetBinding(ContentPresenter.ContentProperty, TemplateBinding.From(BarButton.IconProperty));
+
+                   // icon.SetBinding(TextElement.ForegroundProperty, TemplateBinding.From(Control.ForegroundProperty));
+                   icon.SetResourceReference(TextElement.ForegroundProperty, ThemeKeys.AccentBrush);
+
+                   UIElement label = new ContentPresenter { RecognizesAccessKey = true };
+
+                   label.SetBinding(UIElement.VisibilityProperty,
+                       TemplateBinding.From(
+                           ContentControl.ContentProperty, 
+                           converter: ContentToVisibilityConverter.Instance));
+
+                   label.SetBinding(TextElement.ForegroundProperty,
+                                    TemplateBinding.From(Control.ForegroundProperty));
+
+                   if (dropDownKind is DropDownKind.Split)
                    {
-                       Margin = new Margins(0, 0, 1, 0),
-                       Visibility = Visibility.Collapsed,
-                       ForwardTextInverse = false // we toggle the icon's inverse directly; see `IconToggleStyle()`.
-                   };
+                       var dropZone = new Button
+                                      {
+                                          Focusable = false, // a mouse target only — Down on the split button opens the dropdown by keyboard
+                                          Theme = DropZoneStyle()
+                                      };
+                       dropZone.SetBinding(ContentControl.ContentProperty,
+                                           TemplateBinding.From(BarDropDownButton.CaretGlyphProperty));
+                       // The ▾ zone is a BARRED template part; forward Inverse so it swaps in unison with the
+                       // inverted primary face on a NoColor focus (the ▾ glyph is a symbol — Inverse only, owner rule).
+                       TextElement.ForwardInverse(dropZone);
+                       ctx.RegisterName("PART_DropDown", dropZone);
 
-        DockPanel.SetDock(icon, Dock.Left);
+                       var band = new DockPanel { LastChildFill = true};
 
-        icon.SetBinding(ContentPresenter.ContentProperty, TemplateBinding.From<T, object?>(BarButton.IconProperty));
-        // icon.SetBinding(TextElement.ForegroundProperty, TemplateBinding.From(Control.ForegroundProperty));
-        icon.SetResourceReference(TextElement.ForegroundProperty, ThemeKeys.AccentBrush);
+                       BindingOperations.SetBinding(
+                           dropZone,
+                           DockPanel.DockProperty,
+                           TemplateBinding.From(
+                               BarDropDownButton.DropDownPlacementProperty,
+                               converter: ValueConverter.Create(
+                                   (value, _, _, _) =>
+                                   {
+                                       return value switch
+                                              {
+                                                  PlacementMode.Left => Dock.Left,
+                                                  _                  => Dock.Right
+                                              };
+                                   })));
 
-        var label = new ContentPresenter { RecognizesAccessKey = true };
-        label.SetBinding(TextElement.ForegroundProperty, TemplateBinding.From<T, IBrush?>(Control.ForegroundProperty));
-        
-        row.Children.Add(icon);
-        row.Children.Add(label);
-        ctx.RegisterName(PartIcon, icon);
-        ctx.RegisterName(PartLabel, label);
+                       label.Margin = XamlConstants.MarginsLeftRight1;
+                       band.Children.Add(dropZone);
+                       band.Children.Add(label);
+                       label = band;
+                   }
+                   else if (dropDownKind is DropDownKind.Shared)
+                   {
+                       var band = new DockPanel { LastChildFill = true};
+                       var largeCaret = MakeDropDownCaret<TextBlock>(TextBlock.TextProperty);
+                       var smMedCaret = MakeDropDownCaret<TextBlock>(TextBlock.TextProperty);
+                       
+                       largeCaret.VerticalAlignment  = VerticalAlignment.Stretch;
+                       smMedCaret.VerticalAlignment  = VerticalAlignment.Center;
+                       
+                       BindingOperations.SetBinding(
+                           smMedCaret,
+                           DockPanel.DockProperty,
+                           TemplateBinding.From(
+                               BarDropDownButton.DropDownPlacementProperty,
+                               converter: ValueConverter.Create(
+                                   (value, _, _, _) =>
+                                   {
+                                       return value switch
+                                              {
+                                                  PlacementMode.Left => Dock.Left,
+                                                  _                  => Dock.Right
+                                              };
+                                   })));
 
-        border.Child = row;
+                       BindingOperations.SetBinding(
+                           largeCaret,
+                           DockPanel.DockProperty,
+                           TemplateBinding.From(
+                               BarDropDownButton.DropDownPlacementProperty,
+                               converter: ValueConverter.Create(
+                                   (value, _, _, _) =>
+                                   {
+                                       return value switch
+                                              {
+                                                  PlacementMode.Left => Dock.Left,
+                                                  _                  => Dock.Right
+                                              };
+                                   })));
 
-        // The size cascade lives in the TEMPLATE's own styles (part-targeting /template/ rules must — the TabItem /
-        // obscured-overlay precedent). The LARGE face is hidden by default (Medium/Small show the [icon][label] row);
-        // a :size-large control swaps to it. Because Medium collapses the large face, a Medium control renders
-        // byte-identically to the plain Toolbar face.
-        border.Styles.Add(new Style(Selectors.Is<BarButton>()
-                                             .Or(Selectors.Is<BarToggleButton>()
-                                                          .Or(Selectors.Is<BarDropDownButton>())))
-        {
-            Children =
-            {
-                new Style(Selectors.Nesting().PseudoClass(":size-small").Template().Name(PartLabel))
-                    .Set(UIElement.VisibilityProperty, Visibility.Collapsed),
-                new Style(Selectors.Nesting().PseudoClass(":size-small").Template().Name(PartIcon))
-                    .Set(UIElement.MarginProperty, Margins.Zero),
-                new Style(Selectors.Nesting().PseudoClass(":size-large").Template().Name(PartIcon))
-                    .Set(UIElement.MarginProperty, Margins.Zero)
-                    .Set(DockPanel.DockProperty, Dock.Top),
-                new Style(Selectors.Nesting().PseudoClass(":size-large").Template().Name(PartLabel))
-                    .Set(ContentControl.HorizontalContentAlignmentProperty, HorizontalAlignment.Center),
-                new Style(Selectors.Nesting().PseudoClass(":has-icon").Template().Name(PartIcon))
-                    .Set(UIElement.VisibilityProperty, Visibility.Visible),
+                       BindingOperations.SetBinding(
+                           smMedCaret,
+                           UIElement.VisibilityProperty,
+                           TemplateBinding.From(
+                               Ribbon.ButtonSizeProperty,
+                               converter: ValueConverter.Create(
+                                   (value, _, _, _) =>
+                                   {
+                                       return value switch
+                                              {
+                                                  RibbonButtonSize.Large => Visibility.Collapsed,
+                                                  _                      => Visibility.Visible
+                                              };
+                                   })));
 
-                // LayoutMode Simplified/Compact (the ribbon-wide inherited :layout-simplified signal): demote the
-                // Large face to the [icon][label] medium row, labels kept — the Office simplified-ribbon look. Same
-                // never-touch-ButtonSize contract as the density rules below; equal specificity, later declaration
-                // wins over :size-large.
-                new Style(Selectors.Nesting().PseudoClass(":size-large").PseudoClass(":layout-simplified").Template().Name(PartIcon))
-                    .Set(UIElement.MarginProperty, new Margins(0, 0, 1, 0))
-                    .Set(DockPanel.DockProperty, Dock.Left),
+                       BindingOperations.SetBinding(
+                           smMedCaret,
+                           UIElement.MarginProperty,
+                           TemplateBinding.From(
+                               BarDropDownButton.DropDownPlacementProperty,
+                               converter: ValueConverter.Create(
+                                   (value, _, _, _) =>
+                                   {
+                                       return value switch
+                                              {
+                                                  PlacementMode.Left => XamlConstants.MarginsRight1,
+                                                  _                  => XamlConstants.MarginsLeft1
+                                              };
+                                   })));
 
-                // Density Compact (the band's inherited :density-compact signal): demote EVERY control to the compact
-                // inline row, overriding :size-large. These two rules are equal-specificity to the :size-large rules
-                // above (1 pseudo + 1 /template/ name), so they win by DOCUMENT ORDER (declared later) — ButtonSize is
-                // never touched, so an authored Large face restores byte-identically when the band widens.
-                // …and drop the label to icon-only ONLY for controls that HAVE an icon (:has-icon, 2 pseudo-classes ⇒
-                // higher specificity, always wins). A label-only button keeps its label under Compact instead of
-                // blanking out — the design's "don't collapse label-only buttons" smarts. An icon-only button loses
-                // its margins.
-                new Style(Selectors.Nesting().PseudoClass(":density-compact").PseudoClass(":has-icon").Template().Name(PartLabel))
-                    .Set(UIElement.VisibilityProperty, Visibility.Collapsed),
-                new Style(Selectors.Nesting().PseudoClass(":density-compact").PseudoClass(":has-icon").Template().Name(PartIcon))
-                   .Set(UIElement.MarginProperty, Margins.Zero),
-            }
-        });
-        return border;
-    });
+                       BindingOperations.SetBinding(
+                           largeCaret,
+                           UIElement.VisibilityProperty,
+                           TemplateBinding.From(
+                               Ribbon.ButtonSizeProperty,
+                               converter: ValueConverter.Create(
+                                   (value, _, _, _) =>
+                                   {
+                                       return value switch
+                                              {
+                                                  RibbonButtonSize.Large => Visibility.Visible,
+                                                  _                      => Visibility.Collapsed
+                                              };
+                                   })));
+
+                       BindingOperations.SetBinding(
+                           largeCaret,
+                           UIElement.MarginProperty,
+                           TemplateBinding.From(
+                               BarDropDownButton.DropDownPlacementProperty,
+                               converter: ValueConverter.Create(
+                                   (value, _, _, _) =>
+                                   {
+                                       return value switch
+                                              {
+                                                  PlacementMode.Left => XamlConstants.MarginsRight1,
+                                                  _                  => XamlConstants.MarginsLeft1
+                                              };
+                                   })));
+
+
+                       row.Children.Add(smMedCaret);
+
+                       band.Children.Add(largeCaret);
+                       band.Children.Add(label);
+                       label = band;
+                   }
+                   
+                   row.Children.Add(icon);
+                   row.Children.Add(label);
+                   ctx.RegisterName(PartIcon, icon);
+                   ctx.RegisterName(PartLabel, label);
+
+                   if (dropDownKind is DropDownKind.None)
+                   {
+                       border.Child = row;
+                   }
+                   else
+                   {
+                       var grid = new Grid();
+                       grid.Children.Add(row);
+                       grid.Children.Add(BuildDropDownPopup(ctx));
+                       border.Child = grid;
+                   }
+
+                   // The size cascade lives in the TEMPLATE's own styles (part-targeting /template/ rules must — the TabItem /
+                   // obscured-overlay precedent). The LARGE face is hidden by default (Medium/Small show the [icon][label] row);
+                   // a :size-large control swaps to it. Because Medium collapses the large face, a Medium control renders
+                   // byte-identically to the plain Toolbar face.
+                   border.Styles.Add(
+                       new Style(Selectors.Is<BarButton>()
+                                          .Or(Selectors.Is<BarToggleButton>())
+                                          .Or(Selectors.Is<BarDropDownButton>()))
+                       {
+                           Children =
+                           {
+                               new Style(Selectors.Nesting().PseudoClass(":has-label").Template().Name(PartLabel))
+                                  .Set(UIElement.VisibilityProperty, Visibility.Visible),
+                               new Style(Selectors.Nesting().PseudoClass(":size-small").Template().Name(PartLabel))
+                                  .Set(UIElement.VisibilityProperty, Visibility.Collapsed),
+                               new Style(Selectors.Nesting().PseudoClass(":size-medium").PseudoClass(":has-label").Template().Name(PartIcon))
+                                  .Set(UIElement.MarginProperty, XamlConstants.MarginsRight1),
+                               new Style(Selectors.Nesting().PseudoClass(":size-large").Template().Name(PartIcon))
+                                  .Set(UIElement.HorizontalAlignmentProperty, HorizontalAlignment.Center)
+                                  .Set(DockPanel.DockProperty, Dock.Top),
+                               new Style(Selectors.Nesting().PseudoClass(":size-large").Template().Name(PartLabel))
+                                  .Set(ContentControl.HorizontalContentAlignmentProperty, HorizontalAlignment.Center),
+                               new Style(Selectors.Nesting().PseudoClass(":has-icon").Template().Name(PartIcon))
+                                  .Set(UIElement.VisibilityProperty, Visibility.Visible),
+                               // LayoutMode Simplified/Compact (the ribbon-wide inherited :layout-simplified signal): demote the
+                               // Large face to the [icon][label] medium row, labels kept — the Office simplified-ribbon look. Same
+                               // never-touch-ButtonSize contract as the density rules below; equal specificity, later declaration
+                               // wins over :size-large.
+                               new Style(Selectors.Nesting().PseudoClass(":size-large").PseudoClass(":layout-simplified").Template().Name(PartIcon))
+                                  .Set(DockPanel.DockProperty, Dock.Left),
+                               // Density Compact (the band's inherited :density-compact signal): demote EVERY control to the compact
+                               // inline row, overriding :size-large. These two rules are equal-specificity to the :size-large rules
+                               // above (1 pseudo + 1 /template/ name), so they win by DOCUMENT ORDER (declared later) — ButtonSize is
+                               // never touched, so an authored Large face restores byte-identically when the band widens.
+                               // …and drop the label to icon-only ONLY for controls that HAVE an icon (:has-icon, 2 pseudo-classes ⇒
+                               // higher specificity, always wins). A label-only button keeps its label under Compact instead of
+                               // blanking out — the design's "don't collapse label-only buttons" smarts. An icon-only button loses
+                               // its margins.
+                               new Style(Selectors.Nesting().PseudoClass(":density-compact").PseudoClass(":has-icon").Template().Name(PartLabel))
+                                  .Set(UIElement.VisibilityProperty, Visibility.Collapsed),
+                               new Style(Selectors.Nesting().PseudoClass(":density-compact").PseudoClass(":has-icon").Template().Name(PartIcon))
+                                  .Set(UIElement.MarginProperty, Margins.Zero)
+                           }
+                       });
+
+                   return border;
+               });
+
+    private static T MakeDropDownCaret<T>(UIProperty contentProperty) where T : UIElement, new()
+    {
+        var caret = new T
+                    {
+                        // Margin = new Margins(1, 0, 0, 0)
+                    }; // leading gap (was the space in " ▾")
+
+        caret.SetBinding(contentProperty, TemplateBinding.From(BarDropDownButton.CaretGlyphProperty));
+        caret.SetBinding(TextElement.ForegroundProperty, TemplateBinding.From(Control.ForegroundProperty));
+
+        TextElement.ForwardInverse(caret); // the ▾ caret is a GLYPH — Inverse only, so it inverts in unison with the face (owner rule)
+
+        return caret;
+    }
 
     private const string PartLabel = "PART_Label";
     private const string PartIcon = "PART_Icon";
@@ -121,6 +308,7 @@ public static class CursorialBarsTheme
     {
         var theme = new Style { Key = "Bars.BarButton" }
                    .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundNormal)
+                   .Set(Control.BackgroundProperty, Brushes.Transparent)
                    .SetResource(Icon.IconBrushProperty, ThemeKeys.AccentBrush)
                    .Set(Control.PaddingProperty, new Margins(1, 0))
                    .Set(Control.TemplateProperty, BarItemTemplate<BarButton>());
@@ -195,12 +383,12 @@ public static class CursorialBarsTheme
                 var border = new Border();
 
                 border.SetBinding(Border.PaddingProperty,
-                                  TemplateBinding.From<BarLabel, Margins>(Control.PaddingProperty));
+                                  TemplateBinding.From(Control.PaddingProperty));
 
                 var label = new ContentPresenter { RecognizesAccessKey = true }; // auto-aliases the caption Content
 
                 label.SetBinding(TextElement.ForegroundProperty,
-                                 TemplateBinding.From<BarLabel, IBrush?>(Control.ForegroundProperty));
+                                 TemplateBinding.From(Control.ForegroundProperty));
 
                 border.Child = label;
                 return border;
@@ -219,13 +407,13 @@ public static class CursorialBarsTheme
             {
                 var border = new Border();
                 border.SetBinding(Border.BackgroundProperty,
-                                  TemplateBinding.From<Button, IBrush?>(Control.BackgroundProperty));
+                                  TemplateBinding.From(Control.BackgroundProperty));
                 border.SetBinding(Border.PaddingProperty,
-                                  TemplateBinding.From<Button, Margins>(Control.PaddingProperty));
+                                  TemplateBinding.From(Control.PaddingProperty));
                 TextElement.ForwardInverse(border); // the shared .caps-nocolor Button:focus cue is non-inheriting now — the face forwards it (audit fix)
                 var label = new ContentPresenter(); // auto-aliases the button's Content ("»")
                 label.SetBinding(TextElement.ForegroundProperty,
-                                 TemplateBinding.From<Button, IBrush?>(Control.ForegroundProperty));
+                                 TemplateBinding.From(Control.ForegroundProperty));
                 border.Child = label;
                 return border;
             }));
@@ -292,7 +480,7 @@ public static class CursorialBarsTheme
 
                 var border = new Border { Child = grid };
                 border.SetBinding(Border.BackgroundProperty,
-                                  TemplateBinding.From<Toolbar, IBrush?>(Control.BackgroundProperty));
+                                  TemplateBinding.From(Control.BackgroundProperty));
                 return border;
             }));
 
@@ -316,8 +504,8 @@ public static class CursorialBarsTheme
     private static ContentPresenter BuildIcon<T>() where T : UIElement
     {
         var icon = new ContentPresenter();
-        icon.SetBinding(ContentPresenter.ContentProperty, TemplateBinding.From<T, object?>(BarDropDownButton.IconProperty));
-        icon.SetBinding(TextElement.ForegroundProperty, TemplateBinding.From<T, IBrush?>(Control.ForegroundProperty));
+        icon.SetBinding(ContentPresenter.ContentProperty, TemplateBinding.From(BarDropDownButton.IconProperty));
+        icon.SetBinding(TextElement.ForegroundProperty, TemplateBinding.From(Control.ForegroundProperty));
         return icon;
     }
 
@@ -325,66 +513,24 @@ public static class CursorialBarsTheme
     public static Style BarPopupButtonStyle()
     {
         var theme = new Style { Key = "Bars.BarPopupButton" }
+            .SetResource(Icon.IconBrushProperty, ThemeKeys.AccentBrush)
             .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundNormal)
             .Set(Control.PaddingProperty, new Margins(1, 0))
-            .Set(Control.TemplateProperty, new ControlTemplate(ctx =>
-            {
-                var border = new Border();
-                border.SetBinding(Border.BackgroundProperty, TemplateBinding.From<BarPopupButton, IBrush?>(Control.BackgroundProperty));
-                border.SetBinding(Border.PaddingProperty, TemplateBinding.From<BarPopupButton, Margins>(Control.PaddingProperty));
-                TextElement.ForwardInverse(border); // whole-face NoColor cue (audit fix)
-
-                var row = new DockPanel { LastChildFill = true };
-                var label = new ContentPresenter { RecognizesAccessKey = true };
-                label.SetBinding(TextElement.ForegroundProperty, TemplateBinding.From<BarPopupButton, IBrush?>(Control.ForegroundProperty));
-                var caret = new TextBlock { Margin = new Margins(1, 0, 0, 0) }; // leading gap (was the space in " ▾")
-                caret.SetBinding(TextBlock.TextProperty, TemplateBinding.From(BarDropDownButton.CaretGlyphProperty));
-                caret.SetBinding(TextElement.ForegroundProperty, TemplateBinding.From(Control.ForegroundProperty));
-                TextElement.ForwardInverse(caret); // the ▾ caret is a GLYPH — Inverse only, so it inverts in unison with the face (owner rule)
-
-                var icon = BuildIcon<BarPopupButton>();
-                
-                DockPanel.SetDock(icon, Dock.Left);
-
-                BindingOperations.SetBinding(
-                    caret,
-                    DockPanel.DockProperty,
-                    TemplateBinding.From(BarDropDownButton.DropDownPlacementProperty,
-                                         converter: ValueConverter.Create((value, _, _, _) =>
-                                                                          {
-                                                                              return value switch
-                                                                                     {
-                                                                                         PlacementMode.Left =>
-                                                                                             Dock.Left,
-                                                                                         _ => Dock.Right
-                                                                                     };
-                                                                          })));
-
-                // Order matters with LastChildFill: the LAST child FILLS the remaining space and its Dock is IGNORED.
-                // The caret must therefore NOT be last (that's why its placement-driven Dock never applied on the popup
-                // button, unlike the split button which adds its ▾ zone first). Add the caret first (Dock honored →
-                // right for Bottom, left for a Left placement), then the icon (Dock.Left), and the LABEL last so IT is
-                // the fill child that takes the middle — mirroring the split button's dropZone-first / primary-last order.
-                row.Children.Add(caret);
-                row.Children.Add(icon);
-                row.Children.Add(label);
-                border.Child = row;
-
-                var grid = new Grid();
-                grid.Children.Add(border);
-                grid.Children.Add(BuildDropDownPopup(ctx));
-                return grid;
-            }));
+            .Set(Control.TemplateProperty, BarItemTemplate<BarPopupButton>(DropDownKind.Shared));
         theme.Children.Add(new Style("^:pointerover")
+                          .SetResource(Icon.IconBrushProperty, ThemeKeys.AccentInverseBrush)
                           .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundHover)
                           .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundHover));
         theme.Children.Add(new Style("^:focus")
+                          .SetResource(Icon.IconBrushProperty, ThemeKeys.AccentInverseBrush)
                           .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundFocus)
                           .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundFocus));
         theme.Children.Add(new Style("^:pressed, ^:open")
+                          .SetResource(Icon.IconBrushProperty, ThemeKeys.AccentInverseBrush)
                           .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundPressed)
                           .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundPressed));
         theme.Children.Add(new Style("^:disabled")
+                          .SetResource(Icon.IconBrushProperty, ThemeKeys.DisabledForegroundBrush)
                           .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundDisabled));
         return theme;
     }
@@ -394,66 +540,24 @@ public static class CursorialBarsTheme
     public static Style BarSplitButtonStyle()
     {
         var theme = new Style { Key = "Bars.BarSplitButton" }
+            .SetResource(Icon.IconBrushProperty, ThemeKeys.AccentBrush)
             .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundNormal)
-            .Set(Control.PaddingProperty, new Margins(0, 0)) // the zones own their own padding
-            .Set(Control.TemplateProperty, new ControlTemplate(ctx =>
-            {
-                var primary = new Border { Padding = new Margins(1, 0) };
-                primary.SetBinding(Border.BackgroundProperty, TemplateBinding.From(Control.BackgroundProperty));
-                TextElement.ForwardInverse(primary); // the primary zone's whole-face NoColor cue (audit fix)
-                var row = new StackPanel { Orientation = Orientation.Horizontal };
-                var label = new ContentPresenter { RecognizesAccessKey = true };
-                label.SetBinding(TextElement.ForegroundProperty, TemplateBinding.From(Control.ForegroundProperty));
-                row.Children.Add(BuildIcon<BarSplitButton>());
-                row.Children.Add(label);
-                primary.Child = row;
-
-                var dropZone = new Button
-                {
-                    Focusable = false, // a mouse target only — Down on the split button opens the dropdown by keyboard
-                    Theme = DropZoneStyle(),
-                    VerticalAlignment = VerticalAlignment.Stretch
-                };
-                dropZone.SetBinding(ContentControl.ContentProperty, TemplateBinding.From(BarDropDownButton.CaretGlyphProperty));
-                // The ▾ zone is a BARRED template part; forward Inverse so it swaps in unison with the
-                // inverted primary face on a NoColor focus (the ▾ glyph is a symbol — Inverse only, owner rule).
-                TextElement.ForwardInverse(dropZone);
-                ctx.RegisterName("PART_DropDown", dropZone);
-
-                var band = new DockPanel { LastChildFill = true};
-
-                BindingOperations.SetBinding(
-                    dropZone,
-                    DockPanel.DockProperty,
-                    TemplateBinding.From(BarDropDownButton.DropDownPlacementProperty,
-                                         converter: ValueConverter.Create((value, _, _, _) =>
-                                                                          {
-                                                                              return value switch
-                                                                                     {
-                                                                                         PlacementMode.Left =>
-                                                                                             Dock.Left,
-                                                                                         _ => Dock.Right
-                                                                                     };
-                                                                          })));
-
-                band.Children.Add(dropZone);
-                band.Children.Add(primary);
-
-                var grid = new Grid();
-                grid.Children.Add(band);
-                grid.Children.Add(BuildDropDownPopup(ctx));
-                return grid;
-            }));
+            .Set(Control.PaddingProperty, Margins.Zero) // the zones own their own padding
+            .Set(Control.TemplateProperty, BarItemTemplate<BarPopupButton>(DropDownKind.Split));
         theme.Children.Add(new Style("^:pointerover")
+            .SetResource(Icon.IconBrushProperty, ThemeKeys.AccentInverseBrush)
             .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundHover)
             .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundHover));
         theme.Children.Add(new Style("^:focus")
+            .SetResource(Icon.IconBrushProperty, ThemeKeys.AccentInverseBrush)
             .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundFocus)
             .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundFocus));
         theme.Children.Add(new Style("^:pressed")
+            .SetResource(Icon.IconBrushProperty, ThemeKeys.AccentInverseBrush)
             .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundPressed)
             .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundPressed));
         theme.Children.Add(new Style("^:disabled")
+            .SetResource(Icon.IconBrushProperty, ThemeKeys.DisabledForegroundBrush)
             .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundDisabled));
         return theme;
     }
@@ -702,7 +806,7 @@ public static class CursorialBarsTheme
             content.SetBinding(ContentPresenter.ContentProperty, TemplateBinding.From(TabControl.SelectedContentProperty));
             content.SetBinding(ContentPresenter.ContentTemplateProperty, TemplateBinding.From(TabControl.ContentTemplateProperty));
             content.SetResourceReference(TextElement.ForegroundProperty, ThemeKeys.TextBrush);
-            var body = new Border { Padding = new Margins(1, 0), Child = content, Occludes = true };
+            var body = new Border { Padding = Margins.Zero, Child = content, Occludes = true };
             ctx.RegisterName("PART_Body", body);
             body.SetResourceReference(Border.BackgroundProperty, ThemeKeys.RibbonBrush);
             DockPanel.SetDock(body, Dock.Bottom);
@@ -903,8 +1007,13 @@ public static class CursorialBarsTheme
             var host = new ItemsPresenter();
             ctx.RegisterName("PART_ItemsHost", host);
 
-            var name = new ContentPresenter { HorizontalAlignment = HorizontalAlignment.Center };
+            var name = new ContentPresenter
+                       {
+                           HorizontalAlignment = HorizontalAlignment.Center,
+                           ShowTrimmedContentInToolTip = true
+                       };
             ctx.RegisterName("PART_GroupName", name);
+            name.SetValue(TextElement.TextTrimmingProperty, TextTrimming.CharacterEllipsis);
             name.SetBinding(ContentPresenter.ContentProperty, TemplateBinding.From(HeaderedItemsControl.HeaderProperty));
             name.SetResourceReference(TextElement.ForegroundProperty, ThemeKeys.MutedBrush);
 
@@ -914,8 +1023,14 @@ public static class CursorialBarsTheme
             var footer = new DockPanel();
             ctx.RegisterName("PART_GroupFooter", footer);
             DockPanel.SetDock(launcher, Dock.Right);
+
+            var zwDecorator = new ZeroWidthDecorator { Child = name };
+
+            zwDecorator.SetBinding(ZeroWidthDecorator.IsZeroWidthProperty,
+                                   TemplateBinding.From(RibbonGroup.IsHeaderTrimmingAllowedProperty));
+
             footer.Children.Add(launcher);
-            footer.Children.Add(name);
+            footer.Children.Add(zwDecorator);
 
             // Bottom-align the whole group column (controls over the name footer) within the band height so EVERY
             // group's name sits on the band's bottom row — a 2-row (medium) group and a 3-row (large-button) group
@@ -1226,7 +1341,7 @@ public static class CursorialBarsTheme
     /// </summary>
     internal static Style IconToggleStyle()
     {
-        return new Style(":is(BarButton), :is(BarToggleButton)", TypeResolver)
+        return new Style(":is(BarButton), :is(BarToggleButton), :is(BarDropDownButton)", TypeResolver)
                {
                    Key = "Theme.BarToggleButton.CheckedInverse",
                    RequiresCapabilities = StyleCapabilities.NoColor,
@@ -1501,22 +1616,22 @@ public static class CursorialBarsTheme
     /// </summary>
     internal static ResourceDictionary BuildContribution() => new()
     {
-        [typeof(BarButton)]      = BarButtonStyle(),
+        [typeof(BarButton)]       = BarButtonStyle(),
         [typeof(BarToggleButton)] = BarToggleButtonStyle(),
-        [typeof(BarComboBox)]    = BarComboBoxStyle(),
-        [typeof(BarGallery)]     = BarComboBoxStyle(), // same flat bar face
-        [typeof(BarLabel)]       = BarLabelStyle(),
-        [typeof(BarSplitButton)] = BarSplitButtonStyle(),
-        [typeof(BarPopupButton)] = BarPopupButtonStyle(),
-        [typeof(BarSeparator)]   = SeparatorStyle(),
-        [typeof(MiniToolbar)]    = MiniToolbarStyle(),
-        [typeof(Toolbar)]        = ToolbarStyle(),
-        [typeof(SuperTip)]       = SuperTipStyle(),
-        [typeof(RibbonTab)]      = RibbonTabStyle(),
-        [typeof(RibbonGroup)]    = RibbonGroupStyle(),
-        [typeof(Ribbon)]         = RibbonStyle(),
-        [typeof(Backstage)]      = BackstageStyle(),
-        [typeof(BackstageItem)]  = BackstageItemStyle(),
+        [typeof(BarComboBox)]     = BarComboBoxStyle(),
+        [typeof(BarGallery)]      = BarComboBoxStyle(), // same flat bar face
+        [typeof(BarLabel)]        = BarLabelStyle(),
+        [typeof(BarSplitButton)]  = BarSplitButtonStyle(),
+        [typeof(BarPopupButton)]  = BarPopupButtonStyle(),
+        [typeof(BarSeparator)]    = SeparatorStyle(),
+        [typeof(MiniToolbar)]     = MiniToolbarStyle(),
+        [typeof(Toolbar)]         = ToolbarStyle(),
+        [typeof(SuperTip)]        = SuperTipStyle(),
+        [typeof(RibbonTab)]       = RibbonTabStyle(),
+        [typeof(RibbonGroup)]     = RibbonGroupStyle(),
+        [typeof(Ribbon)]          = RibbonStyle(),
+        [typeof(Backstage)]       = BackstageStyle(),
+        [typeof(BackstageItem)]   = BackstageItemStyle(),
 
         Styles =
         [

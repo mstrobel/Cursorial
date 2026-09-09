@@ -232,7 +232,9 @@ internal static class CursorialThemeStyles
                           .SetResource(Panel.BackgroundProperty, ThemeKeys.TextBrush),
                        new Style("^Button:pressed")
                           .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentInverseBrush)
-                          .SetResource(Panel.BackgroundProperty, ThemeKeys.AccentDarkBrush)
+                          .SetResource(Panel.BackgroundProperty, ThemeKeys.AccentDarkBrush),
+                       new Style("^MenuItem")
+                          .SetResource(Icon.IconBrushProperty, ThemeKeys.AccentBrush)
                    }
                };
     }
@@ -274,7 +276,9 @@ internal static class CursorialThemeStyles
                           .SetResource(Border.BackgroundProperty, ThemeKeys.AnsiCyan),
                        new Style("^Window:active-window /template/ Border#PART_TitleBar")
                           .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentBrush)
-                          .SetResource(Border.BackgroundProperty, ThemeKeys.AnsiLightCyan)
+                          .SetResource(Border.BackgroundProperty, ThemeKeys.AnsiLightCyan),
+                       new Style("^MenuItem")
+                          .SetResource(Icon.IconBrushProperty, ThemeKeys.InfoBrush)
                    }
                };
     }
@@ -317,7 +321,9 @@ internal static class CursorialThemeStyles
                           .SetResource(Border.BackgroundProperty, ThemeKeys.CoolInverseBrush),
                        new Style("^Window:active-window /template/ Border#PART_TitleBar")
                           .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentBrush)
-                          .SetResource(Border.BackgroundProperty, ThemeKeys.CoolBrush)
+                          .SetResource(Border.BackgroundProperty, ThemeKeys.CoolBrush),
+                       new Style("^MenuItem")
+                          .SetResource(Icon.IconBrushProperty, ThemeKeys.CoolBrush)
                    }
                };
     }
@@ -360,7 +366,9 @@ internal static class CursorialThemeStyles
                           .SetResource(Border.BackgroundProperty, ThemeKeys.DangerInverseBrush),
                        new Style("^Window:active-window /template/ Border#PART_TitleBar")
                           .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentBrush)
-                          .SetResource(Border.BackgroundProperty, ThemeKeys.DangerBrush)
+                          .SetResource(Border.BackgroundProperty, ThemeKeys.DangerBrush),
+                       new Style("^MenuItem")
+                          .SetResource(Icon.IconBrushProperty, ThemeKeys.DangerBrush)
                    }
                };
     }
@@ -403,7 +411,9 @@ internal static class CursorialThemeStyles
                           .SetResource(Border.BackgroundProperty, ThemeKeys.SuccessInverseBrush),
                        new Style("^Window:active-window /template/ Border#PART_TitleBar")
                           .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentBrush)
-                          .SetResource(Border.BackgroundProperty, ThemeKeys.SuccessBrush)
+                          .SetResource(Border.BackgroundProperty, ThemeKeys.SuccessBrush),
+                       new Style("^MenuItem")
+                          .SetResource(Icon.IconBrushProperty, ThemeKeys.SuccessBrush)
                    }
                };
     }
@@ -449,7 +459,9 @@ internal static class CursorialThemeStyles
                           .SetResource(Border.BackgroundProperty, ThemeKeys.WarningInverseBrush),
                        new Style("^Window:active-window /template/ Border#PART_TitleBar")
                           .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentBrush)
-                          .SetResource(Border.BackgroundProperty, ThemeKeys.WarningBrush)
+                          .SetResource(Border.BackgroundProperty, ThemeKeys.WarningBrush),
+                       new Style("^MenuItem")
+                          .SetResource(Icon.IconBrushProperty, ThemeKeys.WarningBrush)
                    }
                };
     }

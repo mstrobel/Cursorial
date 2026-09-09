@@ -20,7 +20,7 @@ public record IconCarrier
                        Uri? imageUri = null,
                        string? emoji = null,
                        string? text = null,
-                       IBrush? iconBrush = null)
+                       object? iconBrush = null)
     {
         ArgumentNullException.ThrowIfNull(text);
 
@@ -48,9 +48,9 @@ public record IconCarrier
     public string? Text { get; init; }
 
     /// <inheritdoc cref="Icon.IconBrush"/>
-    public IBrush? IconBrush { get; init; }
+    public object? IconBrush { get; init; }
 
-    public void Deconstruct(out string? glyph, out int glyphWidth, out Uri? imageUri, out string? emoji, out string? text, out IBrush? iconBrush)
+    public void Deconstruct(out string? glyph, out int glyphWidth, out Uri? imageUri, out string? emoji, out string? text, out object? iconBrush)
     {
         glyph = Glyph;
         glyphWidth = GlyphWidth;
@@ -82,8 +82,10 @@ public sealed class IconCarrierConverter : TypeConverter
                                 Text = c.Text
                             };
 
-            if (c.IconBrush is {} iconBrush)
+            if (c.IconBrush is IBrush iconBrush)
                 Icon.SetIconBrush(icon, iconBrush);
+            else if (c.IconBrush is ResourceReference rr)
+                icon.SetResourceReference(Icon.IconBrushProperty, rr.Key);
 
             return icon;
         }

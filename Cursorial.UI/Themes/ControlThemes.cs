@@ -749,7 +749,7 @@ internal static class ControlThemes
                 chip.SetBinding(Border.BorderPenProperty, TemplateBinding.From(Control.BorderPenProperty));
                 chip.SetBinding(TextElement.InverseProperty, TemplateBinding.From(TextElement.InverseProperty));
 
-                var glyph = new ContentPresenter { Content = collapsedGlyph };
+                var glyph = new ContentPresenter { Content = collapsedGlyph, ForwardsFromTemplatedParent = false };
                 var separator = new Border { Child = glyph, Occludes = true, Padding = Margins.Zero };
 
                 glyph.SetBinding(Icon.IconBrushProperty,
@@ -2347,11 +2347,18 @@ internal static class ControlThemes
                                                       .Step(nameof(IconCarrier.Text))
                                                       .Build());
 
-                       icon.SetBinding(Icon.IconBrushProperty,
-                                       CompiledBinding.Build((IconCarrier c) => c.IconBrush,
-                                                             targetNullValue: Binding.DoNothing)
-                                                      .Step(nameof(IconCarrier.IconBrush))
-                                                      .Build());
+                       if (ctx.DataContext is IconCarrier { IconBrush: ResourceReference rr })
+                       {
+                           icon.SetResourceReference(Icon.IconBrushProperty, rr.Key);
+                       }
+                       else
+                       {
+                           icon.SetBinding(Icon.IconBrushProperty,
+                                           CompiledBinding.Build((IconCarrier c) => c.IconBrush,
+                                                                 targetNullValue: Binding.DoNothing)
+                                                          .Step(nameof(IconCarrier.IconBrush))
+                                                          .Build());
+                       }
                        
                        return icon;
                    })

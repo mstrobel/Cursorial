@@ -100,7 +100,8 @@ public sealed class RibbonDensityTests
         host.RunUntilIdle();
         Assert.Contains("Paste", AllRows(host)); // wide: full faces
 
-        host.SendResize(24, H); // tight ⇒ the fold demotes the group to Compact
+        host.SendResize(22, H); // tight ⇒ the fold demotes the group to Compact; threshold updated
+                                // Threshold updated 2026-09-09 to compensate for removed padding in Ribbon body.
         host.RunUntilIdle();
         Assert.Equal(RibbonGroupDensity.Compact, group.DensityForTests);
         Assert.True(Ribbon.GetIsDensityCompact(iconBtn), "the group's Compact signal must inherit to the hosted button");

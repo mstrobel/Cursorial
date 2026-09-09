@@ -28,6 +28,18 @@ public class BarToggleButton : ToggleButton
     public static readonly StyledProperty<string?> InputGestureTextProperty =
         BarButton.InputGestureTextProperty.AddOwner<BarToggleButton>();
 
+    static BarToggleButton()
+    {
+        // :has-label marks a bar control carrying a label.
+        PseudoClassMapping.Register<BarToggleButton, object?>(
+            ContentProperty, static o => o is not (null or "") ? ":has-label" : null, ":has-label");
+    }
+
+    public BarToggleButton()
+    {
+        SetPseudoClassFromMapping(":size-medium", true);
+    }
+
     /// <inheritdoc cref="IconProperty"/>
     public object? Icon { get => GetValue(IconProperty); set => SetValue(IconProperty, value); }
 

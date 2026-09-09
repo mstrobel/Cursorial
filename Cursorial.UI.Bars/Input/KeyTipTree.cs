@@ -1,4 +1,5 @@
 using Cursorial.UI.Controls;
+using Cursorial.UI.Input;
 
 namespace Cursorial.UI.Bars.Input;
 
@@ -29,6 +30,22 @@ internal static class KeyTipTree
 
         for (var i = 0; i < root.VisualChildrenCount; i++)
             CollectHosts(root.GetVisualChild(i), into);
+    }
+
+    /// <summary>Collects the accelerator-eligible controls under <paramref name="root"/> — every visible
+    /// <see cref="IAccessKeyTarget"/> that would answer an access key (a menu row, a bar button, a plain button) —
+    /// shallow-stopping at each (its own subtree is not re-scanned). The popup-level walk: an opened submenu,
+    /// dropdown, flyout or overflow popup hosts arbitrary content, and these are the things a badge can drive.</summary>
+    public static void CollectAccessKeyTargets(UIElement root, List<UIElement> into)
+    {
+        if (root is IAccessKeyTarget { IsAccessKeyEligible: true } && root.IsEffectivelyVisible)
+        {
+            into.Add(root);
+            return;
+        }
+
+        for (var i = 0; i < root.VisualChildrenCount; i++)
+            CollectAccessKeyTargets(root.GetVisualChild(i), into);
     }
 
     /// <summary>Collects the realized <see cref="RibbonGroup"/>s under <paramref name="root"/> (only the selected

@@ -4,11 +4,10 @@ using Cursorial.UI.Input;
 namespace Cursorial.UI.Bars.Input;
 
 /// <summary>
-/// The menu-bar KeyTip host (keytips-design §6) — single level in v1: one <see cref="KeyTipTargetKind.Activate"/>
-/// badge per top-level <see cref="MenuItem"/>. Activating opens the item's submenu (its
-/// <see cref="IAccessKeyTarget.OnAccessKey"/>, matching the current access-key behavior), then exits — the user
-/// walks the open submenu with arrows. Submenu KeyTip drill is deferred to v2 (the same park-until-popup-surface
-/// dependency as the toolbar overflow).
+/// The menu-bar KeyTip host (keytips-design §6): one badge per top-level <see cref="MenuItem"/>. A header with a
+/// submenu is a <see cref="KeyTipTargetKind.DrillPopup"/> — choosing it opens the submenu (its access-key open,
+/// focus into it) and pushes a level over the submenu's rows, nested submenus drilling the same way and a leaf row
+/// activating (<see cref="KeyTipPopupLevels"/>, 2026-09-09); a top-level item without a submenu activates.
 /// </summary>
 internal sealed class MenuKeyTipHost(Menu menu) : IKeyTipHost
 {
@@ -24,8 +23,7 @@ internal sealed class MenuKeyTipHost(Menu menu) : IKeyTipHost
             if (items.ContainerFromIndex(i) is not MenuItem item || item is not IAccessKeyTarget { IsAccessKeyEligible: true })
                 continue;
 
-            var leaf = item;
-            into.AddActivate(item, () => KeyTipController.ActivateLeaf(leaf));
+            KeyTipPopupLevels.Add(into, item);
         }
     }
 }

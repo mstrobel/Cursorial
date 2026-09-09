@@ -348,8 +348,9 @@ public sealed class KeyTipTests
 
     [Fact] // Regression (maintainer, 2026-09-09): an Alt-bearing gesture that moves focus WITHIN the active root — a file
            // dialog's Alt+P focusing its Places rail — must not be undone by the overlay's focus-restore on Alt-release.
-           // The overlay arms on the ribbon behind the dialog, so it has a snapshot to restore; the snapshot is only
-           // put back when focus is still there or parked on a bar surface by menu mode.
+           // The snapshot is only put back when focus is still there or parked on a bar surface by menu mode. (The
+           // reported dialog had no bar of its own: the overlay armed on the RIBBON BEHIND it — badges now scope to the
+           // active root, so that case no longer arms at all; this pins the restore rule for a dialog that has a bar.)
     public void AltGesture_MovesFocusInTheActiveRoot_FocusStaysThere()
     {
         using var host = NewHost(HeadlessCapabilities.KittyTruecolor);
@@ -359,10 +360,12 @@ public sealed class KeyTipTests
         host.ShowRoot(ribbon);
         host.RunUntilIdle();
 
-        // A dialog window: a list-like TextBox (focused) and a Places button; Alt+P focuses the Places button.
+        // A dialog window with its own toolbar (so the overlay arms IN the dialog — badges scope to the active root),
+        // a list-like TextBox (focused) and a Places button; Alt+P focuses the Places button.
         var list = new TextBox();
         var places = new Button { Content = "Places" };
-        var window = new Window { Content = new StackPanel { Orientation = Orientation.Vertical, Children = { list, places } } };
+        var toolbar = new Toolbar { Items = { new BarButton { Content = "Xut" } } }; // 'X' — 'P' is not a badge
+        var window = new Window { Content = new StackPanel { Orientation = Orientation.Vertical, Children = { toolbar, list, places } } };
         window.InputBindings.Add(new KeyBinding(
             new KeyGesture(Key.Character, KeyModifiers.Alt, "P"),
             new BarCommand(() => places.Focus(FocusNavigationMethod.AccessKey))));
@@ -371,7 +374,7 @@ public sealed class KeyTipTests
         host.Application.FocusManager.SetFocus(list);
         Assert.Same(list, host.Application.FocusManager.FocusedElement);
 
-        AltDown(host);                                    // arms KeyTips (the ribbon behind the dialog); snapshot = list
+        AltDown(host);                                    // arms KeyTips on the dialog's toolbar; snapshot = list
         Assert.True(controller.IsActive);
         TypeKeyTip(host, 'P');                            // no 'P' badge → falls through → the dialog's binding focuses Places
         host.RunUntilIdle();

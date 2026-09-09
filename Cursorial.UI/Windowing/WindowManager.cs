@@ -68,7 +68,8 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
     private string? _lastEmittedTitle;                    // the last title mirrored to the terminal (OSC 2 change detector)
     private TopLevelSurface? _fitBadgeSurface;            // the WM-owned fit-to-viewport badge (top-right; §8.7)
     private bool _fitBadgeVisible;
-    private TopLevelSurface? _keyTipSurface;              // the Bars KeyTip badge overlay (topmost; keytips-design §8)
+    private TopLevelSurface? _keyTipSurface;              // the Bars KeyTip badge overlay (keytips-design §8)
+    private TopLevelSurface? _keyTipAnchorSurface;        // the surface the overlay sits directly above (null = the root)
 
     /// <summary>
     /// Creates the window manager. <paramref name="guard"/> is the user-code funnel routed to every
@@ -1257,27 +1258,56 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
         if (_rootSurface is not null)
             _surfaces.Add(_rootSurface);
 
-        // The KeyTip overlay sits directly ABOVE the root surface (its badges annotate the root's bars) but BELOW
-        // windows and popups — so a modal Backstage window / File-anchored popup opened over the ribbon OCCLUDES the
-        // badges rather than the badges bleeding on top of it (keytips-design §8). v1 badges only root/window bar
-        // surfaces; a v2 dropdown-drill (badging an opened popup's items) will need a per-popup badge layer.
-        if (_keyTipSurface is {} keyTips)
+        // The KeyTip overlay sits directly ABOVE the surface whose bars it is badging — the root by default, so a
+        // modal Backstage window / File-anchored popup opened over the ribbon OCCLUDES the badges rather than the
+        // badges bleeding on top of it (keytips-design §8) — and, while a drill has descended into a window's bar or
+        // an opened popup (a menu's submenu, a dropdown, the toolbar overflow), directly above THAT surface, so its
+        // badges paint over the popup they annotate and stay below anything opened on top of it.
+        var anchor = _keyTipAnchorSurface is {} a && (ReferenceEquals(a, _rootSurface) || IsHosted(a)) ? a : _rootSurface;
+        if (_keyTipSurface is {} keyTips && ReferenceEquals(anchor, _rootSurface))
             _surfaces.Add(keyTips);
 
         foreach (var window in _windows)
         {
             if (window.HostSurface is {} surface)
+            {
                 _surfaces.Add(surface);
+                if (_keyTipSurface is {} k && ReferenceEquals(anchor, surface))
+                    _surfaces.Add(k);
+            }
         }
 
         foreach (var popup in _popups)
         {
             if (popup.PopupSurface is {} surface)
+            {
                 _surfaces.Add(surface);
+                if (_keyTipSurface is {} k && ReferenceEquals(anchor, surface))
+                    _surfaces.Add(k);
+            }
         }
 
         if (_fitBadgeSurface is {} badge) // the fit badge sits above everything (§8.7)
             _surfaces.Add(badge);
+    }
+
+    // Whether a surface is one of the window/popup surfaces this manager currently hosts (a stale anchor — its popup
+    // closed — falls back to the root).
+    private bool IsHosted(TopLevelSurface surface)
+    {
+        foreach (var window in _windows)
+        {
+            if (ReferenceEquals(window.HostSurface, surface))
+                return true;
+        }
+
+        foreach (var popup in _popups)
+        {
+            if (ReferenceEquals(popup.PopupSurface, surface))
+                return true;
+        }
+
+        return false;
     }
 
     // ── Popup hosting (P7-W4: light-dismiss surfaces in the band above every window) ──────────────────
@@ -1681,6 +1711,25 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
         SurfacesChanged?.Invoke();
     }
 
+    /// <summary>Re-stacks the KeyTip overlay directly above <paramref name="surface"/> (null = the root surface): the
+    /// controller anchors the overlay to the surface the shown level's targets live on, so badges over an opened
+    /// popup paint above that popup (keytips-design §8's v2 popup drill). A no-op when the anchor is unchanged or no
+    /// overlay is showing.</summary>
+    internal void AnchorKeyTipOverlay(TopLevelSurface? surface)
+    {
+        var anchor = ReferenceEquals(surface, _rootSurface) ? null : surface;
+        if (ReferenceEquals(_keyTipAnchorSurface, anchor))
+            return;
+
+        _keyTipAnchorSurface = anchor;
+        if (_keyTipSurface is null)
+            return;
+
+        RebuildSurfaceStack();
+        ResetCompositor();
+        SurfacesChanged?.Invoke();
+    }
+
     /// <summary>Re-arranges the KeyTip overlay surface within the current frame (a no-op when none is showing). The
     /// controller calls this right after re-anchoring badges in the post-layout hook so a scroll/move that shifts a
     /// target's screen cell repositions its badge THIS frame — the main layout pass already ran, so without this the
@@ -1696,6 +1745,7 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
 
         surface.Detach();
         _keyTipSurface = null;
+        _keyTipAnchorSurface = null;
 
         RebuildSurfaceStack();
         ResetCompositor();

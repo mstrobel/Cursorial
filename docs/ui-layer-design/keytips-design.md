@@ -167,15 +167,19 @@ interface IKeyTipHost {
 
 Because minimized/floated bands and collapsed groups realize over later frames (`ScheduleEnterFloatedBody`, `ScheduleCollapsedFocusRepair` precedents), the pushed level's **badge placement is parked** to `CompletePendingKeyTipLayout` with the same `_floatGeneration`-style guard (§9, Risk 5).
 
-### Toolbar (single-level in v1; overflow-drill deferred)
+### Toolbar
 
-`ToolbarKeyTipHost.BuildRootLevel` = one `Activate` entry per realized bar control (walk the `ItemsControl` containers). All flat, no tab step. **Overflow-drill (the ⋯/» popup) is DEFERRED to v2** — v1 badges only the visible row; overflowed items get no badge (documented). Rationale: the overflow popup needs the park-until-popup-surface leg, which v1 proves once on the ribbon dropdown path and can extend later.
+`ToolbarKeyTipHost.BuildRootLevel` = one entry per realized bar control (walk the `ItemsControl` containers) — a dropdown-bearing control is a `DrillPopup` — plus, when something is pocketed, the overflow chevron with the explicit `0` badge (the ribbon's collapsed-QAT digit convention): a `DrillPopup` whose reveal sets `IsOverflowOpen` and whose next level is built over the overflow host's controls (**built 2026-09-09**; it was the deferred v2 leg).
 
-### Menu bar (single-level top items in v1; submenu-drill deferred)
+### Menu bar
 
-`MenuKeyTipHost.BuildRootLevel` = top-level `MenuItem` headers as `Activate` (each opens its submenu via the existing menu activation, then Exit) — matching the current access-key behavior. **Submenu KeyTip drill is DEFERRED to v2** (same park-until-popup-surface dependency as toolbar overflow).
+`MenuKeyTipHost.BuildRootLevel` = top-level `MenuItem` headers; a header with a submenu is a `DrillPopup` (reveal = the item's access-key open — submenu + focus into it; next level = the submenu's realized rows via its `ItemContainerGenerator`, a nested submenu drilling the same way, a leaf row activating; retract closes the submenu), a top-level leaf activates (**built 2026-09-09**).
 
-The one `KeyTipLevel`/`KeyTipEntry` type serves ribbon tab→group→control, and (v2) toolbar→overflow→items and menu→submenu→items — one accelerator model.
+### Popup levels — one rule (`KeyTipPopupLevels`)
+
+Every popup drill builds its level the same way: the popup's content is walked for its accelerator-eligible controls (`KeyTipTree.CollectAccessKeyTargets` — visible `IAccessKeyTarget`s, shallow-stopping), a `MenuItem` with items or a `BarDropDownButton` becomes a further `DrillPopup`, everything else an `Activate`. A level built before the popup's content has a surface is null, so the controller's parked build retries at the next post-layout hook (the park-until-popup-surface leg). The collapsed ribbon group's flyout and the collapsed QAT's ⋯▾ opener use the same builder over their `DropDownContent`.
+
+The one `KeyTipLevel`/`KeyTipEntry` type serves ribbon tab→group→control→dropdown, toolbar→overflow→items and menu→submenu→items — one accelerator model.
 
 ---
 
@@ -191,7 +195,7 @@ The one `KeyTipLevel`/`KeyTipEntry` type serves ribbon tab→group→control, an
 
 ## 8. The badge overlay mechanism (exact)
 
-**Surface, not adorner** (the engine has no adorner layer; the fit badge is the proven precedent). One dedicated KeyTip `TopLevelSurface` at the **top of the surface stack**, above windows AND popups.
+**Surface, not adorner** (the engine has no adorner layer; the fit badge is the proven precedent). One dedicated KeyTip `TopLevelSurface`, stacked **directly above the surface the shown level's targets live on** (`WindowManager.AnchorKeyTipOverlay`, 2026-09-09): the root for a root bar (so a modal window or a popup opened over the ribbon occludes the badges), a window for a window's bar, and the opened popup for a drilled submenu / dropdown / flyout / overflow — so popup-level badges paint over the popup they annotate and under anything opened on top of it. The controller re-anchors on every level show and in the post-layout hook (a popup surface appears a frame after its reveal). Level-0 discovery scopes to the **active root** (the active window's root, else the app root), like the access keys.
 
 **WM seam** (`WindowManager`, mirroring `_fitBadgeSurface`):
 ```
@@ -303,7 +307,9 @@ All headless; the `KittyTruecolor` preset gates `AltHeld`. Drive Alt via `SendBy
 
 **V1 (ship):** the `KeyTipController` FSM; `KeyTip.Key`/`AutoAssign` attached properties + `KeyTipModel` derivation ladder (explicit → access-key via `GetAccessTextInternal` → `BarCommand.Text` → first letter), auto-assign only-when-unique (first-wins + DEBUG diagnostic on collision, explicit multi-char keys honored); **full multi-level Ribbon drill** (tab→group→control, File→Backstage, drilling an opened bar-control dropdown, minimized/floated/collapsed realization via the parked layout hook); **single-level Toolbar** and **single-level Menu bar** (top items); the dedicated topmost WM KeyTip surface (`IsHitTestTransparent`) with amber `ThemeKeys.KeyTipBrush` tint via the R2 palette spine; matched-prefix highlight; Esc back-out + all exit conditions; capability gate reusing `AccessKeyMode`; `SuspendCue` mutual-exclusion; focus snapshot/restore via the ribbon's non-retaining scope; the PreProcessInput interception seam; headless tests per §13 row.
 
-**Deferred (v2):** WPF FN/FP two-letter auto-assignment resolver; toolbar-overflow and menu-submenu KeyTip drill (the park-until-popup-surface leg — v1 proves parking once on the ribbon dropdown); the compose-both `:keytip-active` cue (badges on bars + underlines on plain content); Backspace-to-untype within a level; badge fade/animation; KeyTip badges on non-bars plain controls; a per-scope registry surviving re-templating without recompute; culture-aware letter selection beyond invariant folding; an AlwaysVisible-mode badge variant.
+**Built after v1 (2026-09-09):** toolbar-overflow, menu-submenu, bar-dropdown, collapsed-group and collapsed-QAT KeyTip drills (`KeyTipPopupLevels`; the overlay re-anchored above the drilled popup); the inline access-key stage standing down while the overlay is up (a bonked letter no longer fires a hidden-level access key); letters typed ahead of a parked level replayed into it; the focus-restore leaving focus an app gesture moved.
+
+**Deferred (v2):** WPF FN/FP two-letter auto-assignment resolver; the compose-both `:keytip-active` cue (badges on bars + underlines on plain content); Backspace-to-untype within a level; badge fade/animation; KeyTip badges on non-bars plain controls; a per-scope registry surviving re-templating without recompute; culture-aware letter selection beyond invariant folding; an AlwaysVisible-mode badge variant.
 
 ---
 

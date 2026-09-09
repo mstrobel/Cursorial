@@ -10,10 +10,9 @@ namespace Cursorial.UI.Bars.Input;
 /// Level 2 badges the group's leaf controls + the ⋰ dialog launcher.
 /// </summary>
 /// <remarks>
-/// v1 scope: the bar-control dropdown drill, the collapsed-group flyout drill, and the collapsed-QAT (⋯▾) drill are
-/// treated as <see cref="KeyTipTargetKind.Activate"/> (open the surface, then exit — the user navigates it with
-/// arrows). Drilling a KeyTip level over an opened popup surface is the park-until-popup-surface leg deferred to v2
-/// (keytips-design §6/§14/Risk 3); the ribbon L0→L1→L2 drill already proves the parked-layout machinery.
+/// Popup drills (2026-09-09): a dropdown-bearing bar control, a collapsed group's flyout opener and the collapsed
+/// QAT's ⋯▾ opener are <see cref="KeyTipTargetKind.DrillPopup"/> entries — choosing one opens its popup and pushes a
+/// level over the popup's controls (<see cref="KeyTipPopupLevels"/>), the badges re-anchored above that popup.
 /// </remarks>
 internal sealed class RibbonKeyTipHost(Ribbon ribbon) : IKeyTipHost
 {
@@ -67,9 +66,23 @@ internal sealed class RibbonKeyTipHost(Ribbon ribbon) : IKeyTipHost
             }
         }
 
-        // The collapsed-QAT opener (⋯▾): v1 opens the flyout then exits (drill deferred).
+        // The collapsed-QAT opener (⋯▾) drills into its flyout (the re-hosted QAT commands).
         if (ribbon is { IsQuickAccessCollapsedForTests: true, QatCollapsedButtonForTests: { } opener })
-            into.AddExplicit(opener, "0", KeyTipTargetKind.Activate, activate: () => KeyTipController.ActivateLeaf(opener), reveal: null);
+        {
+            if (opener is BarDropDownButton dropOpener)
+            {
+                into.AddExplicit(
+                    opener, "0", KeyTipTargetKind.DrillPopup,
+                    activate: null,
+                    reveal: () => dropOpener.IsDropDownOpen = true,
+                    buildNext: () => KeyTipPopupLevels.BuildOver(dropOpener.DropDownContent as UIElement),
+                    retract: () => dropOpener.IsDropDownOpen = false);
+            }
+            else
+            {
+                into.AddExplicit(opener, "0", KeyTipTargetKind.Activate, activate: () => KeyTipController.ActivateLeaf(opener), reveal: null);
+            }
+        }
     }
 
     // L1: the selected tab's groups (each drills to its controls). Returns null until the band's groups realize
@@ -86,8 +99,12 @@ internal sealed class RibbonKeyTipHost(Ribbon ribbon) : IKeyTipHost
         {
             if (group is { Density: RibbonGroupDensity.Collapsed, KeyTipCollapsedButton: { } collapsedOpener })
             {
-                // A collapsed group: v1 opens its flyout then exits (drill into the flyout deferred to v2).
-                builder.AddActivate(group, () => KeyTipController.ActivateLeaf(collapsedOpener));
+                // A collapsed group: its badge (the group letter) opens the flyout and drills into the group's controls.
+                builder.AddDrill(
+                    group, KeyTipTargetKind.DrillPopup,
+                    reveal: () => collapsedOpener.IsDropDownOpen = true,
+                    buildNext: () => KeyTipPopupLevels.BuildOver(collapsedOpener.DropDownContent as UIElement),
+                    retract: () => collapsedOpener.IsDropDownOpen = false);
             }
             else
             {
@@ -121,8 +138,7 @@ internal sealed class RibbonKeyTipHost(Ribbon ribbon) : IKeyTipHost
     /// <summary>A control's surviving KeyTip letter (from its group's control level), or null.</summary>
     internal static string? ResolveControlKeyTip(RibbonGroup group, UIElement control) => BuildControlLevel(group)?.KeyTipFor(control);
 
-    // L2: a group's leaf controls + its ⋰ dialog launcher. A dropdown/split control opens on activation (drill over
-    // its items deferred to v2).
+    // L2: a group's leaf controls + its ⋰ dialog launcher. A dropdown-bearing control drills into its dropdown.
     private static KeyTipLevel? BuildControlLevel(RibbonGroup group)
     {
         var builder = new KeyTipLevelBuilder();
@@ -132,8 +148,7 @@ internal sealed class RibbonKeyTipHost(Ribbon ribbon) : IKeyTipHost
             if (control is not IAccessKeyTarget { IsAccessKeyEligible: true })
                 continue;
 
-            var leaf = control;
-            builder.AddActivate(control, () => KeyTipController.ActivateLeaf(leaf));
+            KeyTipPopupLevels.Add(builder, control);
         }
 
         if (group.KeyTipDialogLauncher is { } launcher)

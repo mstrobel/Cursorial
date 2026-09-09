@@ -326,6 +326,7 @@ public sealed class KeyTipController : IKeyTipController, IKeyTipLayoutHook
         // leave the badges trailing their targets by a frame.
         if (_stack.Count > 0)
         {
+            AnchorOverlay(_stack[^1]);
             PlaceBadges(_stack[^1]);
             _app.WindowManager?.RunKeyTipOverlayLayout();
         }
@@ -350,7 +351,45 @@ public sealed class KeyTipController : IKeyTipController, IKeyTipLayoutHook
             _layer.Children.Add(badge);
         }
 
+        AnchorOverlay(level);
         PlaceBadges(level);
+    }
+
+    // Re-stacks the overlay directly above the surface the level's targets live on — the root for a root bar, a
+    // window for a window's bar, the popup for a drilled submenu / dropdown / flyout / overflow — so the badges paint
+    // over what they annotate and stay under anything opened on top of it (keytips-design §8, the v2 popup drill).
+    // The TOPMOST of the targets' surfaces wins when a level straddles surfaces.
+    private void AnchorOverlay(KeyTipLevel level)
+    {
+        if (_app.WindowManager is not { } wm)
+            return;
+
+        TopLevelSurface? topmost = null;
+        var topmostIndex = -1;
+        var surfaces = wm.Surfaces;
+        foreach (var entry in level.Entries)
+        {
+            if (wm.SurfaceForElement(entry.Target) is not { } surface)
+                continue;
+
+            var index = -1;
+            for (var i = 0; i < surfaces.Count; i++)
+            {
+                if (ReferenceEquals(surfaces[i], surface))
+                {
+                    index = i;
+                    break;
+                }
+            }
+
+            if (index > topmostIndex)
+            {
+                topmostIndex = index;
+                topmost = surface;
+            }
+        }
+
+        wm.AnchorKeyTipOverlay(topmost);
     }
 
     // Positions each visible badge at its target's screen cell. A badge is HIDDEN (not stranded at some bogus cell)
@@ -367,13 +406,12 @@ public sealed class KeyTipController : IKeyTipController, IKeyTipLayoutHook
             if (entry.Badge is not { } badge)
                 continue;
 
-            // The target must be visible AND on a live, NON-popup surface. v1 badges only the root/window bar
-            // surfaces (a ribbon/toolbar/menu bar); it does not drill INTO popups, so a target that has moved into a
-            // popup — an OPEN overflow menu / dropdown / submenu — is not badged. (The single overlay sits just above
-            // the root, so a popup-surface badge would render BENEATH its own translucent menu and bleed through; the
-            // proper fix for v2 popup-drilling is a per-surface badge layer positioned above each target's surface.)
+            // The target must be visible AND on a live surface (root, window, or an opened popup — the overlay is
+            // re-stacked above the level's surface by AnchorOverlay, so a popup-level badge paints over its popup). A
+            // target off every surface — detached by a page navigation, or pocketed into a CLOSED overflow popup — has
+            // no real position and would otherwise land at the bar origin.
             var onBadgeableSurface = entry.Target.IsEffectivelyVisible
-                                     && (_app.WindowManager is not { } wm || wm.SurfaceForElement(entry.Target) is { IsPopup: false });
+                                     && (_app.WindowManager is not { } wm || wm.SurfaceForElement(entry.Target) is not null);
 
             var (anchorColumn, anchorRow) = AnchorCell(entry);
             var (column, row) = entry.Target.TranslateToScreen(anchorColumn, anchorRow);
@@ -407,8 +445,9 @@ public sealed class KeyTipController : IKeyTipController, IKeyTipLayoutHook
 
     // ───────────────────────────── discovery / activation / focus ─────────────────────────────
 
-    // Level 0: discover the bar-surface hosts under every non-overlay surface root (the app root surface AND any
-    // window — a ribbon may live in a top-level root, not only a Window) and aggregate their root entries.
+    // Level 0: discover the bar-surface hosts under the ACTIVE root (the active window's root, else the app root —
+    // a ribbon may live in either) and aggregate their root entries. Bars behind a modal window are not badged: the
+    // overlay scopes to the surface the user is working in, like the access keys do.
     private KeyTipLevel BuildRootLevel()
     {
         var hosts = new List<IKeyTipHost>();
@@ -424,6 +463,12 @@ public sealed class KeyTipController : IKeyTipController, IKeyTipLayoutHook
 
     private IEnumerable<UIElement> ActiveSurfaceRoots()
     {
+        if (_app.FocusManager.ActiveRoot is { } activeRoot)
+        {
+            yield return activeRoot;
+            yield break;
+        }
+
         if (_app.WindowManager is not { } wm)
         {
             if (_app.RootElement is { } root)

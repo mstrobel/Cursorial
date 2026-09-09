@@ -346,6 +346,44 @@ public sealed class KeyTipTests
         Assert.Same(newButton, host.Application.FocusManager.FocusedElement); // …and KEEPS it (not restored to box)
     }
 
+    [Fact] // Regression (maintainer, 2026-09-09): an Alt-bearing gesture that moves focus WITHIN the active root — a file
+           // dialog's Alt+P focusing its Places rail — must not be undone by the overlay's focus-restore on Alt-release.
+           // The overlay arms on the ribbon behind the dialog, so it has a snapshot to restore; the snapshot is only
+           // put back when focus is still there or parked on a bar surface by menu mode.
+    public void AltGesture_MovesFocusInTheActiveRoot_FocusStaysThere()
+    {
+        using var host = NewHost(HeadlessCapabilities.KittyTruecolor);
+        var controller = host.Application.EnableKeyTips();
+
+        var (ribbon, _, _) = NewRibbon();                 // root badges H / I — 'P' is not one
+        host.ShowRoot(ribbon);
+        host.RunUntilIdle();
+
+        // A dialog window: a list-like TextBox (focused) and a Places button; Alt+P focuses the Places button.
+        var list = new TextBox();
+        var places = new Button { Content = "Places" };
+        var window = new Window { Content = new StackPanel { Orientation = Orientation.Vertical, Children = { list, places } } };
+        window.InputBindings.Add(new KeyBinding(
+            new KeyGesture(Key.Character, KeyModifiers.Alt, "P"),
+            new BarCommand(() => places.Focus(FocusNavigationMethod.AccessKey))));
+        window.Show(host.Application.WindowManager!);
+        host.RunUntilIdle();
+        host.Application.FocusManager.SetFocus(list);
+        Assert.Same(list, host.Application.FocusManager.FocusedElement);
+
+        AltDown(host);                                    // arms KeyTips (the ribbon behind the dialog); snapshot = list
+        Assert.True(controller.IsActive);
+        TypeKeyTip(host, 'P');                            // no 'P' badge → falls through → the dialog's binding focuses Places
+        host.RunUntilIdle();
+        Assert.Same(places, host.Application.FocusManager.FocusedElement);
+
+        host.Application.InputDispatcher.ProcessEvent(Key_(Key.LeftAlt, KeyModifiers.None, kind: KeyEventKind.Up)); // cue off → exit
+        host.RunUntilIdle();
+
+        Assert.False(controller.IsActive);
+        Assert.Same(places, host.Application.FocusManager.FocusedElement); // NOT bounced back to the list
+    }
+
     [Fact] // Badges stay glued to their targets when the ribbon SCROLLS inside a ScrollViewer (an in-band composite
            // slide moves the tabs; the badges must follow via TranslateToScreen's scroll-offset walk).
     public void Badges_TrackTarget_WhenRibbonScrolls()

@@ -487,6 +487,31 @@ public sealed class KeyTipController : IKeyTipController, IKeyTipLayoutHook
         if (_app.FocusManager.ActiveRoot is { } activeRoot && !activeRoot.IsAncestorOf(snapshot))
             return;
 
+        // …and only if focus is still where the overlay left it, or parked on a bar surface by menu mode (the Alt
+        // tap focuses the menu bar's first item — that is the move this restore undoes). Focus that an app gesture
+        // moved ELSEWHERE while the overlay was up is the app's decision and stands: a file dialog's Alt+P puts
+        // focus on its Places rail, and restoring the snapshot on Alt-release bounced it straight back to the file
+        // list (maintainer, 2026-09-09).
+        var focused = _app.FocusManager.FocusedElement;
+        if (focused is not null && !ReferenceEquals(focused, snapshot) && !IsOnBarSurface(focused))
+            return;
+
         _app.FocusManager.SetFocus(snapshot, FocusNavigationMethod.Restore);
+    }
+
+    // Whether the element sits inside a KeyTip host surface (a ribbon / toolbar / menu bar) under the active roots.
+    private bool IsOnBarSurface(UIElement element)
+    {
+        var hosts = new List<IKeyTipHost>();
+        foreach (var root in ActiveSurfaceRoots())
+            KeyTipTree.CollectHosts(root, hosts);
+
+        foreach (var host in hosts)
+        {
+            if (ReferenceEquals(host.SurfaceElement, element) || host.SurfaceElement.IsAncestorOf(element))
+                return true;
+        }
+
+        return false;
     }
 }

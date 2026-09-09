@@ -39,6 +39,11 @@ public sealed class KeyTipController : IKeyTipController, IKeyTipLayoutHook
     private int _parkedGeneration;
     private int _parkedRetries;
 
+    // Drill letters typed while a next level is still parked (a fast "Alt, H, B" lands 'B' before the Home band's
+    // group level has been built at the post-layout hook). They are consumed at once and replayed, in order, the
+    // moment the level exists — never dropped, never matched against the level they were NOT typed for.
+    private readonly Queue<char> _pendingChars = new();
+
     internal KeyTipController(UIApplication app)
     {
         _app = app;
@@ -76,9 +81,13 @@ public sealed class KeyTipController : IKeyTipController, IKeyTipLayoutHook
         if (!_isActive || e is not KeyEventArgs k || k.Device.Kind != KeyEventKind.Down)
             return;
 
-        // Consume drill letters + digits while active; Ctrl/Super/… chords fall through so global gestures (Ctrl+S)
-        // still fire. Escape is handled EARLIER by AccessKeyManager's Alt pre-stage via TryPopLevel (it runs before
-        // this seam), so there is no Escape branch here.
+        // Consume a drill letter/digit the current level ACCEPTS (a match, a still-ambiguous prefix, or a letter typed
+        // ahead of a parked level). A bonk (no badge starts with it) falls through so an Alt-bearing app gesture
+        // (a KeyBinding on Alt+N, Alt+/) still fires while Alt is held; the inline access-key stage, which would
+        // otherwise match `_x` access keys on every surface whatever level the overlay shows, stands down while the
+        // overlay is active (AccessKeyManager.ProcessKeyDown) — the badges are the only accelerators then. Ctrl/Super/…
+        // chords fall through untouched so global gestures (Ctrl+S) fire. Escape is handled EARLIER by
+        // AccessKeyManager's Alt pre-stage via TryPopLevel (it runs before this seam), so there is no Escape branch here.
         if (TryGetDrillChar(k, out var c) && TypeChar(c))
             e.Handled = true;
     }
@@ -142,6 +151,7 @@ public sealed class KeyTipController : IKeyTipController, IKeyTipLayoutHook
         _isActive = false;
         _parkedBuild = null;
         _parkedRetract = null;
+        _pendingChars.Clear();
         _levelGeneration++;                      // orphan any parked build/pop in flight
 
         _app.WindowManager?.HideKeyTipOverlay();
@@ -163,11 +173,18 @@ public sealed class KeyTipController : IKeyTipController, IKeyTipLayoutHook
         _exitViaActivation = false;
     }
 
-    // Typing a badge letter: filter the current level by the case-folded prefix.
+    // Typing a badge letter: filter the current level by the case-folded prefix. A letter typed while the next level
+    // is still parked belongs to THAT level — queue it (replayed by CompletePendingLayout once the level is built).
     private bool TypeChar(char c)
     {
         if (_stack.Count == 0)
             return false;
+
+        if (_parkedBuild is not null)
+        {
+            _pendingChars.Enqueue(c);
+            return true;
+        }
 
         var level = _stack[^1];
         level.Typed.Append(char.ToUpperInvariant(c));
@@ -197,7 +214,8 @@ public sealed class KeyTipController : IKeyTipController, IKeyTipLayoutHook
             return true;
         }
 
-        // Still ambiguous (multi-char keytips): dim the matched prefix on the viable badges, hide the rest.
+        // Still ambiguous (multi-char keytips): dim the matched prefix on the viable badges, hide the rest. The letter
+        // was accepted into the prefix — consumed (it is not a bonk).
         foreach (var entry in level.Entries)
         {
             var isViable = entry.KeyTip.StartsWith(prefix, StringComparison.OrdinalIgnoreCase);
@@ -209,8 +227,17 @@ public sealed class KeyTipController : IKeyTipController, IKeyTipLayoutHook
             if (isViable)
                 badge.MatchedPrefixLength = prefix.Length;
         }
-        
-        return false;
+
+        return true;
+    }
+
+    // Feeds the letters typed while the just-pushed level was parked. A replayed letter can itself commit a drill
+    // (parking the NEXT level) or activate a leaf (exiting): either stops the replay — a later letter then waits for
+    // that level, or was typed for nothing.
+    private void ReplayPendingChars()
+    {
+        while (_isActive && _parkedBuild is null && _pendingChars.TryDequeue(out var c))
+            TypeChar(c);
     }
 
     private static void Bonk(KeyTipLevel level)
@@ -252,6 +279,7 @@ public sealed class KeyTipController : IKeyTipController, IKeyTipLayoutHook
 
         _parkedBuild = null;                      // cancel any parked deeper build
         _parkedRetract = null;
+        _pendingChars.Clear();
         _levelGeneration++;
 
         ShowLevel(_stack[^1]);                    // re-place the parent level's badges
@@ -277,6 +305,7 @@ public sealed class KeyTipController : IKeyTipController, IKeyTipLayoutHook
                 _parkedBuild = null;
                 _parkedRetract = null;
                 ShowLevel(level);
+                ReplayPendingChars();             // the letters typed ahead of this level, in order
             }
             else if (++_parkedRetries >= MaxParkRetries)
             {
@@ -286,6 +315,7 @@ public sealed class KeyTipController : IKeyTipController, IKeyTipLayoutHook
                 _parkedBuild = null;
                 _parkedRetract?.Invoke();
                 _parkedRetract = null;
+                _pendingChars.Clear();            // typed for a level that never came — dropped, not mis-matched
                 ShowLevel(_stack[^1]);
             }
         }

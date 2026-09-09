@@ -648,6 +648,15 @@ public sealed class AccessKeyManager
 
         var folded = char.ToLowerInvariant(key.Text.Span[0]);
 
+        // While the KeyTip overlay is up, its badges are the ONLY accelerators: an inline access key must not
+        // activate on a letter the overlay's current level did not claim. Access keys live on every surface
+        // whatever level the overlay shows, so "Alt, P" with no P badge at the root fired a `_Paste` button two
+        // levels down, and "Alt, H, B" fired `_Bold` instead of drilling the B group (maintainer, 2026-09-09). The
+        // letter is otherwise treated as a menu-mode bonk: consumed in sticky mode (it must not leak into text
+        // input), left to the remaining tails while Alt is physically held (the Alt bit keeps it out of TextInput).
+        if (_keyTipController is { IsActive: true })
+            return _stickyCue;
+
         CollectEligibleMatches(folded);
 
         if (_matchScratch.Count == 0)

@@ -205,6 +205,84 @@ public sealed class KeyTipTests
         Assert.Equal("", box.Text ?? "");  // the char never reached the focused TextBox
     }
 
+    [Fact] // Regression (maintainer, 2026-09-09): a letter with no badge at the CURRENT level must not fall through to the
+           // inline access-key stage, which matches `_x` access keys on every surface whatever level the overlay shows —
+           // "Alt, P" fired a `_Paste` button two levels down, "Alt, H, B" fired `_Bold` instead of drilling a group.
+    public void UnmatchedLetter_DoesNotFireAnInlineAccessKey_ElsewhereOnTheRibbon()
+    {
+        using var host = NewHost(HeadlessCapabilities.KittyTruecolor);
+        var controller = host.Application.EnableKeyTips();
+        var (ribbon, _, _) = NewRibbon();
+        var paste = new Button { Content = "_Paste" }; // access key P, in Home ▸ Font — no P badge at the ROOT level
+        ((RibbonGroup)((RibbonTab)ribbon.Items[0]).Groups[0]).Items.Add(paste);
+        var pasted = false;
+        paste.Click += (_, _) => pasted = true;
+        host.ShowRoot(ribbon);
+        host.RunUntilIdle();
+
+        AltDown(host);
+        TypeKeyTip(host, 'P');            // bonk at the root (tabs H / I)
+        host.RunUntilIdle();
+
+        Assert.False(pasted);             // the access key did NOT fire
+        Assert.True(controller.IsActive); // the overlay is still up, at the root
+        Assert.Equal(1, controller.LevelDepthForTests);
+    }
+
+    [Fact] // The same in STICKY mode (Alt tapped, then plain letters): an unmatched letter neither fires a hidden-level
+           // access key nor leaks into the focused TextBox — it is the menu-mode bonk.
+    public void UnmatchedLetter_InStickyMode_NoAccessKey_NoLeak()
+    {
+        using var host = NewHost(HeadlessCapabilities.KittyTruecolor);
+        var controller = host.Application.EnableKeyTips();
+        var (ribbon, _, _) = NewRibbon();
+        var paste = new Button { Content = "_Paste" };
+        ((RibbonGroup)((RibbonTab)ribbon.Items[0]).Groups[0]).Items.Add(paste);
+        var pasted = false;
+        paste.Click += (_, _) => pasted = true;
+        var box = new TextBox();
+        var root = new StackPanel { Orientation = Orientation.Vertical, Children = { ribbon, box } };
+        host.ShowRoot(root);
+        host.RunUntilIdle();
+        host.Application.FocusManager.SetFocus(box);
+
+        host.Application.InputDispatcher.ProcessEvent(Key_(Key.LeftAlt, KeyModifiers.Alt));                      // tap…
+        host.Application.InputDispatcher.ProcessEvent(Key_(Key.LeftAlt, KeyModifiers.None, kind: KeyEventKind.Up)); // …sticky
+        Assert.True(controller.IsActive);
+        host.Application.InputDispatcher.ProcessEvent(Key_(Key.Character, KeyModifiers.None, "p"));               // plain 'p'
+        host.RunUntilIdle();
+
+        Assert.False(pasted);
+        Assert.Equal("", box.Text ?? "");
+        Assert.True(controller.IsActive);
+    }
+
+    [Fact] // Regression (maintainer, 2026-09-09): "Alt, H, B" typed FAST — the group letter arrives before the tab's group
+           // level has been built at the post-layout hook. It must be queued for THAT level (and drill it), not matched
+           // against the root level it was never meant for.
+    public void LetterTypedBeforeTheParkedLevelBuilds_IsReplayedIntoIt()
+    {
+        using var host = NewHost(HeadlessCapabilities.KittyTruecolor);
+        var controller = host.Application.EnableKeyTips();
+        var (ribbon, _, table) = NewRibbon();
+        var clicked = false;
+        table.Click += (_, _) => clicked = true;
+        host.ShowRoot(ribbon);
+        host.RunUntilIdle();
+
+        AltDown(host);
+        TypeKeyTip(host, 'I');            // drill Insert — its group level is PARKED until the next layout hook
+        TypeKeyTip(host, 'A');            // typed ahead: the "Absble" group's letter
+        TypeKeyTip(host, 'E');            // typed ahead: the "Edd" control's letter
+        Assert.Equal(1, controller.LevelDepthForTests);
+        host.RunFrame();                  // L1 builds → 'A' replays (drills, parks L2)
+        host.RunFrame();                  // L2 builds → 'E' replays (activates)
+        host.RunUntilIdle();
+
+        Assert.True(clicked);
+        Assert.False(controller.IsActive);
+    }
+
     [Fact] // A global gesture survives while KeyTips is active (a Ctrl chord falls through PreProcessInput).
     public void GlobalGesture_SurvivesWhileActive()
     {

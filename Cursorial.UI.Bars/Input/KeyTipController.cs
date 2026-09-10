@@ -143,7 +143,7 @@ public sealed class KeyTipController : IKeyTipController, IKeyTipLayoutHook
     }
 
     /// <inheritdoc/>
-    public void Exit()
+    public void Exit(bool? viaActivationOverride = null)
     {
         if (!_isActive)
             return;
@@ -158,15 +158,17 @@ public sealed class KeyTipController : IKeyTipController, IKeyTipLayoutHook
         _layer.Children.Clear();
         _stack.Clear();
 
+        var exitViaActivation = viaActivationOverride ?? _exitViaActivation;
+
         // A leaf activation ENDS Alt/menu mode (dismiss the cue entirely — no lingering inline underlines, and no
         // sticky-cue Esc-consume eating the first Escape a just-opened surface like Backstage should get); any other
         // exit (cue-off, Esc-at-top, window change) just un-suppresses (the cue is already off).
-        if (_exitViaActivation)
+        if (exitViaActivation)
             _accessKeys.DismissCue();
         else
             _accessKeys.ResumeCue();
 
-        if (!_exitViaActivation)
+        if (!exitViaActivation)
             RestoreFocus();
 
         _restoreFocus = null;

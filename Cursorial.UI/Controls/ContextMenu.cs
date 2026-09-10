@@ -89,7 +89,7 @@ public sealed class ContextMenu : ItemsControl
     /// Screen-space coordinates may be obtained by translating element-local coordinates using
     /// <see cref="UIElement.TranslateToScreen(int, int)"/>.
     /// </remarks>
-    public void Open(UIElement target, CellPosition? position = null)
+    public void Open(UIElement target, CellPosition? position = null, PlacementMode? placement = null)
     {
         ArgumentNullException.ThrowIfNull(target);
 
@@ -115,12 +115,27 @@ public sealed class ContextMenu : ItemsControl
             _popup.Placement = PlacementMode.Pointer; // keyboard / explicit: open at the given screen cell
             _popup.PointerPlacementOrigin = (p.Column, p.Row);
         }
+        else if (placement is not null)
+        {
+            _popup.Placement = placement.Value; // right-click: land at the cursor cell
+            _popup.PointerPlacementOrigin = null;
+        }
         else
         {
             _popup.Placement = PlacementMode.Pointer; // right-click: land at the cursor cell
             _popup.PointerPlacementOrigin = null;
         }
 
+        if (IsSet(RenderOffsetRowProperty))
+            _popup.SetCurrentValue(Popup.VerticalOffsetProperty, RenderOffsetRow);
+        else if (_popup.GetValueSource(Popup.VerticalOffsetProperty) is { IsCurrentValue: true })
+            _popup.ClearValue(Popup.VerticalOffsetProperty);
+
+        if (IsSet(RenderOffsetColumnProperty))
+            _popup.SetCurrentValue(Popup.HorizontalOffsetProperty, RenderOffsetColumn);
+        else if (_popup.GetValueSource(Popup.HorizontalOffsetProperty) is { IsCurrentValue: true })
+            _popup.ClearValue(Popup.HorizontalOffsetProperty);
+        
         _popup.SetCurrentValue(Popup.IsOpenProperty, true);
         SetValue(IsOpenPropertyKey, true);
         WatchTarget(target); // close the menu if its owner leaves the tree (no stranded popup surface)

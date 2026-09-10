@@ -80,32 +80,43 @@ public class RibbonGroup : HeaderedItemsControl
     {
         get
         {
-            var containers = Containers;
             List<UIElement>? flat = null;
+            var containers = Containers;
+            FlattenContainers(containers, ref flat);
+            return flat ?? containers;
+        }
+    }
 
-            for (var i = 0; i < containers.Count; i++)
+    private static void FlattenContainers(IReadOnlyList<UIElement> containers, ref List<UIElement>? flat)
+    {
+        for (var i = 0; i < containers.Count; i++)
+        {
+            if (containers[i] is RibbonControlGroup controlGroup)
             {
-                if (containers[i] is RibbonControlGroup controlGroup)
+                if (flat is null)
                 {
-                    if (flat is null)
-                    {
-                        flat = new List<UIElement>(containers.Count + 4);
-                        for (var j = 0; j < i; j++)
-                            flat.Add(containers[j]);
-                    }
-
-                    var generator = controlGroup.ItemContainerGenerator;
-                    for (var j = 0; j < generator.ContainerCount; j++)
-                        if (generator.ContainerFromIndex(j) is { } child)
-                            flat.Add(child);
+                    flat = new List<UIElement>(containers.Count + 4);
+                    for (var j = 0; j < i; j++)
+                        flat.Add(containers[j]);
                 }
-                else
+
+                var generator = controlGroup.ItemContainerGenerator;
+
+                for (var j = 0; j < generator.ContainerCount; j++)
                 {
-                    flat?.Add(containers[i]);
+                    if (generator.ContainerFromIndex(j) is {} child)
+                    {
+                        if (child is RibbonControlGroup childControlGroup)
+                            FlattenContainers([childControlGroup], ref flat);
+                        else
+                            flat?.Add(child);
+                    }
                 }
             }
-
-            return flat ?? containers;
+            else
+            {
+                flat?.Add(containers[i]);
+            }
         }
     }
 

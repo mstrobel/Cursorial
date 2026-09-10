@@ -47,6 +47,7 @@ public static class GalleryApp
             {
                 var backstage = BuildBackstage(ribbonVm);
                 ribbonVm.ReportBackstage("File → Backstage opened (◂ or Esc to return).");
+                e.Handled = true;
                 await BackstageHost.ShowAsync(backstage, anchor);
                 ribbonVm.ReportBackstage("Backstage closed — back to the document.");
             }

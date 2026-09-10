@@ -20,7 +20,7 @@ public interface IKeyTipController
 
     /// <summary>Tear the overlay down: hide badges, clear the level stack, restore the inline cue, restore focus.
     /// Idempotent — fires from the cue-off path, a leaf activation, or a window-activation change.</summary>
-    void Exit();
+    void Exit(bool? viaActivationOverride = null);
 
     /// <summary>Esc first-refusal for the overlay (called by the Alt pre-stage before it consumes a sticky-cue
     /// Escape): if the overlay is active with a level to back out of, pop one level and return <see langword="true"/>

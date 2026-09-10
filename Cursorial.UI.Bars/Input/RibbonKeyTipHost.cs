@@ -33,7 +33,50 @@ internal sealed class RibbonKeyTipHost(Ribbon ribbon) : IKeyTipHost
             if (tab.IsFileTab)
             {
                 var file = tab;
-                into.AddActivate(tab, () => file.RaiseEvent(new RoutedEventArgs(Ribbon.BackstageRequestedEvent, file)));
+                if (file.ContextMenu is {} contextMenu)
+                {
+                    into.AddDrill(
+                        tab,
+                        KeyTipTargetKind.DrillPopup,
+                        reveal: () =>
+                                {
+                                    var backstageArgs = new RoutedEventArgs(Ribbon.BackstageRequestedEvent, file);
+                                    file.RaiseEvent(backstageArgs);
+                                    if (backstageArgs.Handled)
+                                    {
+                                        if (UIApplication.Current is {} app)
+                                        {
+                                            app.Dispatcher.Post(() =>
+                                                                {
+                                                                    if (app.AccessKeys.KeyTipController is {} ktc)
+                                                                    {
+                                                                        ktc.TryPopLevel();
+                                                                        ktc.Exit(viaActivationOverride: true);
+                                                                    }
+                                                                });
+                                        }
+                                        return;
+                                    }
+                                    var renderOffsetRow = contextMenu.RenderOffsetRow;
+                                    contextMenu.RenderOffsetRow = -1;
+                                    contextMenu.Open(file, placement: PlacementMode.Bottom);
+                                    contextMenu.RenderOffsetRow = renderOffsetRow;
+                                },
+                        buildNext: () =>
+                                   {
+                                       if (contextMenu.IsOpen is false) return null;
+                                       var menuBuilder = new KeyTipLevelBuilder();
+                                       new ContextMenuKeyTipHost(contextMenu).BuildRootLevel(menuBuilder);
+                                       return menuBuilder.Build();
+                                   },
+                        retract: () => contextMenu.Close());
+                }
+                else
+                {
+                    into.AddActivate(
+                        tab,
+                        () => file.RaiseEvent(new RoutedEventArgs(Ribbon.BackstageRequestedEvent, file)));
+                }
             }
             else
             {

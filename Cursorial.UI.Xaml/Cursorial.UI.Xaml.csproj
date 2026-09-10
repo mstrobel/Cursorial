@@ -35,4 +35,8 @@
         <InternalsVisibleTo Include="Cursorial.UI.Xaml.Tests" />
     </ItemGroup>
 
+    <ItemGroup>
+      <PackageReference Update="Microsoft.SourceLink.GitHub" Version="10.0.401" />
+    </ItemGroup>
+
 </Project>

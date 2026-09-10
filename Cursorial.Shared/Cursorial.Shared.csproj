@@ -23,4 +23,8 @@
         <PackageTags>cursorial;xaml;markup;attributes</PackageTags>
     </PropertyGroup>
 
+    <ItemGroup>
+      <PackageReference Update="Microsoft.SourceLink.GitHub" Version="10.0.401" />
+    </ItemGroup>
+
 </Project>

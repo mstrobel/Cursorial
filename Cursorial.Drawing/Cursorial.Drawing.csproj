@@ -29,4 +29,8 @@
       <Folder Include="Geometry\" />
     </ItemGroup>
 
+    <ItemGroup>
+      <PackageReference Update="Microsoft.SourceLink.GitHub" Version="10.0.401" />
+    </ItemGroup>
+
 </Project>

@@ -24,7 +24,8 @@
 
     <ItemGroup>
         <!-- The doc-pinned FakeTimeProvider (design doc §10.10); Cursorial.Core.Tests already uses it. -->
-        <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" Version="9.0.0" />
+        <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" Version="10.10.0" />
+        <PackageReference Update="Microsoft.SourceLink.GitHub" Version="10.0.401" />
     </ItemGroup>
 
 </Project>

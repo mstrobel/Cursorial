@@ -43,6 +43,10 @@
   <ItemGroup>
     <InternalsVisibleTo Include="Cursorial.UI.Tests" />
   </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Update="Microsoft.SourceLink.GitHub" Version="10.0.401" />
+  </ItemGroup>
   
   <!-- Generator consumer targets: maps <CursorialXaml> → AdditionalFiles (generator input) + EmbeddedResource
      (runtime load). Imported after the items above so @(CursorialXaml) is populated. -->

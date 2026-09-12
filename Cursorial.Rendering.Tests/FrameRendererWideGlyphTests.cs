@@ -223,4 +223,60 @@ public class FrameRendererWideGlyphTests
         Assert.Contains("─", output);
         Assert.DoesNotContain("\x1b[1;3H", output);
     }
+
+    // ───────────────────────────── the width guarantee (OSC 66 w, 2026-09-12) ─────────────────────────────
+
+    private static OutputCapabilities CapsWithWidthKey(bool reliableWide)
+        => OutputCapabilities.None with
+           {
+               TextSizing = new TextSizingCapabilities(Width: true, Scale: true, ReliableWideGlyphs: reliableWide),
+           };
+
+    [Fact] // A terminal honoring 'w' gets every wide glyph pinned to exactly two cells — and no pre-paint defense.
+    public void WideLeft_WhenWidthKeySupported_EmitsAsATwoCellSizedSpan()
+    {
+        var r = new FrameRenderer(CapsWithWidthKey(reliableWide: false)); // even an UNTRUSTED terminal: w wins
+        var buf = new CellBuffer(4, 1);
+        buf.Set(0, 0, "中", CellStyle.Default);
+        buf.Set(2, 0, "X", CellStyle.Default);
+
+        var output = Render(r, buf);
+
+        Assert.Contains("\x1b]66;w=2;中\x1b\\", output);
+        Assert.DoesNotContain("  \x1b[1;1H", output);                 // no two-space pre-paint + CUP back
+        Assert.True(output.IndexOf('中') < output.IndexOf('X'));
+
+        // The cursor advance is KNOWN (w·s = 2): X at column 2 follows without a CUP.
+        int span = output.IndexOf("中\x1b\\", StringComparison.Ordinal) + "中\x1b\\".Length;
+        Assert.DoesNotContain("\x1b[1;3H", output[span..]);
+    }
+
+    [Fact] // An ambiguous-width glyph is pinned to ONE cell: distinct ambiguous neighbors each keep their cell.
+    public void AmbiguousGlyphs_WhenWidthKeySupported_EachPinnedToOneCell_NoNeighborDefense()
+    {
+        var r = new FrameRenderer(CapsWithWidthKey(reliableWide: false));
+        var buf = new CellBuffer(3, 1);
+        buf.Set(0, 0, "─", CellStyle.Default);
+        buf.Set(1, 0, "│", CellStyle.Default);
+        buf.Set(2, 0, "X", CellStyle.Default);
+
+        var output = Render(r, buf);
+
+        Assert.Contains("\x1b]66;w=1;─\x1b\\", output);
+        Assert.Contains("\x1b]66;w=1;│\x1b\\", output);
+        Assert.True(output.IndexOf('─') < output.IndexOf('│') && output.IndexOf('│') < output.IndexOf('X')); // natural order
+        Assert.DoesNotContain("\x1b]66;", output[output.IndexOf('X')..]);                                // ASCII stays plain
+    }
+
+    [Fact] // Plain ASCII and an empty wide-left never take the sized path.
+    public void PlainCells_WhenWidthKeySupported_StayPlain()
+    {
+        var r = new FrameRenderer(CapsWithWidthKey(reliableWide: true));
+        var buf = new CellBuffer(4, 1);
+        buf.Set(0, 0, "a", CellStyle.Default);
+        buf.Set(1, 0, "b", CellStyle.Default);
+
+        var output = Render(r, buf);
+        Assert.DoesNotContain("\x1b]66;", output);
+    }
 }

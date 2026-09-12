@@ -34,6 +34,10 @@ public static class TextSizingWriter
     /// use <see cref="WriteSplit"/> if you can't guarantee that.
     /// </summary>
     public static void Write(IBufferWriter<byte> writer, in TextSizing sizing, ReadOnlySpan<char> text)
+        => Write(writer, sizing, sizing.Width, text);
+
+    // One sequence with an explicit w (0 = none) — the packed path supplies each chunk's computed width.
+    private static void Write(IBufferWriter<byte> writer, in TextSizing sizing, byte width, ReadOnlySpan<char> text)
     {
         ArgumentNullException.ThrowIfNull(writer);
 
@@ -50,7 +54,7 @@ public static class TextSizingWriter
         int written = 0;
         prefix.CopyTo(buffer[written..]);
         written += prefix.Length;
-        WriteMetadata(sizing, buffer, ref written);
+        WriteMetadata(sizing, width, buffer, ref written);
         buffer[written++] = (byte) ';';
         written += Encoding.UTF8.GetBytes(text, buffer[written..]);
         st.CopyTo(buffer[written..]);
@@ -78,6 +82,16 @@ public static class TextSizingWriter
         if (text.Length == 0)
         {
             Write(writer, sizing, text);
+            return;
+        }
+
+        // Packed: one sequence per packing chunk, each claiming its computed w (never above the spec's seven
+        // cells) — the same chunks TextSizing.SpanColumns measured, so the footprint told to the terminal is
+        // the footprint layout reserved.
+        if (sizing.Packed && sizing.Width == 0)
+        {
+            foreach (var chunk in TextSizingPacking.Chunks(sizing, text))
+                Write(writer, sizing, (byte) chunk.Cells, text.Slice(chunk.Start, chunk.Length));
             return;
         }
 
@@ -128,20 +142,18 @@ public static class TextSizingWriter
         }
     }
 
-    private static void WriteMetadata(in TextSizing sizing, Span<byte> buffer, ref int written)
+    private static void WriteMetadata(in TextSizing sizing, byte width, Span<byte> buffer, ref int written)
     {
         bool first = true;
 
         if (sizing.Scale != 0 && sizing.Scale != 1)
             EmitKv((byte) 's', sizing.Scale, buffer, ref written, ref first);
 
-        // 'w' is deliberately NOT emitted. Per the OSC 66 spec it is the fixed width of the
-        // ENTIRE sequence (all text renders in s·w × s cells, chunk-per-escape for longer
-        // text), not a per-cluster width — and the sub-cell layouts it enables (fixed width +
-        // n/d, no scale) cannot be measured in whole cells, which is the only unit this
-        // framework's layout speaks. Emitting a key our measurement cannot honor would make
-        // fragments lie about their footprint, so the parameter is unsupported by decision
-        // (maintainer, 2026-08-02).
+        // 'w' — the width in cells of the WHOLE text of this sequence (spec: "all the text in that escape code
+        // must be rendered in s·w cells"; maintainer-verified against kitty 2026-09-12). An explicit Width is
+        // emitted as given; a Packed sizing has the writer compute it per chunk (WriteSplit → Write(…, width)).
+        if (width != 0)
+            EmitKv((byte) 'w', width, buffer, ref written, ref first);
 
         if (sizing.Numerator != 0)
             EmitKv((byte) 'n', sizing.Numerator, buffer, ref written, ref first);

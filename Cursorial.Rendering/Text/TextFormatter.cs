@@ -404,7 +404,12 @@ public sealed class TextFormatter
             {
                 previousCluster = ""; // a new piece paints independently — no junction to smush
                 if (fragmentBuilder.Length == 0) return;
-                _wordRuns.Add(new FormattedTextRun(fragmentBuilder.ToString(), run.Style, run.Hyperlink)
+                string fragmentText = fragmentBuilder.ToString();
+                // A span-measured source (a packed OSC 66 sizing) claims the piece's packed footprint, not the
+                // sum of its rounded-up cluster advances — several half-size glyphs share a cell.
+                if (metrics.MeasuresSpans)
+                    fragmentWidth = metrics.StringWidth(fragmentText);
+                _wordRuns.Add(new FormattedTextRun(fragmentText, run.Style, run.Hyperlink)
                                   { LogicalStart = runOffset, Scope = scope, Source = runSource, Indicator = run.Indicator });
                 runOffset += fragmentWidth;
                 _wordWidth += fragmentWidth;

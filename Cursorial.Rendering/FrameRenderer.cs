@@ -986,7 +986,16 @@ public sealed class FrameRenderer
                 // cell, but our pre-painted space at c+1 keeps the cell's background/style
                 // intact. Either way we mark the cursor dirty afterward, so the next emit
                 // issues an explicit CUP rather than trusting the actual advance count.
-                bool wideDefense = cell.Kind == CellKind.WideLeft &&
+                // Width guarantee (2026-09-12): a terminal that honors the OSC 66 'w' key renders a sequence's text
+                // in EXACTLY w cells whatever its own width tables say ("all the text in that escape code must be
+                // rendered in s·w cells"). So a wide glyph goes out pinned to w=2 and an East-Asian-Ambiguous glyph
+                // pinned to w=1 — the buffer's footprint is enforced on the terminal, the cursor advance is known,
+                // and neither defense below is needed: no pre-paint, no neighbor-first, no known limitation with
+                // distinct ambiguous neighbors (each is its own one-cell sequence).
+                bool guaranteeWidth = _capabilities?.TextSizing.Width is true;
+
+                bool wideDefense = !guaranteeWidth &&
+                                   cell.Kind == CellKind.WideLeft &&
                                    _capabilities?.TextSizing.ReliableWideGlyphs is false &&
                                    c + 1 < back.Columns;
 
@@ -1017,7 +1026,8 @@ public sealed class FrameRenderer
                 // neighbors outside the run) and renders half the run rather than none. The
                 // behavior is identical whether the cells came from the text formatter or a
                 // direct CellBuffer write, which is the property we want.
-                bool ambiguousDefense = !wideDefense &&
+                bool ambiguousDefense = !guaranteeWidth &&
+                                        !wideDefense &&
                                         cell.Kind == CellKind.Single &&
                                         cell.Width == 1 &&
                                         c + 1 < back.Columns &&
@@ -1068,7 +1078,11 @@ public sealed class FrameRenderer
                     _cursorCol = c;
                 }
 
-                WriteGraphemeUtf8(output, cell);
+                if (guaranteeWidth && !string.IsNullOrEmpty(cell.Grapheme) && cell.Grapheme != CellBuffer.DurableEmptyGrapheme
+                    && (cell.Kind == CellKind.WideLeft || (cell.Width == 1 && IsAmbiguousWidthGrapheme(cell.Grapheme))))
+                    TextSizingWriter.Write(output, TextSizing.FixedWidth((byte) (cell.Kind == CellKind.WideLeft ? 2 : 1)), cell.Grapheme);
+                else
+                    WriteGraphemeUtf8(output, cell);
                 _frontCells![frontIdx] = cell;
                 _touchedCells![frontIdx] = true;
 

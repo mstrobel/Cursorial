@@ -23,9 +23,10 @@ namespace Cursorial.Rendering.Fragments;
 /// The fragment's <see cref="GetSize"/> reports the bounding rectangle of all lines.
 /// </para>
 /// <para>
-/// <b>Coverage.</b> A cluster rendered at <c>Scale=s</c> occupies its natural width × <c>s</c>
-/// columns by <c>s</c> rows (the 'w' key is unsupported by decision — see
-/// <see cref="Cursorial.Output.TextSizingWriter"/>); the fragment's bounding rectangle is the widest
+/// <b>Coverage.</b> A line occupies <see cref="TextSizing.SpanColumns"/> columns by <c>s</c> rows — its
+/// natural width × <c>s</c>, or the width the <c>w</c> key claims (an explicit <see cref="TextSizing.Width"/>,
+/// or the packed chunk widths of a <see cref="TextSizing.Packed"/> sizing, which is how several half-size
+/// glyphs share a cell); the fragment's bounding rectangle is the widest
 /// line's width by the number of lines (each line band being <c>scale</c> rows tall). Cells
 /// in the bounding rectangle but outside any rendered line — i.e., the unfilled right edges of
 /// shorter lines — receive the renderer's bg-only-space treatment from the cell-emit pass, so
@@ -104,26 +105,20 @@ public sealed class SizedTextFragment : IBufferFragment
     /// <inheritdoc/>
     public Size GetSize()
     {
-        // Cell footprint per the OSC 66 spec (w=0): text splits into cells as normal text
-        // would, each cell an s×s block — a line spans its natural width × s columns. The 'w'
-        // key is unsupported by decision (whole-sequence width, sub-cell layouts unmeasurable
-        // in whole cells — see TextSizingWriter.WriteMetadata) and n/d never changes the
-        // footprint, so GetGlyphSize is the whole story. For multi-line text, the bounding
-        // rectangle is the widest line by the number of lines, each scale-rows tall.
-
-        Size glyphSize = Sizing.GetGlyphSize();
-
+        // Whole-cell footprint per line under the sizing (TextSizing.SpanSize): the natural width × s for an
+        // auto width, w × s for an explicit width, the packed chunk widths × s when Packed — by s rows. For
+        // multi-line text the bounding rectangle is the widest line by the number of lines.
         int maxLineColumns = 0;
 
         foreach (var line in _lines)
         {
-            int lineColumns = GraphemeWidth.StringWidth(line) * glyphSize.Columns;
+            int lineColumns = Sizing.SpanColumns(line);
 
             if (lineColumns > maxLineColumns)
                 maxLineColumns = lineColumns;
         }
 
-        return new Size(maxLineColumns, _lines.Length * glyphSize.Rows);
+        return new Size(maxLineColumns, _lines.Length * Sizing.EffectiveScale);
     }
 
     /// <inheritdoc/>
@@ -135,7 +130,7 @@ public sealed class SizedTextFragment : IBufferFragment
         ArgumentNullException.ThrowIfNull(output);
         ArgumentNullException.ThrowIfNull(capabilities);
 
-        Size glyphSize = Sizing.GetGlyphSize();
+        int rowsPerLine = Sizing.EffectiveScale;
 
         // Style is emitted as an absolute SGR (rather than a delta from whatever was active)
         // because the renderer's bracketing emits SGR-reset after our DECRC; there's no
@@ -152,7 +147,7 @@ public sealed class SizedTextFragment : IBufferFragment
             // line breaks within a single OSC 66 payload, so we emit one OSC 66 per line and
             // CUP explicitly between them.
             if (i > 0)
-                CursorWriter.WriteMoveTo(output, column, row + i * glyphSize.Rows);
+                CursorWriter.WriteMoveTo(output, column, row + i * rowsPerLine);
 
             TextSizingWriter.WriteSplit(output, Sizing, _lines[i]);
         }

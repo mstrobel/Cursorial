@@ -19,6 +19,12 @@ public sealed class KeyTipLevel
     /// Settable so the controller can attach the committing drill's retract to the level built by its parked builder.</summary>
     public Action? Retract { get; set; }
 
+    /// <summary>The surface the level's badges annotate (the topmost surface among its targets — the root, a window,
+    /// or the popup this level drilled into), recorded when the level is shown. The controller pops a level whose
+    /// popup surface has closed under it (a submenu the user backed out of with the keyboard) and pushes a level
+    /// over a popup opened from one of the shown level's targets (a submenu or sibling menu reached by arrow keys).</summary>
+    public TopLevelSurface? Surface { get; set; }
+
     /// <summary>The SURVIVING KeyTip letter for <paramref name="target"/> in this level (post collision-resolution +
     /// eligibility filter), or <see langword="null"/> when it has no badge here — dropped by a collision, or filtered
     /// as ineligible/hidden. Lets <see cref="KeyTip.GetHopSequence"/> report a hop that exactly matches the badges.</summary>

@@ -116,6 +116,11 @@ public abstract class ButtonBase : ContentControl, IAccessKeyTarget, ICommandSou
     // focus-visible ring (a Restore — see FocusManager.ReturnRetainedFocus), independent of the invoke modality.
     // Skipped when the click itself moved focus elsewhere (a drop-down button that focused its popup). A cheap no-op
     // outside a non-retaining scope.
+    /// <summary>A KeyTip badge activation: the access-key click, unconditionally — a <see cref="CheckBox"/>'s own
+    /// access-key reaction is focus-first (a mnemonic that moved focus onto it does not toggle it, keeping single- and
+    /// multi-match consistent), but a badge names the box outright, so choosing it toggles (maintainer, 2026-09-12).</summary>
+    internal void InvokeKeyTipClick() => InvokeClickRetaining(InvokeMethod.AccessKey);
+
     private void InvokeClickRetaining(InvokeMethod method = InvokeMethod.Programmatic)
     {
         var focus = UIApplication.Current?.FocusManager;

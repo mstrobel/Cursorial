@@ -671,7 +671,32 @@ public sealed class KeyTipController : IKeyTipController, IKeyTipLayoutHook
         foreach (var host in hosts)
             host.BuildRootLevel(builder);
 
+        // Compose-both (keytips-design §12's deferral, built 2026-09-12): the active scope's PLAIN access-key targets —
+        // a page's check boxes, buttons, labels — join the root level with their mnemonic as the badge (placed inline
+        // where their cue would be, the cue itself stays suspended), so a content access key remains reachable while
+        // the overlay owns Alt. Anything inside a badged bar surface is that host's business and is skipped; targets
+        // that would multi-match under the manager get suffixes here instead and activate directly.
+        foreach (var target in _accessKeys.EligibleTargetsInActiveScope())
+        {
+            if (UnderAHost(hosts, target))
+                continue;
+
+            var leaf = target;
+            builder.AddActivate(target, () => ActivateLeaf(leaf), keepsOverlay: false);
+        }
+
         return builder.Build();
+    }
+
+    private static bool UnderAHost(List<IKeyTipHost> hosts, UIElement target)
+    {
+        foreach (var host in hosts)
+        {
+            if (ReferenceEquals(host.SurfaceElement, target) || host.SurfaceElement.IsAncestorOf(target))
+                return true;
+        }
+
+        return false;
     }
 
     private IEnumerable<UIElement> ActiveSurfaceRoots()

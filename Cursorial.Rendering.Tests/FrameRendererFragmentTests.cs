@@ -216,17 +216,26 @@ public class FrameRendererFragmentTests
     }
 
     [Fact]
-    public void SizedTextFragment_WidthParameterDoesNotAffectMeasurement()
+    public void SizedTextFragment_WidthParameter_IsTheSpanFootprint()
     {
-        // 'w' is unsupported by decision (spec-verified 2026-08-02: it is the fixed width of the
-        // ENTIRE sequence, not per-cluster, and sub-cell layouts are unmeasurable in whole
-        // cells) — it is never emitted and never measured, so the footprint is natural width.
-        var fragment = new SizedTextFragment(
-            new TextSizing(Scale: 1, Width: 3),
-            "Hello",
-            CellStyle.Default);
+        // 'w' is the width in cells of the WHOLE sequence (maintainer-verified 2026-09-12): "Hello" pinned to
+        // w=3 renders in exactly three cells, and that is the footprint the buffer reserves.
+        var fragment = new SizedTextFragment(new TextSizing(Scale: 1, Width: 3), "Hello", CellStyle.Default);
+        Assert.Equal(new Size(3, 1), fragment.GetSize());
 
-        Assert.Equal(new Size(5, 1), fragment.GetSize());
+        // At scale 2 the same sequence spans w·s columns by s rows.
+        var doubled = new SizedTextFragment(new TextSizing(Scale: 2, Width: 3), "Hello", CellStyle.Default);
+        Assert.Equal(new Size(6, 2), doubled.GetSize());
+    }
+
+    [Fact]
+    public void SizedTextFragment_PackedSuperscript_MeasuresSeveralGlyphsPerCell()
+    {
+        // A packed half-size superscript: "12" shares one cell, "123" rounds up to two; a multi-line fragment
+        // is as wide as its widest packed line.
+        Assert.Equal(new Size(1, 1), new SizedTextFragment(TextSizing.Superscript(), "12", CellStyle.Default).GetSize());
+        Assert.Equal(new Size(2, 1), new SizedTextFragment(TextSizing.Superscript(), "123", CellStyle.Default).GetSize());
+        Assert.Equal(new Size(2, 2), new SizedTextFragment(TextSizing.Superscript(), "1\n123", CellStyle.Default).GetSize());
     }
 
     private sealed class SentinelFragment(Size size, string sentinel, bool supported = true) : IBufferFragment

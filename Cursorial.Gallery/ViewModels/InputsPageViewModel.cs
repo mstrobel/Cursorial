@@ -61,6 +61,19 @@ public sealed class InputsPageViewModel : PageViewModel
                 new(null, new TextSizing(Scale: 1, Numerator: 1, Denominator: 2, Vertical: TextSizingVerticalAlignment.Top)),
                 new(null, new TextSizing(Scale: 1, Numerator: 1, Denominator: 2, Vertical: TextSizingVerticalAlignment.Bottom))
             ];
+
+            // Packed sizings (the w key, 2026-09-12): the same half-size text with w computed per sequence, so two
+            // glyphs share a cell — a superscript, a subscript, and a double-size packed span.
+            if (app.EffectiveCapabilities.Output.TextSizing.Width)
+            {
+                sized =
+                [
+                    .. sized,
+                    new(null, TextSizing.Superscript()),
+                    new(null, TextSizing.Subscript()),
+                    new(null, new TextSizing(Scale: 2, Numerator: 1, Denominator: 2, Vertical: TextSizingVerticalAlignment.Center, Packed: true)),
+                ];
+            }
         }
 
         IReadOnlyList<GlyphSource> fonts =

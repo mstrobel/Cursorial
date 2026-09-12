@@ -167,4 +167,49 @@ public sealed class KeyTipMenuNavigationTests
         Assert.Contains(print, ribbon.QuickAccessCommands);
         Assert.False(controller.IsActive);
     }
+
+    [Fact] // A checkable menu item keeps its menu open by design; a badge toggling it keeps the OVERLAY at that level too,
+           // so the next badge can toggle another item — no exit, no menu teardown on the next Alt.
+    public void CheckableMenuItem_BadgeToggles_MenuAndOverlayStay()
+    {
+        using var host = NewHost();
+        var controller = host.Application.EnableKeyTips();
+
+        var menu = new Menu();
+        var view = new MenuItem { Header = "_View" };
+        var wrap = new MenuItem { Header = "_Wrap", IsCheckable = true };
+        var ruler = new MenuItem { Header = "_Ruler", IsCheckable = true };
+        var close = new MenuItem { Header = "_Close" };
+        view.Items.Add(wrap);
+        view.Items.Add(ruler);
+        view.Items.Add(close);
+        menu.Items.Add(view);
+        host.ShowRoot(new StackPanel { Orientation = Orientation.Vertical, Children = { menu, new TextBox() } });
+        host.RunUntilIdle();
+
+        AltTap(host);
+        Type(host, 'V');
+        SettleLevel(host, controller, 2);
+
+        Type(host, 'W');                          // toggle Wrap: the menu stays, the overlay stays at View's rows
+        host.RunUntilIdle();
+        Assert.True(wrap.IsChecked);
+        Assert.True(view.IsSubmenuOpen);
+        Assert.True(controller.IsActive);
+        Assert.Equal(2, controller.LevelDepthForTests);
+        Assert.Equal(Visibility.Visible, controller.BadgeForTargetForTests(ruler)!.Visibility);
+
+        Type(host, 'R');                          // and the next choice works straight away
+        host.RunUntilIdle();
+        Assert.True(ruler.IsChecked);
+        Assert.True(controller.IsActive);
+
+        var closed = false;
+        close.Click += (_, _) => closed = true;
+        Type(host, 'C');                          // a plain leaf still activates, dismisses the chain and exits
+        host.RunUntilIdle();
+        Assert.True(closed);
+        Assert.False(view.IsSubmenuOpen);
+        Assert.False(controller.IsActive);
+    }
 }

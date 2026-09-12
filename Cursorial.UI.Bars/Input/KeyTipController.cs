@@ -253,6 +253,18 @@ public sealed class KeyTipController : IKeyTipController, IKeyTipLayoutHook
     {
         if (entry.Kind == KeyTipTargetKind.Activate)
         {
+            if (entry.KeepsOverlay)
+            {
+                // The leaf's surface stays up (a checkable menu item toggles and keeps its menu open by design), so
+                // the overlay stays with it: re-show this level for the next choice (maintainer, 2026-09-12 — it
+                // used to exit, leaving the menu open behind a cleared overlay, and the next Alt tore the menu down
+                // and started over at the top).
+                entry.Activate?.Invoke();
+                if (_isActive && _stack.Count > 0)
+                    ShowLevel(_stack[^1]);
+                return;
+            }
+
             _exitViaActivation = true;
             entry.Activate?.Invoke();
             Exit();

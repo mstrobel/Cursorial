@@ -35,6 +35,11 @@ internal static class KeyTipPopupLevels
                     retract: () => opener.IsDropDownOpen = false);
                 break;
 
+            case MenuItem { IsCheckable: true } check:
+                // Toggles and keeps its menu open (by design) — the overlay stays at this level for the next choice.
+                into.AddActivate(check, () => KeyTipController.ActivateLeaf(check), keepsOverlay: true);
+                break;
+
             default:
                 into.AddActivate(target, () => KeyTipController.ActivateLeaf(target));
                 break;

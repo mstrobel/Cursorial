@@ -38,6 +38,7 @@ public sealed class KeyTipController : IKeyTipController, IKeyTipLayoutHook
     private Action? _parkedRetract;
     private int _parkedGeneration;
     private int _parkedRetries;
+    private bool _parkedGiveUpRetracts; // a drill's reveal is undone when its level never builds; a keyboard-opened popup is left alone
 
     // Drill letters typed while a next level is still parked (a fast "Alt, H, B" lands 'B' before the Home band's
     // group level has been built at the post-layout hook). They are consumed at once and replayed, in order, the
@@ -263,6 +264,7 @@ public sealed class KeyTipController : IKeyTipController, IKeyTipLayoutHook
         entry.Reveal?.Invoke();
         _parkedBuild = entry.BuildNext;
         _parkedRetract = entry.Retract;
+        _parkedGiveUpRetracts = true;
         _parkedGeneration = ++_levelGeneration;
         _parkedRetries = 0;
     }
@@ -315,12 +317,17 @@ public sealed class KeyTipController : IKeyTipController, IKeyTipLayoutHook
                 // reveal and RE-SHOW the drilled-from level so it stays matchable — otherwise its Typed prefix
                 // (the drill letter) is left dirty and every sibling letter would bonk (the level would brick).
                 _parkedBuild = null;
-                _parkedRetract?.Invoke();
+                if (_parkedGiveUpRetracts)
+                    _parkedRetract?.Invoke();
                 _parkedRetract = null;
                 _pendingChars.Clear();            // typed for a level that never came — dropped, not mis-matched
                 ShowLevel(_stack[^1]);
             }
         }
+
+        // 1b) Follow popups the keyboard opened or closed under the overlay (arrow keys in a menu).
+        if (_isActive && _parkedBuild is null)
+            SyncWithPopups();
 
         // 2) Re-anchor the shown level's badges to their targets' final screen cells — this is what keeps badges glued
         // to a ribbon that MOVES (a panel above it grows) or SCROLLS (a ScrollViewer slide, reflected through
@@ -391,7 +398,104 @@ public sealed class KeyTipController : IKeyTipController, IKeyTipLayoutHook
             }
         }
 
+        level.Surface = topmost ?? wm.Surfaces.FirstOrDefault();
         wm.AnchorKeyTipOverlay(topmost);
+    }
+
+    // ───────────────────────────── popup sync (keyboard-navigated menus) ─────────────────────────────
+
+    // Keeps the level stack in step with the popups the user opens and closes by other means while the overlay is
+    // up — the arrow keys in a menu (maintainer, 2026-09-12): Right/Enter on a submenu header opens it, Left closes
+    // it, Left/Right on the bar switches to the sibling top-level menu. A level whose popup surface has closed is
+    // popped (its popup is already gone — no retract); a popup opened FROM one of the shown level's targets (its
+    // placement target is that control, or sits inside it) gets a level pushed over it, so the badges follow the
+    // keyboard. Any other popup (unrelated to the drill) is left alone.
+    private void SyncWithPopups()
+    {
+        if (_app.WindowManager is not { } wm || _stack.Count == 0)
+            return;
+
+        var popped = false;
+        while (_stack.Count > 1 && _stack[^1].Surface is { IsPopup: true } surface && !wm.Surfaces.Contains(surface))
+        {
+            _stack.RemoveAt(_stack.Count - 1);
+            popped = true;
+        }
+
+        if (popped)
+        {
+            _pendingChars.Clear();
+            _levelGeneration++;
+            ShowLevel(_stack[^1]);
+        }
+
+        // The topmost open popup not already on the stack, opened from a control the shown level badges.
+        var top = _stack[^1];
+        var surfaces = wm.Surfaces;
+        for (var i = surfaces.Count - 1; i >= 0; i--)
+        {
+            var candidate = surfaces[i];
+            if (!candidate.IsPopup || OnStack(candidate))
+                continue;
+
+            if (PopupFor(wm, candidate) is not { } popup || popup.EffectiveTarget is not { } placement || !IsLevelTarget(top, placement))
+                continue;
+
+            var content = candidate.Root;
+            if (KeyTipPopupLevels.BuildOver(content) is { Entries.Count: > 0 } level)
+            {
+                level.Retract = () => popup.IsOpen = false;
+                _stack.Add(level);
+                _levelGeneration++;
+                ShowLevel(level);
+                ReplayPendingChars();
+            }
+            else
+            {
+                // Not realized yet (the popup opened this frame): park it like a drill's next level — but a popup
+                // the USER opened is never closed by a give-up (it may simply hold nothing badgeable).
+                _parkedBuild = () => KeyTipPopupLevels.BuildOver(content);
+                _parkedRetract = () => popup.IsOpen = false;
+                _parkedGiveUpRetracts = false;
+                _parkedGeneration = ++_levelGeneration;
+                _parkedRetries = 0;
+            }
+
+            return;
+        }
+    }
+
+    private bool OnStack(TopLevelSurface surface)
+    {
+        foreach (var level in _stack)
+        {
+            if (ReferenceEquals(level.Surface, surface))
+                return true;
+        }
+
+        return false;
+    }
+
+    private static Popup? PopupFor(WindowManager wm, TopLevelSurface surface)
+    {
+        foreach (var popup in wm.Popups)
+        {
+            if (ReferenceEquals(popup.PopupSurface, surface))
+                return popup;
+        }
+
+        return null;
+    }
+
+    private static bool IsLevelTarget(KeyTipLevel level, UIElement element)
+    {
+        foreach (var entry in level.Entries)
+        {
+            if (ReferenceEquals(entry.Target, element) || entry.Target.IsAncestorOf(element))
+                return true;
+        }
+
+        return false;
     }
 
     // Positions each visible badge at its target's screen cell. A badge is HIDDEN (not stranded at some bogus cell)
@@ -495,6 +599,14 @@ public sealed class KeyTipController : IKeyTipController, IKeyTipLayoutHook
 
         if (target.Focusable && app is not null)
             app.FocusManager.SetFocus(target, FocusNavigationMethod.AccessKey);
+
+        // A check box's access-key reaction is focus-first (the mnemonic that focused it does not toggle it); a badge
+        // names the box outright, so choosing it toggles — the click path, not the access-key reaction.
+        if (target is CheckBox { IsEffectivelyEnabled: true } box)
+        {
+            box.InvokeKeyTipClick();
+            return;
+        }
 
         if (target is IAccessKeyTarget { IsAccessKeyEligible: true } accessKeyTarget)
             accessKeyTarget.OnAccessKey(new AccessKeyEventArgs('\0', isMultiMatch: false, target));

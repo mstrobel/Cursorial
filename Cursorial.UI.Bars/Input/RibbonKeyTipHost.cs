@@ -109,6 +109,20 @@ internal sealed class RibbonKeyTipHost(Ribbon ribbon) : IKeyTipHost
             }
         }
 
+        // The QAT customize ▾ (maintainer, 2026-09-12: it had no badge — its face is a glyph, nothing to derive —
+        // and its checklist is a raw Popup, not a dropdown button): the explicit "00" badge, in the QAT's digit
+        // family beside the items' 1..9 and the collapsed opener's 0, drills into the checklist (the candidate
+        // check boxes, "More Commands…", "Show Below the Ribbon").
+        if (ribbon is { QatCustomizeForTests: { IsEffectivelyVisible: true } customize, QatPopupForTests: { } qatPopup })
+        {
+            into.AddExplicit(
+                customize, "00", KeyTipTargetKind.DrillPopup,
+                activate: null,
+                reveal: () => qatPopup.IsOpen = true,
+                buildNext: () => KeyTipPopupLevels.BuildOver(qatPopup.Child),
+                retract: () => qatPopup.IsOpen = false);
+        }
+
         // The collapsed-QAT opener (⋯▾) drills into its flyout (the re-hosted QAT commands).
         if (ribbon is { IsQuickAccessCollapsedForTests: true, QatCollapsedButtonForTests: { } opener })
         {

@@ -54,15 +54,44 @@ public class TextFormatterMetricsTests
     }
 
     [Fact]
-    public void ScaledMetrics_WidthParameterIgnored_AndAgreesWithGetGlyphSize()
+    public void ScaledMetrics_ExplicitWidth_MeasuresTheSpan_ClustersStayNatural()
     {
-        // 'w' is the whole-sequence width per the spec and unsupported by decision — the metrics
-        // and the fragment's GetGlyphSize must tell the same story.
+        // 'w' is the whole-sequence width (spec, maintainer-verified 2026-09-12): a string measures as the
+        // span the sequence claims (w × s), while a lone cluster still advances its natural scaled width.
         var sizing = new TextSizing(Scale: 2, Width: 3);
         var m = MonospaceFont.Default.GetScaledMetrics(sizing);
 
         Assert.Equal(2, m.ClusterWidth("A"));
-        Assert.Equal((2, 2), sizing.GetGlyphSize());
+        Assert.Equal(6, m.StringWidth("HELLO"));       // w=3 × s=2 — the fragment's footprint
+        Assert.Equal((6, 2), sizing.SpanSize("HELLO"));
+    }
+
+    [Fact]
+    public void ScaledMetrics_PackedSuperscript_SeveralGlyphsPerCell()
+    {
+        // A packed half-size superscript: a string measures as its packed footprint ("12" = one cell, "123" =
+        // two); a lone cluster rounds UP to a whole cell so a formatter's wrap decisions stay conservative.
+        var m = MonospaceFont.Default.GetScaledMetrics(TextSizing.Superscript());
+
+        Assert.Equal(1, m.ClusterWidth("1"));
+        Assert.Equal(1, m.ClusterWidth("日"));           // a wide cluster at half size fits a cell
+        Assert.Equal(1, m.StringWidth("12"));
+        Assert.Equal(2, m.StringWidth("123"));
+        Assert.Equal(8, m.StringWidth("123456789012345")); // 7-cell chunk + 1-cell tail (w caps at 7)
+        Assert.Equal(1, m.LineRows);
+
+        var doubled = MonospaceFont.Default.GetScaledMetrics(new TextSizing(Scale: 2, Numerator: 1, Denominator: 2, Packed: true));
+        Assert.Equal(2, doubled.StringWidth("12"));     // packed to one cell, × s
+        Assert.Equal(2, doubled.LineRows);
+    }
+
+    [Fact]
+    public void ScaledMetrics_UnpackedFraction_StillAdvancesWholeCells()
+    {
+        // Without w the fraction only shrinks the glyph inside its normal block — the footprint is unchanged.
+        var m = MonospaceFont.Default.GetScaledMetrics(new TextSizing(Numerator: 1, Denominator: 2));
+        Assert.Equal(1, m.ClusterWidth("1"));
+        Assert.Equal(2, m.StringWidth("12"));
     }
 
     // ---- Sized-text blocks through the formatter ----
@@ -106,6 +135,20 @@ public class TextFormatterMetricsTests
         Assert.All(block.Lines, l => Assert.Equal(2, l.Rows));
         Assert.Equal(4, block.Size.Rows);
         Assert.False(block.HasTrimmedLines);
+    }
+
+    [Fact]
+    public void PackedSuperscriptRun_FormatsToItsPackedWidth()
+    {
+        // Through the formatter: "H" + a packed superscript "12" + "O" is 3 cells wide, not 4 — the superscript
+        // run's width is the cell its two half glyphs share, and the fragment painted for it claims the same.
+        var rt = new RichTextBuilder().Run("H").Run("12", TextSizing.Superscript()).Run("O").Build();
+        var ft = new TextFormatter().Format(rt, 20, capabilities: ScaleCaps());
+        var block = Assert.IsType<FormattedParagraph>(Assert.Single(ft.Blocks));
+
+        Assert.Single(block.Lines);
+        Assert.Equal(3, block.Size.Columns);
+        Assert.Equal("H12O", LinePlainText(block, 0));
     }
 
     [Fact]

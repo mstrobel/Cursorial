@@ -29,6 +29,14 @@ public abstract class GlyphMetrics
     public abstract int ClusterWidth(ReadOnlySpan<char> cluster);
 
     /// <summary>
+    /// Whether a painted piece's width is its <see cref="StringWidth"/> rather than the sum of its per-cluster
+    /// advances — true for a sizing whose sequences pack several glyphs per cell (the per-cluster advance can
+    /// only round each glyph up, see <see cref="ScaledGlyphMetrics"/>); a formatter re-measures each piece it
+    /// emits so the recorded width is the footprint the piece's fragment will claim.
+    /// </summary>
+    public virtual bool MeasuresSpans => false;
+
+    /// <summary>
     /// Cells this cluster ADDS when it follows <paramref name="previous"/> within one painted
     /// piece — the kerning-aware advance. Context-free sources (the identity, scaled text)
     /// return <see cref="ClusterWidth"/>; a FIGlet face returns the post-smush increment, so
@@ -82,23 +90,28 @@ public abstract class GlyphMetrics
 }
 
 /// <summary>
-/// Metrics for OSC 66 scaled text (<see cref="TextSizing"/>): per the protocol (w=0), text
-/// splits into cells exactly as normal text would and each cell becomes an <c>s×s</c> block —
-/// so a cluster advances its natural width × <c>Scale</c> cells, and a line stands
-/// <c>Scale</c> rows tall. Mirrors <see cref="Fragments.SizedTextFragment"/>'s footprint math
-/// so wrap points the formatter chooses agree with what the fragment will paint.
+/// Metrics for OSC 66 scaled text (<see cref="TextSizing"/>). Auto width (w=0): text splits into cells
+/// exactly as normal text would and each cell becomes an <c>s×s</c> block — a cluster advances its
+/// natural width × <c>Scale</c> cells, and a line stands <c>Scale</c> rows tall. A sizing that uses the
+/// <c>w</c> key (an explicit <see cref="TextSizing.Width"/>, or <see cref="TextSizing.Packed"/>) measures a
+/// string as the SPAN footprint the sequences will claim (<see cref="TextSizing.SpanColumns"/>), so the
+/// width a formatter records for a run is exactly what <see cref="Fragments.SizedTextFragment"/> paints —
+/// several half-size glyphs sharing a cell measure as that one cell.
 /// </summary>
 /// <remarks>
 /// <para>
-/// <c>Scale = 0</c> is the record-struct default and means 1. The fractional scale
-/// (<c>Numerator/Denominator</c>) deliberately does not participate: per the spec it "does not
-/// affect the number of cells the text occupies", only the rendered glyph size within them —
-/// half-size sizing at s=2 still advances 2 cells per narrow cluster.
+/// <c>Scale = 0</c> is the record-struct default and means 1. Without <c>w</c> the fractional scale
+/// (<c>Numerator/Denominator</c>) does not participate: per the spec it "does not affect the number of
+/// cells the text occupies", only the rendered glyph size within them — half-size sizing at s=2 still
+/// advances 2 cells per narrow cluster.
 /// </para>
 /// <para>
-/// <see cref="TextSizing.Width"/> ('w') does not participate either: it is the fixed width of
-/// the ENTIRE sequence, not a per-cluster advance, and is unsupported by decision (see
-/// <see cref="TextSizingWriter"/>).
+/// <b>Sub-cell advances.</b> A packed cluster costs <c>natural·n/d</c> of a cell, which no whole-cell
+/// per-cluster advance can express; <see cref="ClusterWidth"/> therefore rounds each cluster UP on its own
+/// (a half glyph advances one cell), which makes a formatter's wrap decisions conservative — a packed run
+/// breaks a touch early, never late — while <see cref="StringWidth"/> is exact for the piece that results.
+/// True sub-cell layout (a caret between two glyphs in one cell) is out of scope: these metrics serve
+/// read-only text.
 /// </para>
 /// </remarks>
 public sealed class ScaledGlyphMetrics : GlyphMetrics
@@ -111,11 +124,26 @@ public sealed class ScaledGlyphMetrics : GlyphMetrics
     public ScaledGlyphMetrics(in TextSizing sizing)
     {
         Sizing = sizing;
-        _unit = sizing.Scale == 0 ? 1 : sizing.Scale;
+        _unit = sizing.EffectiveScale;
     }
 
     public override int ClusterWidth(ReadOnlySpan<char> cluster)
-        => GraphemeWidth.ClusterWidth(cluster) * _unit;
+    {
+        int natural = GraphemeWidth.ClusterWidth(cluster);
+        if (Sizing.Packed && Sizing.Width == 0 && Sizing.IsFractional)
+        {
+            // ⌈natural · n / d⌉ — the cluster's own packed cost, rounded up (see the remarks).
+            int units = natural * Sizing.Numerator;
+            return (units + Sizing.Denominator - 1) / Sizing.Denominator * _unit;
+        }
+
+        return natural * _unit;
+    }
+
+    public override int StringWidth(ReadOnlySpan<char> text)
+        => Sizing.UsesWidth ? Sizing.SpanColumns(text) : base.StringWidth(text);
+
+    public override bool MeasuresSpans => Sizing.UsesWidth;
 
     public override int LineRows => _unit;
 }

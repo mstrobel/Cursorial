@@ -13,10 +13,10 @@ public sealed class KeyTipLevelBuilder
 
     private readonly record struct Pending(
         UIElement Target, string KeyTip, bool Explicit, KeyTipTargetKind Kind, KeyTipAnchor Anchor,
-        Action? Activate, Action? Reveal, Func<KeyTipLevel?>? BuildNext, Action? Retract);
+        Action? Activate, Action? Reveal, Func<KeyTipLevel?>? BuildNext, Action? Retract, bool KeepsOverlay = false);
 
     /// <summary>Adds a leaf: typing its badge invokes <paramref name="activate"/> then exits.</summary>
-    public void AddActivate(UIElement target, Action activate, KeyTipAnchor anchor = KeyTipAnchor.TopLeading)
+    public void AddActivate(UIElement target, Action activate, KeyTipAnchor anchor = KeyTipAnchor.TopLeading, bool keepsOverlay = false)
     {
         if (!target.IsEffectivelyVisible) // a hidden target (e.g. a collapsed contextual ribbon tab) gets no badge
             return;
@@ -25,7 +25,7 @@ public sealed class KeyTipLevelBuilder
         if (keyTip is null)
             return;
 
-        _pending.Add(new Pending(target, keyTip, explicitKey, KeyTipTargetKind.Activate, anchor, activate, null, null, null));
+        _pending.Add(new Pending(target, keyTip, explicitKey, KeyTipTargetKind.Activate, anchor, activate, null, null, null, keepsOverlay));
     }
 
     /// <summary>Adds a drill: typing its badge performs <paramref name="reveal"/> then pushes the level
@@ -95,6 +95,7 @@ public sealed class KeyTipLevelBuilder
                 Reveal = p.Reveal,
                 BuildNext = p.BuildNext,
                 Retract = p.Retract,
+                KeepsOverlay = p.KeepsOverlay,
             });
         }
 

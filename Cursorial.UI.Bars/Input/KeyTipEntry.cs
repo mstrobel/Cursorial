@@ -30,6 +30,12 @@ public sealed class KeyTipEntry
     /// <summary>Leaf activation (<see cref="KeyTipTargetKind.Activate"/> only).</summary>
     public Action? Activate { get; init; }
 
+    /// <summary>
+    /// Whether activating this leaf leaves its surface up — a checkable menu item toggles and keeps its menu open by
+    /// design — so the overlay stays at the same level (its badges re-shown for the next choice) instead of exiting.
+    /// </summary>
+    public bool KeepsOverlay { get; init; }
+
     /// <summary>The drill reveal — select a tab, open a dropdown/flyout (the <c>Drill*</c> kinds).</summary>
     public Action? Reveal { get; init; }
 

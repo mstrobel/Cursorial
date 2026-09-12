@@ -829,6 +829,21 @@ public abstract partial class UIElement : UIObject
     // ───────────────────────────── coordinate translation ─────────────────────────────
 
     /// <summary>
+    /// Translates this element's local (<paramref name="column"/>, <paramref name="row"/>) into
+    /// <paramref name="target"/>'s local coordinates — through screen space, so the two may sit on different
+    /// surfaces (a badge overlay locating a cell of a control inside a popup).
+    /// </summary>
+    public (int Column, int Row) TranslateTo(UIElement target, int column, int row)
+    {
+        ArgumentNullException.ThrowIfNull(target);
+
+        var (screenColumn, screenRow) = TranslateToScreen(column, row);
+        var (targetColumn, targetRow) = target.TranslateToScreen(0, 0);
+
+        return (screenColumn - targetColumn, screenRow - targetRow);
+    }
+
+    /// <summary>
     /// Translates element-local coordinates to window (visual-root) coordinates — the inverse of
     /// <see cref="TranslateFromWindow(int, int)"/>.
     /// </summary>

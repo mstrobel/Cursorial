@@ -350,6 +350,13 @@ public static class ThemeKeys
     /// <summary>The base text style applied to the active mnemonic grapheme of the access key cue.</summary>
     public const string InteractiveCueActiveStyle = "Theme.InteractiveCueActiveStyle";
 
+    /// <summary>An alternate base text style applied to the active mnemonic grapheme of the access key cue.</summary>
+    /// <remarks>
+    /// Use this when <see cref="InteractiveCueActiveStyle"/> has a color clash with the target control or otherwise
+    /// lacks visual distinction.
+    /// </remarks>
+    public const string InteractiveCueActiveAlternateStyle = "Theme.InteractiveCueActiveAlternateStyle";
+
     /// <summary>The base text style applied to the inactive mnemonic grapheme of the access key cue.</summary>
     public const string InteractiveCueInactiveStyle = "Theme.InteractiveCueInactiveStyle";
 

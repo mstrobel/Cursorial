@@ -12,8 +12,8 @@ namespace Cursorial.UI.Controls;
 /// <param name="KeyIndex">The grapheme index of the mnemonic in <see cref="Text"/>; <c>-1</c> when there is none.</param>
 public readonly record struct AccessText(string Text, char Key, int KeyIndex)
 {
-    /// <summary>Whether the label carries a mnemonic.</summary>
-    public bool HasKey => KeyIndex >= 0;
+    /// <summary>Whether the label carries a mnemonic — a key character AND its index (a default-constructed value has index 0 but no key).</summary>
+    public bool HasKey => Key is not '\0' && KeyIndex >= 0;
 
     /// <summary>
     /// Parses an access-key label (design doc §12.5): <c>"_File"</c> → <c>("File",'F',0)</c>;

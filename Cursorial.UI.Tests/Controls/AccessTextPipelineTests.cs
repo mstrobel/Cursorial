@@ -15,6 +15,10 @@ using Cursorial.UI.Controls;
 using Cursorial.UI.Input;
 using Cursorial.UI.Hosting.Headless;
 
+using static Cursorial.Tests.UI.AccessKeyTestHelpers;
+
+// ReSharper disable MemberCanBePrivate.Local
+
 namespace Cursorial.Tests.UI.Controls;
 
 /// <summary>
@@ -146,7 +150,7 @@ public sealed class AccessTextPipelineTests
 
                 var full = FullPipeline(f.Cache, text, in request, in carrier);
 
-                Assert.Equal(full.Size, fast!.Size);
+                Assert.Equal(full.Size, fast.Size);
                 Assert.Equal(full.ProvidedColumns, fast.ProvidedColumns);
                 Assert.Equal(full.HasTrimmedLines, fast.HasTrimmedLines);
 
@@ -154,11 +158,11 @@ public sealed class AccessTextPipelineTests
                             $"columns={columns} carrier={(carrier == PlainCarrier ? "plain" : "gradient")}";
 
                 AssertTwinBuffers(fast, full, columns, 1, label + " lane=paint",
-                                  (FormattedText ft, in CellBufferView view, in Rect rect)
+                                  (ft, in view, in rect)
                                       => ft.Paint(view, rect, OutputCapabilities.None));
 
                 AssertTwinBuffers(fast, full, columns, 1, label + " lane=preference",
-                                  (FormattedText ft, in CellBufferView view, in Rect rect) =>
+                                  (ft, in view, in rect) =>
                                   {
                                       var document = ft;    // copies: `in` parameters cannot be
                                       var paintRect = rect; // captured by the scene-draw closure
@@ -189,16 +193,16 @@ public sealed class AccessTextPipelineTests
 
         var full = FullPipeline(f.Cache, "Save", in request, PlainCarrier);
 
-        AssertTwinBuffers(fast!, full, 10, 1, "out-of-range cluster",
-                          (FormattedText ft, in CellBufferView view, in Rect rect)
+        AssertTwinBuffers(fast, full, 10, 1, "out-of-range cluster",
+                          (ft, in view, in rect)
                               => ft.Paint(view, rect, OutputCapabilities.None));
 
         // ...and both equal the indicator-free layout (the declaration didn't land anywhere).
         var plainRequest = Request("Save", columns: 10, indicator: null);
         var plain = f.Cache.TryFormatPlainTextFast(in plainRequest, PlainCarrier);
         Assert.NotNull(plain);
-        AssertTwinBuffers(fast!, plain!, 10, 1, "out-of-range vs plain",
-                          (FormattedText ft, in CellBufferView view, in Rect rect)
+        AssertTwinBuffers(fast, plain, 10, 1, "out-of-range vs plain",
+                          (ft, in view, in rect)
                               => ft.Paint(view, rect, OutputCapabilities.None));
     }
 
@@ -230,6 +234,7 @@ public sealed class AccessTextPipelineTests
 
     // ─────────────────────────────── presenter routing wiring ───────────────────────────────
 
+    // ReSharper disable once UnusedTupleComponentInReturnValue
     private static (UIHeadlessHost Host, SlotHost Slot) Show(UIElement child, int columns, int rows)
     {
         var slot = new SlotHost(child) { SlotRect = new Rect(0, 0, columns, rows) };
@@ -260,8 +265,8 @@ public sealed class AccessTextPipelineTests
 
         // The frame is the ordinary cue'd render…
         Assert.Equal("S", host.GetCell(0, 0).Grapheme);
-        Assert.True(host.GetCell(0, 0).Style.Attributes.HasFlag(TextAttributes.Underline));
-        Assert.False(host.GetCell(1, 0).Style.Attributes.HasFlag(TextAttributes.Underline));
+        AssertCue(true, host, 0, 0, presenter);
+        AssertNoCue(host, 1, 0, presenter);
 
         // …and it was built by the fast path, never the RichText pipeline — the indicator is part
         // of the fast subset now (M2).
@@ -286,12 +291,13 @@ public sealed class AccessTextPipelineTests
         var (host, _) = Show(presenter, columns: 8, rows: 1);
         using var _1 = host;
 
+        // ReSharper disable once StringLiteralTypo
         Assert.StartsWith("Documen…", host.GetRowText(0));
         Assert.True(presenter.GetValue(TextElement.IsTrimmedProperty));
 
         // The mnemonic survives the trim and wears the cue — through the FULL pipeline.
-        Assert.True(host.GetCell(0, 0).Style.Attributes.HasFlag(TextAttributes.Underline));
-        Assert.False(host.GetCell(1, 0).Style.Attributes.HasFlag(TextAttributes.Underline));
+        AssertCue(true, host, 0, 0, presenter);
+        AssertNoCue(host, 1, 0, presenter);
 
         Assert.Equal(0, presenter.Cache.FastPathFormatCount);
         Assert.True(presenter.Cache.FullFormatCount >= 1,
@@ -309,9 +315,9 @@ public sealed class AccessTextPipelineTests
         Assert.Equal("日", host.GetCell(0, 0).Grapheme);
         Assert.Equal("本", host.GetCell(2, 0).Grapheme);
 
-        Assert.False(host.GetCell(0, 0).Style.Attributes.HasFlag(TextAttributes.Underline));
-        Assert.True(host.GetCell(2, 0).Style.Attributes.HasFlag(TextAttributes.Underline));
-        Assert.False(host.GetCell(4, 0).Style.Attributes.HasFlag(TextAttributes.Underline));
+        AssertNoCue(host, 0, 0, presenter);
+        AssertCue(true, host, 2, 0, presenter);
+        AssertNoCue(host, 4, 0, presenter);
     }
 
     // ─────────────────────────────── cue / carrier freshness ───────────────────────────────
@@ -329,11 +335,11 @@ public sealed class AccessTextPipelineTests
         // the repaint re-formats by key miss — no measure pass needed, no stale layout served.
         AccessKeyManager.SetShowUnderline(presenter, true);
         host.RunFrame();
-        Assert.True(host.GetCell(0, 0).Style.Attributes.HasFlag(TextAttributes.Underline));
 
+        AssertCue(true, host, 0, 0, presenter);
         AccessKeyManager.SetShowUnderline(presenter, false);
         host.RunFrame();
-        Assert.False(host.GetCell(0, 0).Style.Attributes.HasFlag(TextAttributes.Underline));
+        AssertCue(false, host, 0, 0, presenter);
     }
 
     [Fact]
@@ -399,7 +405,7 @@ public sealed class AccessTextPipelineTests
         Assert.Equal("Sa…", host.GetRowText(0).TrimEnd());
 
         Assert.False(host.GetCell(0, 0).Style.Attributes.HasFlag(TextAttributes.Underline)); // 'S'
-        Assert.True(host.GetCell(1, 0).Style.Attributes.HasFlag(TextAttributes.Underline));  // 'a' — the cue
+        AssertCue(true, host, 1, 0, presenter);                                              // 'a' — the cue
         Assert.False(host.GetCell(2, 0).Style.Attributes.HasFlag(TextAttributes.Underline)); // '…' — plain, no cue
     }
 
@@ -419,7 +425,7 @@ public sealed class AccessTextPipelineTests
         Assert.Equal("Sa…", host.GetRowText(0).TrimEnd());
 
         Assert.False(host.GetCell(0, 0).Style.Attributes.HasFlag(TextAttributes.Underline)); // 'S'
-        Assert.True(host.GetCell(1, 0).Style.Attributes.HasFlag(TextAttributes.Underline));  // 'a' — the cue
+        AssertCue(true, host, 1, 0, presenter);                                              // 'a' — the cue
         Assert.False(host.GetCell(2, 0).Style.Attributes.HasFlag(TextAttributes.Underline)); // '…' — plain, no cue
     }
 }

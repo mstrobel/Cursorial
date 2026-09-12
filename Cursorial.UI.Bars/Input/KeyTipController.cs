@@ -1,4 +1,7 @@
+using System.Globalization;
+
 using Cursorial.Input;
+using Cursorial.Text;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Input;
 
@@ -531,7 +534,7 @@ public sealed class KeyTipController : IKeyTipController, IKeyTipLayoutHook
             var onBadgeableSurface = entry.Target.IsEffectivelyVisible
                                      && (_app.WindowManager is not { } wm || wm.SurfaceForElement(entry.Target) is not null);
 
-            var (anchorColumn, anchorRow) = AnchorCell(entry);
+            var (anchorColumn, anchorRow, inlineText) = AnchorCell(entry);
             var (column, row) = entry.Target.TranslateToScreen(anchorColumn, anchorRow);
             var onScreen = column >= 0 && row >= 0 && column < viewport.Columns && row < viewport.Rows;
 
@@ -540,25 +543,117 @@ public sealed class KeyTipController : IKeyTipController, IKeyTipLayoutHook
             if (!show)
                 continue;
 
+            // An inline badge shows the letter in the case the label spells it (the badge stands where the access-key
+            // underline would be, so it reads as the label's own letter); matching stays case-insensitive.
+            badge.KeyTipText = inlineText ?? entry.KeyTip;
+
             // Keep a wide (multi-letter) badge from overflowing the right edge; the anchor itself is on-screen.
-            Canvas.SetLeft(badge, Math.Min(column, Math.Max(0, viewport.Columns - 1)));
+            int width = GraphemeWidth.StringWidth(badge.KeyTipText);
+            Canvas.SetLeft(badge, Math.Max(0, Math.Min(column, viewport.Columns - width)));
             Canvas.SetTop(badge, row);
         }
     }
 
-    // The target-local cell a badge anchors to (keytips-design §8). BottomLeading (the v1 default, "at the end of its
-    // command" on the bottom row) collapses to (0,0) for a single-row control; TopLeading pins the top-left corner;
-    // BottomCenter centers on the bottom edge.
-    private static (int Column, int Row) AnchorCell(KeyTipEntry entry)
+    // The target-local cell a badge anchors to (keytips-design §8), and the text it shows there.
+    //
+    // INLINE (maintainer, 2026-09-12): a control whose label is plain monospace text and whose badge is that label's
+    // own letter puts the badge where the access-key cue would sit — over the mnemonic's cluster when the label has
+    // one, else over the first cluster spelling the badge letter — so the badge reads like the underline it replaces
+    // and never hides the label's first letter for nothing. A multi-letter badge (a `B0`/`B1` collision suffix)
+    // starts at that cell and runs right. The text shown takes the label's own case for that letter.
+    //
+    // Otherwise the anchor rule: BottomLeading (the design's desktop default, "at the end of its command" on the
+    // bottom row) collapses to (0,0) for a single-row control; TopLeading pins the top-left corner; BottomCenter
+    // centers on the bottom edge.
+    private static (int Column, int Row, string? InlineText) AnchorCell(KeyTipEntry entry)
     {
+        if (InlineAnchor(entry) is var (inlineColumn, inlineRow, inlineText))
+            return (inlineColumn, inlineRow, inlineText);
+
         var bounds = entry.Target.Bounds;
         var lastRow = Math.Max(0, bounds.Rows - 1);
         return entry.Anchor switch
         {
-            KeyTipAnchor.TopLeading => (0, 0),
-            KeyTipAnchor.BottomCenter => (Math.Max(0, bounds.Columns / 2), lastRow),
-            _ => (0, lastRow), // BottomLeading
+            KeyTipAnchor.TopLeading => (0, 0, null),
+            KeyTipAnchor.BottomCenter => (Math.Max(0, bounds.Columns / 2), lastRow, null),
+            _ => (0, lastRow, null), // BottomLeading
         };
+    }
+
+    // The inline anchor for a badge whose first letter the target's label spells: the target-local cell of that
+    // cluster (through screen space — the presenter is a template part, possibly on another surface) and the badge
+    // text with the label's case. Null when the target has no plain-monospace access-text presenter, or its label
+    // does not contain the letter.
+    private static (int Column, int Row, string Text)? InlineAnchor(KeyTipEntry entry)
+    {
+        var target = entry.Target;
+        if (entry.KeyTip.Length == 0 || !TextElement.GetGlyphSource(target).PaintsAsCells)
+            return null;
+
+        if (FindAccessTextPresenter(target) is not { Text.Text: { Length: > 0 } label } presenter)
+            return null;
+
+        char letter = entry.KeyTip[0];
+        int clusterIndex = ClusterIndexOf(presenter.Text, letter);
+        if (clusterIndex < 0)
+            return null;
+
+        // The cluster's cell column: the width of the clusters before it (a wide or multi-unit cluster shifts it).
+        int cell = 0;
+        var remaining = label.AsSpan();
+        string spelled = letter.ToString();
+        for (var i = 0; !remaining.IsEmpty; i++)
+        {
+            int len = StringInfo.GetNextTextElementLength(remaining);
+            if (len <= 0)
+                break;
+            if (i == clusterIndex)
+            {
+                spelled = remaining[..len].ToString();
+                break;
+            }
+
+            cell += GraphemeWidth.ClusterWidth(remaining[..len]);
+            remaining = remaining[len..];
+        }
+
+        var (column, row) = presenter.TranslateTo(target, cell, 0);
+        return (column, row, spelled + entry.KeyTip[1..]);
+    }
+
+    // The cluster index the badge letter sits on: the mnemonic's cluster when the label has one and it IS the badge
+    // letter; else the first cluster that spells the letter (case-insensitively); else -1.
+    private static int ClusterIndexOf(in AccessText text, char letter)
+    {
+        if (text.HasKey && char.ToUpperInvariant(text.Key) == char.ToUpperInvariant(letter))
+            return text.KeyIndex;
+
+        var remaining = text.Text.AsSpan();
+        for (var i = 0; !remaining.IsEmpty; i++)
+        {
+            int len = StringInfo.GetNextTextElementLength(remaining);
+            if (len <= 0)
+                break;
+            if (len == 1 && char.ToUpperInvariant(remaining[0]) == char.ToUpperInvariant(letter))
+                return i;
+            remaining = remaining[len..];
+        }
+
+        return -1;
+    }
+
+    private static AccessTextPresenter? FindAccessTextPresenter(UIElement root)
+    {
+        if (root is AccessTextPresenter presenter)
+            return presenter;
+
+        for (var i = 0; i < root.VisualChildrenCount; i++)
+        {
+            if (FindAccessTextPresenter(root.GetVisualChild(i)) is { } found)
+                return found;
+        }
+
+        return null;
     }
 
     // ───────────────────────────── discovery / activation / focus ─────────────────────────────

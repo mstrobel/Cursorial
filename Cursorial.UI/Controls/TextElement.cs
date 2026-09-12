@@ -170,6 +170,13 @@ public abstract class TextElement
         return element.GetValue(SizingProperty);
     }
 
+    /// <summary>The element's effective glyph source — its <see cref="FontProperty"/> and <see cref="SizingProperty"/> as one <see cref="GlyphSource"/>.</summary>
+    public static GlyphSource GetGlyphSource(UIElement element)
+    {
+        ArgumentNullException.ThrowIfNull(element);
+        return new GlyphSource(element.GetValue(FontProperty), element.GetValue(SizingProperty));
+    }
+
     /// <summary>Sets the text sizing on <paramref name="element"/>.</summary>
     public static void SetSizing(UIElement element, TextSizing value)
     {

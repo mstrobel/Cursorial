@@ -434,9 +434,7 @@ internal static class CursorialThemeStyles
                           .SetResource(Control.BorderPenProperty, ThemeKeys.WarningBorderPen)
                           .SetResource(TextElement.ForegroundProperty, ThemeKeys.WarningBrush),
                        new Style("^Button")
-                          //.Set(AccessTextPresenter.ActiveCueStyleProperty, BrushedStyle.Identity
-                          //                                                             .Applying(TextAttributes.Inverse)
-                          //                                                             .RemovingUnderline())
+                          .SetResource(AccessTextPresenter.ActiveCueStyleProperty, ThemeKeys.InteractiveCueActiveAlternateStyle)
                           .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentBrush)
                           .SetResource(Panel.BackgroundProperty, ThemeKeys.WarningBrush),
                        new Style("^Button:pointerover")

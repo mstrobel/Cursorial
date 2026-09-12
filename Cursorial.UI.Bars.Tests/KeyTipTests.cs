@@ -764,26 +764,193 @@ public sealed class KeyTipTests
         Assert.Null(KeyTip.GetHopSequence(disabled)); // …so no (unreachable) hop hint
     }
 
-    [Fact] // Audit: a control whose badge was DROPPED by a same-letter collision gets no hop; the survivor keeps it.
-    public void HopSequence_CollisionDropped_NullForLoser_SurvivorKeeps()
+    [Fact] // Auto letters that collide ALL survive, suffixed in document order (B → B0, B1); an explicit key still
+           // beats an auto letter (the auto badge is dropped, no hop). Maintainer, 2026-09-12.
+    public void Collision_AutoLetters_AllSurviveWithDigitSuffixes_ExplicitStillWins()
     {
         using var host = NewHost(HeadlessCapabilities.KittyTruecolor);
-        _ = host.Application.EnableKeyTips();
+        var controller = host.Application.EnableKeyTips();
 
         var ribbon = new Ribbon();
         var home = new RibbonTab { Header = "Home" };
         var font = new RibbonGroup { Header = "Font" };
-        var bold = new BarButton { Content = "Bold" };     // 'B' — first-in-order wins
-        var border = new BarButton { Content = "Border" }; // 'B' — collides → dropped
-        font.Items.Add(bold);
-        font.Items.Add(border);
+        var bold = new BarButton { Content = "Bold" };     // 'B' → B0
+        var border = new BarButton { Content = "Border" }; // 'B' → B1
+        var bullets = new BarButton { Content = "Bullets" }; // 'B' → B2
+        var italic = new BarButton { Content = "Italic" };   // auto 'I'…
+        var inset = new BarButton { Content = "Inset" };     // …explicit 'I' reserves the letter: Italic's auto badge is dropped
+        KeyTip.SetKey(inset, "I");
+        foreach (var b in new[] { bold, border, bullets, italic, inset })
+            font.Items.Add(b);
         home.Groups.Add(font);
         ribbon.Items.Add(home);
         host.ShowRoot(ribbon);
         host.RunUntilIdle();
 
-        Assert.Equal("Alt␣H␣F␣B", KeyTip.GetHopSequence(bold)); // the survivor's real hop
-        Assert.Null(KeyTip.GetHopSequence(border));                // the dropped collider — no hop
+        Assert.Equal("Alt␣H␣F␣B0", KeyTip.GetHopSequence(bold));
+        Assert.Equal("Alt␣H␣F␣B1", KeyTip.GetHopSequence(border));
+        Assert.Equal("Alt␣H␣F␣B2", KeyTip.GetHopSequence(bullets));
+        Assert.Equal("Alt␣H␣F␣I", KeyTip.GetHopSequence(inset));
+        Assert.Null(KeyTip.GetHopSequence(italic));
+
+        // The drill: B is a shared prefix (all three stay viable, dimmed), the digit commits one.
+        var clicked = false;
+        border.Click += (_, _) => clicked = true;
+        AltDown(host);
+        TypeKeyTip(host, 'H');
+        host.RunFrame();
+        TypeKeyTip(host, 'F');
+        host.RunFrame();
+        TypeKeyTip(host, 'B');
+        Assert.True(controller.IsActive);
+        Assert.Equal(Visibility.Visible, controller.BadgeForTargetForTests(bold)!.Visibility);
+        Assert.Equal(Visibility.Visible, controller.BadgeForTargetForTests(border)!.Visibility);
+        Assert.Equal(Visibility.Collapsed, controller.BadgeForTargetForTests(inset)!.Visibility);
+        TypeKeyTip(host, '1');
+        host.RunUntilIdle();
+        Assert.True(clicked);
+    }
+
+    // ───────────────────────────── inline badge placement (maintainer, 2026-09-12) ─────────────────────────────
+
+    // A badge sits where the access-key cue would: over the mnemonic's cluster, else over the first cluster spelling
+    // the badge letter — and shows that letter in the label's case.
+    private static (int Column, int Row) BadgeCell(KeyTipController controller, UIElement target)
+    {
+        var badge = controller.BadgeForTargetForTests(target)!;
+        Assert.Equal(Visibility.Visible, badge.Visibility);
+        return (Canvas.GetLeft(badge) ?? -1, Canvas.GetTop(badge) ?? -1);
+    }
+
+    private static (int Column, int Row) LabelCell(UIElement target, int cell)
+    {
+        // The presenter's origin is the control's text origin (padding, an icon cell, a check glyph …).
+        var presenter = FindPresenter(target)!;
+        return presenter.TranslateToScreen(cell, 0);
+    }
+
+    private static AccessTextPresenter? FindPresenter(UIElement root)
+    {
+        if (root is AccessTextPresenter p) return p;
+        for (var i = 0; i < root.VisualChildrenCount; i++)
+            if (FindPresenter(root.GetVisualChild(i)) is { } found) return found;
+        return null;
+    }
+
+    [Fact]
+    public void InlineBadge_SitsOverTheMnemonicCluster_InTheLabelsCase()
+    {
+        using var host = NewHost(HeadlessCapabilities.KittyTruecolor, w: 100);
+        var controller = host.Application.EnableKeyTips();
+
+        var toolbar = new Toolbar();
+        var bold = new BarButton { Content = "_Bold" };    // mnemonic at cluster 0 → cell 0
+        var save = new BarButton { Content = "Sa_ve" };    // mnemonic 'v' at cluster 2 → cell 2
+        var go = new BarButton { Content = "日本_Go" };     // two WIDE clusters before the mnemonic → cell 4, not 2
+        toolbar.Items.Add(bold);
+        toolbar.Items.Add(save);
+        toolbar.Items.Add(go);
+        host.ShowRoot(toolbar);
+        host.RunUntilIdle();
+
+        AltDown(host);
+        host.RunFrame();
+
+        Assert.Equal(LabelCell(bold, 0), BadgeCell(controller, bold));
+        Assert.Equal(LabelCell(save, 2), BadgeCell(controller, save));
+        Assert.Equal(LabelCell(go, 4), BadgeCell(controller, go));
+
+        Assert.Equal("B", controller.BadgeForTargetForTests(bold)!.KeyTipText);
+        Assert.Equal("v", controller.BadgeForTargetForTests(save)!.KeyTipText); // the label's own case
+        Assert.Equal("G", controller.BadgeForTargetForTests(go)!.KeyTipText);
+
+        // Matching stays case-insensitive whatever the badge shows.
+        var saved = false;
+        save.Click += (_, _) => saved = true;
+        TypeKeyTip(host, 'V');
+        host.RunUntilIdle();
+        Assert.True(saved);
+    }
+
+    [Fact]
+    public void InlineBadge_WithoutAMnemonic_SitsOverTheFirstMatchingLetter_ElseAtTheControlOrigin()
+    {
+        using var host = NewHost(HeadlessCapabilities.KittyTruecolor, w: 100);
+        var controller = host.Application.EnableKeyTips();
+
+        var toolbar = new Toolbar();
+        var italic = new BarButton { Content = "Italic" };          // auto 'I' → the first cluster spelling it: cell 0
+        var opener = new BarButton { Content = "▾" };               // no letter at all: explicit key, no inline match
+        KeyTip.SetKey(opener, "Q");
+        var later = new BarButton { Content = "  Zoom" };           // leading spaces: 'Z' sits at cell 2
+        toolbar.Items.Add(italic);
+        toolbar.Items.Add(opener);
+        toolbar.Items.Add(later);
+        host.ShowRoot(toolbar);
+        host.RunUntilIdle();
+
+        AltDown(host);
+        host.RunFrame();
+
+        Assert.Equal(LabelCell(italic, 0), BadgeCell(controller, italic));
+        Assert.Equal(opener.TranslateToScreen(0, 0), BadgeCell(controller, opener)); // the anchor-rule fallback: the control's origin
+        Assert.Equal("Q", controller.BadgeForTargetForTests(opener)!.KeyTipText);
+        Assert.Equal(LabelCell(later, 2), BadgeCell(controller, later));
+    }
+
+    [Fact]
+    public void InlineBadge_SuffixedCollision_StartsAtTheLetter_AndRunsRight()
+    {
+        using var host = NewHost(HeadlessCapabilities.KittyTruecolor, w: 100);
+        var controller = host.Application.EnableKeyTips();
+
+        var toolbar = new Toolbar();
+        var bold = new BarButton { Content = "Bold" };
+        var border = new BarButton { Content = "Border" };    // both auto 'B' → B0 / B1, each inline over its own 'B'
+        toolbar.Items.Add(bold);
+        toolbar.Items.Add(border);
+        host.ShowRoot(toolbar);
+        host.RunUntilIdle();
+
+        AltDown(host);
+        host.RunFrame();
+
+        Assert.Equal("B0", controller.BadgeForTargetForTests(bold)!.KeyTipText);
+        Assert.Equal(LabelCell(bold, 0), BadgeCell(controller, bold));
+        Assert.Equal("B1", controller.BadgeForTargetForTests(border)!.KeyTipText);
+        Assert.Equal(LabelCell(border, 0), BadgeCell(controller, border));
+    }
+
+    [Fact] // A menu row badges the letter its underline shows (the header's mnemonic), placed over that letter.
+    public void MenuRow_BadgesItsHeaderMnemonic_InPlace()
+    {
+        using var host = NewHost(HeadlessCapabilities.KittyTruecolor, w: 100);
+        var controller = host.Application.EnableKeyTips();
+
+        var menu = new Menu();
+        var file = new MenuItem { Header = "_File" };
+        var exit = new MenuItem { Header = "E_xit" };        // mnemonic 'x' at cluster 1 — badge X, not E
+        file.Items.Add(new MenuItem { Header = "_New" });
+        file.Items.Add(exit);
+        menu.Items.Add(file);
+        host.ShowRoot(new StackPanel { Orientation = Orientation.Vertical, Children = { menu, new TextBox() } });
+        host.RunUntilIdle();
+
+        AltDown(host);
+        TypeKeyTip(host, 'F');
+        for (var i = 0; i < 8 && controller.LevelDepthForTests < 2; i++)
+            host.RunFrame();
+        Assert.Equal(2, controller.LevelDepthForTests);
+
+        var badge = controller.BadgeForTargetForTests(exit)!;
+        Assert.Equal("x", badge.KeyTipText);
+        Assert.Equal(LabelCell(exit, 1), BadgeCell(controller, exit));
+
+        var exited = false;
+        exit.Click += (_, _) => exited = true;
+        TypeKeyTip(host, 'X');
+        host.RunUntilIdle();
+        Assert.True(exited);
     }
 
     [Fact] // Multi-char keytips: typing the shared prefix dims the matched letters + keeps only the viable badges.

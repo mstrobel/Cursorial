@@ -843,9 +843,6 @@ public class MenuItem : HeaderedItemsControl, IAccessKeyTarget, ICommandSource, 
             OnClick(InvokeMethod.AccessKey);
     }
 
-    private AccessText GetAccessText()
-        => Header is string s && HeaderProperty.GetMetadata(GetType()).ParsesAccessKeyLiterals == true ? AccessText.Parse(s) : default;
-
     private void RegisterAccessKey()
     {
         if (UIApplication.Current?.AccessKeys is not { } manager)

@@ -37,13 +37,10 @@ public static class KeyTipModel
         if (!KeyTip.GetAutoAssign(target))
             return (null, false);
 
-        // 4 — the control's access-key mnemonic.
-        if (target is ContentControl content)
-        {
-            var access = content.GetAccessTextInternal();
-            if (access.HasKey)
-                return (char.ToUpperInvariant(access.Key).ToString(), false);
-        }
+        // 4 — the control's access-key mnemonic: a ContentControl's content label, or a headered items control's
+        // header (a MenuItem's `_File` — so a menu row badges the letter its underline shows, not its first letter).
+        if (AccessTextOf(target) is { HasKey: true } access)
+            return (char.ToUpperInvariant(access.Key).ToString(), false);
 
         // 5 — the bound BarCommand's text mnemonic, else its first letter.
         if (CommandOf(target) is BarCommand { Text: { Length: > 0 } commandText })
@@ -63,6 +60,14 @@ public static class KeyTipModel
         KeyTipDiagnostics.Warning($"No KeyTip letter could be derived for {target.GetType().Name}; it is omitted from the overlay.");
         return (null, false);
     }
+
+    /// <summary>The access-key label a control derives its mnemonic from (content or header), or default when it has none.</summary>
+    internal static AccessText AccessTextOf(UIElement target) => target switch
+    {
+        ContentControl content => content.GetAccessTextInternal(),
+        HeaderedItemsControl headered => headered.GetAccessText(),
+        _ => default,
+    };
 
     private static string? Clean(string? raw)
         => string.IsNullOrWhiteSpace(raw) ? null : raw.Trim().ToUpperInvariant();

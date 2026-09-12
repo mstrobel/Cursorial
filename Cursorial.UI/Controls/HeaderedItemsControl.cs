@@ -33,6 +33,10 @@ public class HeaderedItemsControl : ItemsControl
             control.AddLogicalChild(newElement);
     }
 
+    /// <summary>The header's parsed access-key label when the header is a string and this runtime type folds access-key literals (a <see cref="MenuItem"/>'s <c>_File</c>); default otherwise.</summary>
+    internal AccessText GetAccessText()
+        => Header is string s && HeaderProperty.GetMetadata(GetType()).ParsesAccessKeyLiterals == true ? AccessText.Parse(s) : default;
+
     /// <inheritdoc cref="HeaderProperty"/>
     public object? Header { get => GetValue(HeaderProperty); set => SetValue(HeaderProperty, value); }
 

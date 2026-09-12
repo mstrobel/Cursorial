@@ -811,6 +811,85 @@ public sealed class KeyTipTests
         Assert.True(clicked);
     }
 
+    [Fact] // Suffixes are prefix-free at any group size: eleven colliders take 0–9 then A (never "B10", which "B1" would
+           // prefix and so never commit); beyond 36 the whole group widens to two characters.
+    public void Collision_SuffixesArePrefixFree_AlphanumericThenWider()
+    {
+        Assert.Equal("0", KeyTipLevelBuilder.Suffix(0, 1));
+        Assert.Equal("A", KeyTipLevelBuilder.Suffix(10, 1));
+        Assert.Equal("Z", KeyTipLevelBuilder.Suffix(35, 1));
+        Assert.Equal("00", KeyTipLevelBuilder.Suffix(0, 2));
+        Assert.Equal("10", KeyTipLevelBuilder.Suffix(36, 2));
+        Assert.Equal(1, KeyTipLevelBuilder.SuffixWidthFor(36));
+        Assert.Equal(2, KeyTipLevelBuilder.SuffixWidthFor(37));
+        Assert.Equal(3, KeyTipLevelBuilder.SuffixWidthFor(1297));
+
+        var builder = new KeyTipLevelBuilder();
+        var eleven = Enumerable.Range(0, 11).Select(i => new BarButton { Content = "Bold" }).ToList();
+        foreach (var b in eleven)
+            builder.AddActivate(b, () => { });
+        var level = builder.Build();
+        Assert.Equal(["B0", "B1", "B2", "B3", "B4", "B5", "B6", "B7", "B8", "B9", "BA"], level.Entries.Select(e => e.KeyTip));
+
+        builder = new KeyTipLevelBuilder();
+        var many = Enumerable.Range(0, 37).Select(i => new BarButton { Content = "Bold" }).ToList();
+        foreach (var b in many)
+            builder.AddActivate(b, () => { });
+        level = builder.Build();
+        Assert.Equal(37, level.Entries.Count);
+        Assert.All(level.Entries, e => Assert.Equal(3, e.KeyTip.Length));   // B + two suffix chars, every one
+        Assert.Equal("B00", level.Entries[0].KeyTip);
+        Assert.Equal("B10", level.Entries[36].KeyTip);
+        for (var i = 0; i < level.Entries.Count; i++)
+            for (var j = 0; j < level.Entries.Count; j++)
+                if (i != j)
+                    Assert.False(level.Entries[j].KeyTip.StartsWith(level.Entries[i].KeyTip, StringComparison.Ordinal));
+    }
+
+    [Fact] // A generated suffix never lands on an explicit key, and a lone auto letter that an explicit key extends is suffixed so it can commit.
+    public void Collision_SuffixesSkipExplicitKeys_AndAPrefixedLoneLetterIsSuffixed()
+    {
+        var builder = new KeyTipLevelBuilder();
+        var bold = new BarButton { Content = "Bold" };
+        var border = new BarButton { Content = "Border" };
+        var one = new BarButton { Content = "One" };
+        KeyTip.SetKey(one, "B1");                 // explicit — the auto pair must not generate B1
+        var cut = new BarButton { Content = "Cut" };
+        var cx = new BarButton { Content = "Extra" };
+        KeyTip.SetKey(cx, "CX");                  // explicit CX makes a lone auto "C" a dead prefix — it becomes C0
+        foreach (var b in new UIElement[] { bold, border, one, cut, cx })
+            builder.AddActivate(b, () => { });
+
+        var level = builder.Build();
+        Assert.Equal("B0", level.KeyTipFor(bold));
+        Assert.Equal("B2", level.KeyTipFor(border));
+        Assert.Equal("B1", level.KeyTipFor(one));
+        Assert.Equal("C0", level.KeyTipFor(cut));
+        Assert.Equal("CX", level.KeyTipFor(cx));
+    }
+
+    [Fact] // The drill types an alphabetic suffix like a digit one.
+    public void Collision_AlphabeticSuffix_Drills()
+    {
+        using var host = NewHost(HeadlessCapabilities.KittyTruecolor, w: 120);
+        var controller = host.Application.EnableKeyTips();
+        var toolbar = new Toolbar();
+        var buttons = Enumerable.Range(0, 11).Select(i => new BarButton { Content = "Bold" }).ToList();
+        foreach (var b in buttons)
+            toolbar.Items.Add(b);
+        host.ShowRoot(toolbar);
+        host.RunUntilIdle();
+        var clicked = false;
+        buttons[10].Click += (_, _) => clicked = true; // "BA"
+
+        AltDown(host);
+        host.RunFrame();
+        TypeKeyTip(host, 'B');
+        TypeKeyTip(host, 'A');
+        host.RunUntilIdle();
+        Assert.True(clicked);
+    }
+
     // ───────────────────────────── inline badge placement (maintainer, 2026-09-12) ─────────────────────────────
 
     // A badge sits where the access-key cue would: over the mnemonic's cluster, else over the first cluster spelling

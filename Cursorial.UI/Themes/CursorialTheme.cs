@@ -719,8 +719,9 @@ public static class CursorialTheme
         // Ansi16 indices, or they collapse to the NoColor floor (no fill) on 16-color terminals.
         ansi16[ThemeKeys.RibbonTabStripBrush] = Palette(dark ? 0 : 7);                                                       // recess, tracks Surface/Panel
         ansi16[ThemeKeys.RibbonTabActiveBrush] = Palette(dark ? 0 : 15);                                                     // dropped active fill, tracks the band
-        ansi16[ThemeKeys.KeyTipBrush] = Palette(3);                                                                          // amber → yellow
-        ansi16[ThemeKeys.KeyTipMatchedBrush] = Palette(8);                                                                   // dimmed matched → bright-black
+        ansi16[ThemeKeys.KeyTipBrush] = Palette(3);                                                                    // amber → yellow
+        ansi16[ThemeKeys.KeyTipMatchedBrush] = Palette(8);                                                             // dimmed matched → bright-black
+        ansi16[ThemeKeys.KeyTipTextWeight] = TextWeight.Bold;
         ansi16[ThemeKeys.RibbonContextualFillBrush] = Palette(dark ? 0 : 7);                                                 // tinted well, tracks the recess
         ansi16[ThemeKeys.RibbonContextualUnderlinePen] = Pens.Heavy.WithColor(Color.FromPalette(dark ? (byte)13 : (byte)5)); // purple
 
@@ -770,37 +771,43 @@ public static class CursorialTheme
 
     private static void AddCueStyle(ResourceDictionary root, ThemeVariant v, ResourceDictionary d, bool noColor = false)
     {
-        // TextAttributes a = Resolve(root, v, ThemeKeys.KeyTipTextWeight, out var wv) && wv is TextWeight w
-        //                        ? w switch
-        //                          {
-        //                              TextWeight.Bold  => TextAttributes.Bold,
-        //                              TextWeight.Faint => TextAttributes.Faint,
-        //                              _                => TextAttributes.None
-        //                          }
-        //                        : TextAttributes.None;
+        TextAttributes a = Resolve(root, v, ThemeKeys.KeyTipTextWeight, out var wv) && wv is TextWeight w
+                               ? w switch
+                                 {
+                                     TextWeight.Bold  => TextAttributes.Bold,
+                                     TextWeight.Faint => TextAttributes.Faint,
+                                     _                => TextAttributes.None
+                                 }
+                               : v.Tier switch
+                                 {
+                                     ColorDepth.NoColor => TextAttributes.Faint,
+                                     ColorDepth.Ansi16  => TextAttributes.Bold,
+                                     _                  => TextAttributes.None
+                                 };
 
-        TextAttributes a = v.Tier switch
-                           {
-                               ColorDepth.NoColor => TextAttributes.Faint,
-                               ColorDepth.Ansi16  => TextAttributes.Bold,
-                               _                  => TextAttributes.None
-                           };
+        // TextAttributes a = v.Tier switch
+        //                    {
+        //                        ColorDepth.NoColor => TextAttributes.Faint,
+        //                        ColorDepth.Ansi16  => TextAttributes.Bold,
+        //                        _                  => TextAttributes.None
+        //                    };
 
         TextAttributes i = noColor ? TextAttributes.Inverse : TextAttributes.None;
 
         TextAttributes u = TextAttributes.Underline;
 
-        // Add(root, v, d, ThemeKeys.InteractiveCueInactiveStyle, null, null,
-        //     applied: noColor ? a : u, toggled: i, ulStyle: UnderlineStyle.Dotted);
-        //
-        // Add(root, v, d, ThemeKeys.InteractiveCueActiveStyle, ThemeKeys.KeyTipUnmatchedBrush, ThemeKeys.KeyTipBrush,
-        //     applied: a, toggled: i, removed: u, ulKey: ThemeKeys.KeyTipUnmatchedBrush);
-        
         Add(root, v, d, ThemeKeys.InteractiveCueInactiveStyle, null, null,
-            applied: a, toggled: i, removed: u);
+            applied: noColor ? a : TextAttributes.None, toggled: i/*, ulStyle: UnderlineStyle.Dotted*/);
         
-        Add(root, v, d, ThemeKeys.InteractiveCueActiveStyle, null, null,
-            applied: a | u, toggled: i);
+        Add(root, v, d, ThemeKeys.InteractiveCueActiveStyle, ThemeKeys.KeyTipUnmatchedBrush, ThemeKeys.KeyTipBrush,
+            applied: a, toggled: i, removed: u/*, ulKey: ThemeKeys.KeyTipUnmatchedBrush*/);
+
+        Add(root, v, d, ThemeKeys.InteractiveCueActiveAlternateStyle, null, null, toggled: TextAttributes.Inverse);
+        // Add(root, v, d, ThemeKeys.InteractiveCueInactiveStyle, null, null,
+        //     applied: a, toggled: i, removed: u);
+        //
+        // Add(root, v, d, ThemeKeys.InteractiveCueActiveStyle, null, null,
+        //     applied: a | u, toggled: i);
     }
 
     private static void AddInputTextStyles(ResourceDictionary root, ThemeVariant v, ResourceDictionary d,

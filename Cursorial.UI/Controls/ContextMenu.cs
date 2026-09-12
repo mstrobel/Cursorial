@@ -205,6 +205,7 @@ public sealed class ContextMenu : ItemsControl
         popup.SetBinding(MaxWidthProperty, CompiledBinding.For(MaxWidthProperty, source: this));
         popup.SetBinding(MaxHeightProperty, CompiledBinding.For(MaxHeightProperty, source: this));
         popup.Closed += OnPopupClosed;
+        popup.LostFocus += OnPopupLostFocus;
         return popup;
     }
 
@@ -217,6 +218,12 @@ public sealed class ContextMenu : ItemsControl
 
         var closed = RentEvent(ClosedEvent);
         RaiseEvent(closed); // every close path funnels here — exactly one Closed per close
+    }
+
+    private void OnPopupLostFocus(object? sender, FocusChangedEventArgs e)
+    {
+        if (e.OldFocus is { IsAttachedToTree: true } old && IsAncestorOf(old) && IsKeyboardFocusWithin is false)
+            Close();
     }
 
     private void FocusFirstItem()

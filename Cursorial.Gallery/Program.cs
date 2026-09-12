@@ -2,6 +2,7 @@ using Cursorial.Gallery;
 using Cursorial.Gallery.ViewModels;
 using Cursorial.UI;
 using Cursorial.UI.Bars;
+using Cursorial.UI.Bars.Input;
 using Cursorial.UI.Configuration;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Data;
@@ -49,11 +50,13 @@ try
     void OnLayoutDiagnosticsDiagnosticRaised(LayoutDiagnosticEvent d) => vm?.AddDiagnostic($"[Layout   ] {d.Kind}: {d.Message} ({FormatElement(d.Element)})");
     void OnAnimationDiagnosticsTrackError(StoryboardTrackError e) => vm?.AddDiagnostic($"[Animation] {FormatElement(e.Scope)}: {e.Message} " + $"({e.Track.TargetProperty?.Name})");
     void OnUIDiagnosticsRejectedValue(UIObject t, UIProperty p, object? v) => vm?.AddDiagnostic($"[Rejected ] {FormatElement(t)}.{p.Name} = {v}");
+    void OnKeyTipDiagnosticsMessageLogged(string s) => vm?.AddDiagnostic($"[KeyTips  ] {s}");
 
     // TODO: RE-ENABLE THESE BEFORE COMMITTING!
     // StyleDebugDiagnostics.DiagnosticEmitted += OnStyleDebugDiagnosticsDiagnosticEmitted;
     // ControlDiagnostics.DiagnosticRaised += OnControlDiagnosticsDiagnosticRaised;
     BindingDiagnostics.TraceEmitted += OnBindingDiagnosticsTraceEmitted;
+    KeyTipDiagnostics.MessageLogged += OnKeyTipDiagnosticsMessageLogged; // dropped/suffixed badge letters show in the diagnostics pane
     // LayoutDiagnostics.DiagnosticRaised += OnLayoutDiagnosticsDiagnosticRaised;
     // AnimationDiagnostics.TrackError += OnAnimationDiagnosticsTrackError;
     // UIDiagnostics.RejectedValue += OnUIDiagnosticsRejectedValue;
@@ -72,6 +75,7 @@ try
         LayoutDiagnostics.DiagnosticRaised -= OnLayoutDiagnosticsDiagnosticRaised;
         AnimationDiagnostics.TrackError -= OnAnimationDiagnosticsTrackError;
         UIDiagnostics.RejectedValue -= OnUIDiagnosticsRejectedValue;
+        KeyTipDiagnostics.MessageLogged -= OnKeyTipDiagnosticsMessageLogged;
     }
 
     app.BeginShutdown += OnBeginShutdown;

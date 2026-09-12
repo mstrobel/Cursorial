@@ -2,7 +2,6 @@ using Cursorial.Drawing.Media;
 using Cursorial.Input;
 using Cursorial.Input.Events;
 using Cursorial.Media;
-using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.Rendering.Media;
 using Cursorial.Rendering.Text;
@@ -12,6 +11,8 @@ using Cursorial.UI.Controls;
 using Cursorial.UI.Hosting.Headless;
 using Cursorial.UI.Input;
 using Cursorial.UI.Themes;
+
+using static Cursorial.Tests.UI.AccessKeyTestHelpers;
 
 // ReSharper disable InconsistentNaming
 
@@ -305,91 +306,22 @@ public sealed class Section09_TextBorderAccessKey
 
         using var host = Attach(atp);
 
-        var rootStyle = BrushedStyle.FromElement(atp.VisualRoot!);
-        var baseStyle = BrushedStyle.FromElement(atp);
-        var on = rootStyle.Then(baseStyle).Then(atp.ActiveCueStyle);
-        var off = rootStyle.Then(baseStyle).Then(atp.InactiveCueStyle);
-        
         // No cue: no underline on the mnemonic.
         // Assert.False(host.GetCell(0, 0).Style.Attributes.HasFlag(TextAttributes.Underline));
-        AssertCueMatch(true, off, host, 0, 0);
+        AssertCue(active: false, host, 0, 0, atp);
 
         // Cue shown: the KeyIndex grapheme is underlined.
         AccessKeyManager.SetShowUnderline(atp, true);
         host.RunFrame();
-        AssertCueMatch(true, on, host, 0, 0);
-        AssertCueMatch(false, on, host, 1, 0);
-
-        if (atp.InactiveCueStyle.IsIdentity is false)
-            AssertCueMatch(false, off, host, 1, 0);
-        // Assert.True(host.GetCell(0, 0).Style.Attributes.HasFlag(TextAttributes.Underline)); // 'F' at index 0
-        // Assert.False(host.GetCell(1, 0).Style.Attributes.HasFlag(TextAttributes.Underline)); // 'i' not underlined
+        AssertCue(active: true, host, 0, 0, atp);
+        AssertNoCue(host, 1, 0, atp);
 
         var defaultActive = atp.TryFindResource(ThemeKeys.InteractiveCueActiveStyle, out var a) ? (BrushedStyle) a! : default;
         var defaultInactive = atp.TryFindResource(ThemeKeys.InteractiveCueInactiveStyle, out var i) ? (BrushedStyle) i! : default;
 
         Assert.True(AccessTextPresenter.TextProperty.GetEffects(typeof(AccessTextPresenter)).HasFlag(PropertyEffects.AffectsMeasure));
-        // Assert.Equal(UnderlineStyle.Single, new AccessTextPresenter().KeyUnderline); // default
         Assert.Equal(defaultActive, atp.ActiveCueStyle);
         Assert.Equal(defaultInactive, atp.InactiveCueStyle);
-    }
-
-    private void AssertCueMatch(bool expectMatch, BrushedStyle cue, UIHeadlessHost host, int col, int row)
-    {
-        var resolved = cue.Resolve(col, row, new Rect(col, row, 1, 1));
-
-        var actualStyle = host.GetCell(col, row).Style;
-        var defaultStyle = host.FrameBuffer.DefaultStyle;
-        var expectedStyle = defaultStyle;
-
-        if (expectMatch) expectedStyle = resolved.ApplyTo(expectedStyle);
-        
-        if (expectedStyle.Foreground == actualStyle.Foreground ^ expectMatch)
-        {
-            Fail(nameof(CellStyle.Foreground),
-                 expectMatch, 
-                 expectedStyle.Foreground.ToString(), 
-                 actualStyle.Foreground.ToString());
-        }
-
-        if (expectedStyle.Background == actualStyle.Background ^ expectMatch)
-        {
-            Fail(nameof(CellStyle.Background),
-                 expectMatch, 
-                 expectedStyle.Background.ToString(), 
-                 actualStyle.Background.ToString());
-        }
-
-        var expectAttr = expectedStyle.Attributes;
-        var actualAttr = actualStyle.Attributes;
-
-        if (((expectMatch
-                  ? expectAttr.HasFlag(TextAttributes.Underline)
-                  : resolved.AppliedAttributes.HasFlag(TextAttributes.Underline)) || 
-             actualAttr.HasFlag(TextAttributes.Underline)) &&
-            expectedStyle.UnderlineColor != defaultStyle.UnderlineColor &&
-            expectedStyle.UnderlineColor == actualStyle.UnderlineColor ^ expectMatch)
-        {
-            Fail(nameof(CellStyle.UnderlineColor),
-                 expectMatch, 
-                 expectedStyle.UnderlineColor.ToString(), 
-                 actualStyle.UnderlineColor.ToString());
-        }
-
-        if ((expectAttr != TextAttributes.None || actualAttr != TextAttributes.None) &&
-            expectAttr == actualAttr ^ expectMatch)
-        {
-            Fail(nameof(CellStyle.Attributes),
-                 expectMatch, 
-                 expectAttr.ToString(), 
-                 actualAttr.ToString());
-        }
-
-        static void Fail(string attribute, bool expectedMatch, string expected, string actual)
-        {
-            Assert.Fail($"Expected {attribute} to {(expectedMatch ? "MATCH" : "NOT MATCH")}; " +
-                        $"expected <{expected}> but found <{actual}>.");
-        }
     }
 
     [Fact] // C176
@@ -508,8 +440,10 @@ public sealed class Section09_TextBorderAccessKey
         // The 'O' mnemonic cell carries TextAttributes.Underline; the 'K' next to it does not.
         var (oc, orow) = presenter.TranslateToWindow(0, 0);
         Assert.Equal("O", host.GetCell(oc, orow).Grapheme);
-        Assert.True(host.GetCell(oc, orow).Style.Attributes.HasFlag(TextAttributes.Underline));
-        Assert.False(host.GetCell(oc + 1, orow).Style.Attributes.HasFlag(TextAttributes.Underline));
+        AssertCue(active: true, host, oc, orow, button);
+        AssertNoCue(host, oc + 1, orow, button);
+        // Assert.True(host.GetCell(oc, orow).Style.Attributes.HasFlag(TextAttributes.Underline));
+        // Assert.False(host.GetCell(oc + 1, orow).Style.Attributes.HasFlag(TextAttributes.Underline));
 
         using (host) { }
     }
@@ -530,7 +464,8 @@ public sealed class Section09_TextBorderAccessKey
 
         // At rest: no cue, no underline.
         Assert.False(AccessKeyManager.GetShowUnderline(presenter));
-        Assert.False(host.GetCell(oc, orow).Style.Attributes.HasFlag(TextAttributes.Underline));
+        // Assert.False(host.GetCell(oc, orow).Style.Attributes.HasFlag(TextAttributes.Underline));
+        AssertCue(active: false, host, oc, orow, button);
 
         // Alt down → cue up → the theme rule underlines the mnemonic in the same frame.
         host.SendKey(Key.LeftAlt, KeyModifiers.Alt);
@@ -538,14 +473,16 @@ public sealed class Section09_TextBorderAccessKey
         Assert.True(host.Application.AccessKeys.IsCueActive);
         Assert.True(AccessKeyManager.GetShowUnderline(presenter));
         Assert.Equal("O", host.GetCell(oc, orow).Grapheme);
-        Assert.True(host.GetCell(oc, orow).Style.Attributes.HasFlag(TextAttributes.Underline));
+        // Assert.True(host.GetCell(oc, orow).Style.Attributes.HasFlag(TextAttributes.Underline));
+        AssertCue(active: true, host, oc, orow, button);
 
         // A clean Alt down/up is an Alt TAP (N171): the cue goes sticky (menu mode) and stays up — so
         // the underscore persists across the release. This is the framework's pinned behavior.
         host.SendInput(new KeyEvent { Key = Key.LeftAlt, Modifiers = KeyModifiers.None, Kind = KeyEventKind.Up, Timestamp = host.Time.GetUtcNow() });
         host.RunFrame();
         Assert.True(host.Application.AccessKeys.IsCueActive); // sticky tap holds the cue
-        Assert.True(host.GetCell(oc, orow).Style.Attributes.HasFlag(TextAttributes.Underline));
+        // Assert.True(host.GetCell(oc, orow).Style.Attributes.HasFlag(TextAttributes.Underline));
+        AssertCue(active: true, host, oc, orow, button);
 
         // A SECOND Alt tap toggles the sticky cue off (N178) → cue down → the underline reverts.
         host.SendKey(Key.LeftAlt, KeyModifiers.Alt);
@@ -554,7 +491,8 @@ public sealed class Section09_TextBorderAccessKey
         host.RunFrame();
         Assert.False(host.Application.AccessKeys.IsCueActive);
         Assert.False(AccessKeyManager.GetShowUnderline(presenter));
-        Assert.False(host.GetCell(oc, orow).Style.Attributes.HasFlag(TextAttributes.Underline));
+        // Assert.False(host.GetCell(oc, orow).Style.Attributes.HasFlag(TextAttributes.Underline));
+        AssertCue(active: false, host, oc, orow, button);
     }
 
     [Fact] // C182b — terminal focus-out clears the cue and the underline (ND24 ①).
@@ -569,13 +507,15 @@ public sealed class Section09_TextBorderAccessKey
 
         host.SendKey(Key.LeftAlt, KeyModifiers.Alt);
         host.RunFrame();
-        Assert.True(host.GetCell(oc, orow).Style.Attributes.HasFlag(TextAttributes.Underline));
+        // Assert.True(host.GetCell(oc, orow).Style.Attributes.HasFlag(TextAttributes.Underline));
+        AssertCue(active: true, host, oc, orow, button);
 
         // A terminal focus-out (Alt+Tab swallows the Up) must clear the cue unconditionally.
         host.SendInput(new FocusEvent { HasFocus = false, Timestamp = host.Time.GetUtcNow() });
         host.RunFrame();
         Assert.False(host.Application.AccessKeys.IsCueActive);
-        Assert.False(host.GetCell(oc, orow).Style.Attributes.HasFlag(TextAttributes.Underline));
+        // Assert.False(host.GetCell(oc, orow).Style.Attributes.HasFlag(TextAttributes.Underline));
+        AssertCue(active: false, host, oc, orow, button);
     }
 
     // ─── registration THROUGH the manager (not OnAccessKey directly) — C177/C178 producer ③ ───

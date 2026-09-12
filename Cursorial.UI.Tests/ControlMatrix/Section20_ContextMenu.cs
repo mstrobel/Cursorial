@@ -163,6 +163,33 @@ public sealed class Section20_ContextMenu
         Assert.Equal(0, Popups(host));      // the popup surface was released
     }
 
+    [Fact] // C7.7b: keyboard focus moving OUT of the open menu (to an element elsewhere) closes it — a menu left open
+           // behind focus that has moved on would answer the next Escape/arrow for nobody (maintainer, 2026-09-12).
+    public void C7_7b_FocusLeavingTheMenu_Closes()
+    {
+        var leaf = new MenuItem { Header = "Cut" };
+        var menu = new ContextMenu();
+        menu.Items.Add(leaf);
+        using var host = Host();
+        var owner = new Border { Width = 30, Height = 6 };
+        ContextMenu.SetMenu(owner, menu);
+        var elsewhere = new TextBox();
+        host.ShowRoot(new StackPanel { Orientation = Orientation.Vertical, Children = { owner, elsewhere } });
+        host.RunUntilIdle();
+
+        menu.Open(owner);
+        host.RunUntilIdle();
+        Assert.True(leaf.IsFocused);
+        Assert.Equal(1, Popups(host));
+
+        elsewhere.Focus();
+        host.RunUntilIdle();
+
+        Assert.False(menu.IsOpen);
+        Assert.Equal(0, Popups(host));
+        Assert.True(elsewhere.IsFocused);
+    }
+
     [Fact] // C7.8: Escape closes the open menu
     public void C7_8_EscapeCloses()
     {

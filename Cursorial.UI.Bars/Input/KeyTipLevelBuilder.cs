@@ -57,61 +57,102 @@ public sealed class KeyTipLevelBuilder
         _pending.Add(new Pending(target, keyTip.ToUpperInvariant(), true, kind, anchor, activate, reveal, buildNext, retract));
     }
 
+    /// <summary>The suffix alphabet for colliding auto letters: digits then letters, so a group of up to 36 gets one-character suffixes.</summary>
+    internal const string SuffixAlphabet = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+
     /// <summary>Resolves collisions and produces the level (empty when no target derived a badge).</summary>
     public KeyTipLevel Build(Action? retract = null)
     {
-        var entries = new List<KeyTipEntry>(_pending.Count);
-
-        // Explicit keys always beat auto — even a later-in-order explicit — so reserve every explicit letter up front.
-        // Then one document-order walk: an explicit letter is kept first-wins (a duplicate explicit is dropped); an
-        // auto letter an explicit reserved is dropped; auto letters that collide with EACH OTHER all survive with a
-        // digit suffix in document order — `B`, `B` → `B0`, `B1` (the earlier survivor is renamed when the second
-        // arrives), so no control loses its badge to a same-letter sibling (maintainer, 2026-09-12).
-        var reservedExplicit = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var p in _pending)
+        // Explicit keys always beat auto — even a later-in-order explicit — so they are reserved up front (first-wins on
+        // an explicit-vs-explicit clash, the duplicate dropped with a diagnostic). Auto letters that collide with each
+        // other ALL survive, suffixed in document order from a 0–9A–Z alphabet at a FIXED width per letter group (one
+        // character for up to 36 colliders, two beyond) so no suffix is a prefix of a sibling's — `B1` next to `B10`
+        // could never commit (maintainer, 2026-09-12). A lone auto letter that an explicit key equals is dropped; one
+        // that is a strict PREFIX of an explicit key (`B` beside an explicit `BX`) joins the suffixed form so it can
+        // commit; a generated suffix that would land on an explicit key is skipped.
+        var explicitKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var dropped = new HashSet<int>();
+        for (var i = 0; i < _pending.Count; i++)
         {
-            if (p.Explicit)
-                reservedExplicit.Add(p.KeyTip);
+            var p = _pending[i];
+            if (p.Explicit && !explicitKeys.Add(p.KeyTip))
+            {
+                KeyTipDiagnostics.Warning($"KeyTip '{p.KeyTip}' collides in this level; dropping the duplicate explicit badge on {p.Target.GetType().Name}.");
+                dropped.Add(i);
+            }
         }
 
-        var claimedExplicit = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var autoByLetter = new Dictionary<string, List<int>>(StringComparer.OrdinalIgnoreCase); // letter → ENTRY indices
-
-        foreach (var p in _pending)
+        var assigned = new string[_pending.Count];
+        var autoGroups = new Dictionary<string, List<int>>(StringComparer.OrdinalIgnoreCase); // letter → PENDING indices, document order
+        for (var i = 0; i < _pending.Count; i++)
         {
-            var keyTip = p.KeyTip;
+            var p = _pending[i];
+            if (dropped.Contains(i))
+                continue;
 
             if (p.Explicit)
             {
-                if (!claimedExplicit.Add(keyTip))
-                {
-                    KeyTipDiagnostics.Warning($"KeyTip '{keyTip}' collides in this level; dropping the duplicate explicit badge on {p.Target.GetType().Name}.");
-                    continue;
-                }
-            }
-            else if (reservedExplicit.Contains(keyTip))
-            {
-                KeyTipDiagnostics.Warning($"KeyTip letter '{keyTip}' is claimed by an explicit key in this level; dropping the auto-assigned badge on {p.Target.GetType().Name}.");
+                assigned[i] = p.KeyTip;
                 continue;
             }
-            else
+
+            if (explicitKeys.Contains(p.KeyTip))
             {
-                if (!autoByLetter.TryGetValue(keyTip, out var siblings))
-                    autoByLetter[keyTip] = siblings = [];
-
-                if (siblings.Count == 1)
-                    entries[siblings[0]].KeyTip = keyTip + "0"; // the first of a now-colliding pair takes suffix 0
-
-                if (siblings.Count > 0)
-                    keyTip += siblings.Count.ToString();
-
-                siblings.Add(entries.Count);
+                KeyTipDiagnostics.Warning($"KeyTip letter '{p.KeyTip}' is claimed by an explicit key in this level; dropping the auto-assigned badge on {p.Target.GetType().Name}.");
+                dropped.Add(i);
+                continue;
             }
 
+            if (!autoGroups.TryGetValue(p.KeyTip, out var group))
+                autoGroups[p.KeyTip] = group = [];
+            group.Add(i);
+        }
+
+        foreach (var (letter, group) in autoGroups)
+        {
+            bool prefixOfExplicit = explicitKeys.Any(k => k.Length > letter.Length && k.StartsWith(letter, StringComparison.OrdinalIgnoreCase));
+            if (group.Count == 1 && !prefixOfExplicit)
+            {
+                assigned[group[0]] = letter;
+                continue;
+            }
+
+            int width = SuffixWidthFor(group.Count);
+            var next = 0;
+            foreach (var index in group)
+            {
+                string? keyTip = null;
+                while (keyTip is null)
+                {
+                    if (next >= Pow(SuffixAlphabet.Length, width))
+                    {
+                        // Only reachable if explicit keys blanket the suffix space — drop the rest with a diagnostic.
+                        KeyTipDiagnostics.Warning($"KeyTip letter '{letter}' has no free suffix left in this level; dropping the auto-assigned badge on {_pending[index].Target.GetType().Name}.");
+                        dropped.Add(index);
+                        break;
+                    }
+
+                    var candidate = letter + Suffix(next++, width);
+                    if (!explicitKeys.Contains(candidate))
+                        keyTip = candidate;
+                }
+
+                if (keyTip is not null)
+                    assigned[index] = keyTip;
+            }
+        }
+
+        var entries = new List<KeyTipEntry>(_pending.Count);
+        for (var i = 0; i < _pending.Count; i++)
+        {
+            if (dropped.Contains(i))
+                continue;
+
+            var p = _pending[i];
             entries.Add(new KeyTipEntry
             {
                 Target = p.Target,
-                KeyTip = keyTip,
+                KeyTip = assigned[i],
                 Kind = p.Kind,
                 ExplicitKey = p.Explicit,
                 Anchor = p.Anchor,
@@ -125,6 +166,40 @@ public sealed class KeyTipLevelBuilder
 
         WarnOnPrefixSiblings(entries);
         return new KeyTipLevel { Entries = entries, Retract = retract };
+    }
+
+    /// <summary>The suffix width a group of <paramref name="colliders"/> needs so every suffix has the same length (prefix-free): 1 for up to 36, 2 up to 1296, and so on.</summary>
+    internal static int SuffixWidthFor(int colliders)
+    {
+        var width = 1;
+        var capacity = SuffixAlphabet.Length;
+        while (capacity < colliders)
+        {
+            width++;
+            capacity *= SuffixAlphabet.Length;
+        }
+
+        return width;
+    }
+
+    /// <summary>The <paramref name="ordinal"/>-th suffix of <paramref name="width"/> characters over <see cref="SuffixAlphabet"/> (base-36, zero-padded).</summary>
+    internal static string Suffix(int ordinal, int width)
+    {
+        Span<char> chars = stackalloc char[width];
+        for (var i = width - 1; i >= 0; i--)
+        {
+            chars[i] = SuffixAlphabet[ordinal % SuffixAlphabet.Length];
+            ordinal /= SuffixAlphabet.Length;
+        }
+
+        return new string(chars);
+    }
+
+    private static int Pow(int b, int e)
+    {
+        var r = 1;
+        for (var i = 0; i < e; i++) r *= b;
+        return r;
     }
 
     // A keytip that is a strict prefix of a sibling ("F" alongside "FP") can never commit: typing "F" always leaves

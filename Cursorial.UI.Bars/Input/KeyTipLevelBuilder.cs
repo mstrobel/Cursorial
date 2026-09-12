@@ -61,11 +61,12 @@ public sealed class KeyTipLevelBuilder
     public KeyTipLevel Build(Action? retract = null)
     {
         var entries = new List<KeyTipEntry>(_pending.Count);
-        var claimed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);          // survivors (explicit + auto)
 
-        // Explicit keys always beat auto — even a later-in-order explicit — so reserve every explicit letter up front,
-        // then a single document-order walk keeps: an explicit (first-wins on an explicit-vs-explicit clash) and an
-        // auto letter only when no explicit reserved it and no earlier survivor took it.
+        // Explicit keys always beat auto — even a later-in-order explicit — so reserve every explicit letter up front.
+        // Then one document-order walk: an explicit letter is kept first-wins (a duplicate explicit is dropped); an
+        // auto letter an explicit reserved is dropped; auto letters that collide with EACH OTHER all survive with a
+        // digit suffix in document order — `B`, `B` → `B0`, `B1` (the earlier survivor is renamed when the second
+        // arrives), so no control loses its badge to a same-letter sibling (maintainer, 2026-09-12).
         var reservedExplicit = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var p in _pending)
         {
@@ -73,21 +74,44 @@ public sealed class KeyTipLevelBuilder
                 reservedExplicit.Add(p.KeyTip);
         }
 
+        var claimedExplicit = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var autoByLetter = new Dictionary<string, List<int>>(StringComparer.OrdinalIgnoreCase); // letter → ENTRY indices
+
         foreach (var p in _pending)
         {
-            var collides = p.Explicit ? !claimed.Add(p.KeyTip)
-                                      : reservedExplicit.Contains(p.KeyTip) || !claimed.Add(p.KeyTip);
-            if (collides)
+            var keyTip = p.KeyTip;
+
+            if (p.Explicit)
             {
-                KeyTipDiagnostics.Warning(
-                    $"KeyTip letter '{p.KeyTip}' collides in this level; dropping the {(p.Explicit ? "duplicate explicit" : "auto-assigned")} badge on {p.Target.GetType().Name}.");
+                if (!claimedExplicit.Add(keyTip))
+                {
+                    KeyTipDiagnostics.Warning($"KeyTip '{keyTip}' collides in this level; dropping the duplicate explicit badge on {p.Target.GetType().Name}.");
+                    continue;
+                }
+            }
+            else if (reservedExplicit.Contains(keyTip))
+            {
+                KeyTipDiagnostics.Warning($"KeyTip letter '{keyTip}' is claimed by an explicit key in this level; dropping the auto-assigned badge on {p.Target.GetType().Name}.");
                 continue;
+            }
+            else
+            {
+                if (!autoByLetter.TryGetValue(keyTip, out var siblings))
+                    autoByLetter[keyTip] = siblings = [];
+
+                if (siblings.Count == 1)
+                    entries[siblings[0]].KeyTip = keyTip + "0"; // the first of a now-colliding pair takes suffix 0
+
+                if (siblings.Count > 0)
+                    keyTip += siblings.Count.ToString();
+
+                siblings.Add(entries.Count);
             }
 
             entries.Add(new KeyTipEntry
             {
                 Target = p.Target,
-                KeyTip = p.KeyTip,
+                KeyTip = keyTip,
                 Kind = p.Kind,
                 ExplicitKey = p.Explicit,
                 Anchor = p.Anchor,

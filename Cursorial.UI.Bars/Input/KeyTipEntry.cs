@@ -12,8 +12,10 @@ public sealed class KeyTipEntry
     /// <summary>The control the badge sits over (positioned via <see cref="UIElement.TranslateToScreen(int, int)"/>).</summary>
     public required UIElement Target { get; init; }
 
-    /// <summary>The badge letters (uppercased; 1–2 chars in v1). Matched case-insensitively against typed input.</summary>
-    public required string KeyTip { get; init; }
+    /// <summary>The badge letters (uppercased). Matched case-insensitively against typed input. Settable because the
+    /// level builder resolves an auto-assigned collision by suffixing a digit onto every collider (<c>B</c> →
+    /// <c>B0</c>, <c>B1</c> …), which renames an entry already built; nothing else writes it.</summary>
+    public required string KeyTip { get; set; }
 
     /// <summary>What choosing this entry does.</summary>
     public required KeyTipTargetKind Kind { get; init; }

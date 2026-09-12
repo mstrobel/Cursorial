@@ -112,7 +112,7 @@ public sealed class KeyTipTests
         Assert.False(controller.IsActive); // a leaf activation exits the overlay
     }
 
-    [Fact] // The File tab activates Backstage instead of drilling.
+    [Fact] // The File tab raises BackstageRequested; with nothing opened by the handler it ends as an activation.
     public void Ribbon_FileTab_RaisesBackstage()
     {
         using var host = NewHost(HeadlessCapabilities.KittyTruecolor);
@@ -133,8 +133,12 @@ public sealed class KeyTipTests
         AltDown(host);
         TypeKeyTip(host, 'F');            // File
         host.RunUntilIdle();
-
         Assert.True(backstage);
+
+        // The handler opened NO surface: the drill waits its bounded retries for something to build over, then
+        // treats the reveal as an activation and exits (nothing to badge, nothing to leave up).
+        for (var i = 0; i < 10; i++)
+            host.RunFrame();
         Assert.False(controller.IsActive);
     }
 

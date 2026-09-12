@@ -42,8 +42,16 @@ public sealed class KeyTipEntry
     public Action? Reveal { get; init; }
 
     /// <summary>Builds the level pushed after <see cref="Reveal"/> relayouts; may return <see langword="null"/> until
-    /// the revealed subtree/surface exists (the controller retries next frame, bounded — keytips-design §9/Risk 3).</summary>
+    /// the revealed subtree/surface exists (the controller retries next frame, bounded — keytips-design §9/Risk 3).
+    /// <see langword="null"/> on a <see cref="KeyTipTargetKind.DrillPopup"/> means "over whatever the reveal OPENED":
+    /// the controller diffs the surface stack across the reveal and builds the level over the new popup or window —
+    /// the File tab, whose Backstage the ribbon never sees (only that its request was handled), or its context menu.</summary>
     public Func<KeyTipLevel?>? BuildNext { get; init; }
+
+    /// <summary>For a drill whose reveal may open nothing (the File tab when the app handles the request without a
+    /// surface, or ignores it): treat the give-up as an activation and exit, instead of re-showing the drilled-from
+    /// level.</summary>
+    public bool ExitWhenNothingOpens { get; init; }
 
     /// <summary>Undoes <see cref="Reveal"/> when this drill's level is popped by Esc (collapse a floated band, close a
     /// dropdown). Null when the reveal is not reversible / needs no undo.</summary>

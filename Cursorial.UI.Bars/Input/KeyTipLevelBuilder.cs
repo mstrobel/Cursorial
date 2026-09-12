@@ -13,7 +13,8 @@ public sealed class KeyTipLevelBuilder
 
     private readonly record struct Pending(
         UIElement Target, string KeyTip, bool Explicit, KeyTipTargetKind Kind, KeyTipAnchor Anchor,
-        Action? Activate, Action? Reveal, Func<KeyTipLevel?>? BuildNext, Action? Retract, bool KeepsOverlay = false);
+        Action? Activate, Action? Reveal, Func<KeyTipLevel?>? BuildNext, Action? Retract, bool KeepsOverlay = false,
+        bool ExitWhenNothingOpens = false);
 
     /// <summary>Adds a leaf: typing its badge invokes <paramref name="activate"/> then exits.</summary>
     public void AddActivate(UIElement target, Action activate, KeyTipAnchor anchor = KeyTipAnchor.TopLeading, bool keepsOverlay = false)
@@ -32,8 +33,8 @@ public sealed class KeyTipLevelBuilder
     /// <paramref name="buildNext"/> constructs (once the reveal's relayout completes). <paramref name="retract"/>
     /// undoes the reveal on Esc-back.</summary>
     public void AddDrill(
-        UIElement target, KeyTipTargetKind kind, Action reveal, Func<KeyTipLevel?> buildNext,
-        Action? retract = null, KeyTipAnchor anchor = KeyTipAnchor.TopLeading)
+        UIElement target, KeyTipTargetKind kind, Action reveal, Func<KeyTipLevel?>? buildNext,
+        Action? retract = null, KeyTipAnchor anchor = KeyTipAnchor.TopLeading, bool exitWhenNothingOpens = false)
     {
         if (!target.IsEffectivelyVisible)
             return;
@@ -42,7 +43,7 @@ public sealed class KeyTipLevelBuilder
         if (keyTip is null)
             return;
 
-        _pending.Add(new Pending(target, keyTip, explicitKey, kind, anchor, null, reveal, buildNext, retract));
+        _pending.Add(new Pending(target, keyTip, explicitKey, kind, anchor, null, reveal, buildNext, retract, ExitWhenNothingOpens: exitWhenNothingOpens));
     }
 
     /// <summary>Adds an entry with an already-resolved badge letter, bypassing the derivation ladder (used for QAT
@@ -161,6 +162,7 @@ public sealed class KeyTipLevelBuilder
                 BuildNext = p.BuildNext,
                 Retract = p.Retract,
                 KeepsOverlay = p.KeepsOverlay,
+                ExitWhenNothingOpens = p.ExitWhenNothingOpens,
             });
         }
 

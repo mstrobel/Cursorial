@@ -42,6 +42,11 @@ public sealed class KeyTipController : IKeyTipController, IKeyTipLayoutHook
     private int _parkedGeneration;
     private int _parkedRetries;
     private bool _parkedGiveUpRetracts; // a drill's reveal is undone when its level never builds; a keyboard-opened popup is left alone
+    private bool _parkedExitOnGiveUp;   // the File tab: a reveal that opened nothing was an activation — exit, don't re-show
+
+    // "Over whatever the reveal opened": the surface stack before the reveal, and the surface the reveal added.
+    private List<TopLevelSurface>? _revealSnapshot;
+    private TopLevelSurface? _openedSurface;
 
     // Drill letters typed while a next level is still parked (a fast "Alt, H, B" lands 'B' before the Home band's
     // group level has been built at the post-layout hook). They are consumed at once and replayed, in order, the
@@ -76,7 +81,27 @@ public sealed class KeyTipController : IKeyTipController, IKeyTipLayoutHook
 
     private void OnCueDeactivated() => Exit();
 
-    private void OnActiveWindowChanged(object? sender, EventArgs e) => Exit();
+    // The active window changed while the overlay is up. Three cases: a drill's reveal just OPENED it (a Backstage
+    // window — the parked build lands over it next frame): stay; a window on the level stack CLOSED (Esc retracted
+    // the Backstage, or its own ◂ did) so the active root is back at a level we hold: pop to it and stay; anything
+    // else (an unrelated window, a gesture's dialog): exit as before.
+    private void OnActiveWindowChanged(object? sender, EventArgs e)
+    {
+        if (!_isActive)
+            return;
+
+        if (_parkedBuild is not null)
+            return;
+
+        SyncWithSurfaces();
+        if (_stack.Count > 0 && ActiveRootSurface() is { } active && ReferenceEquals(_stack[^1].Surface, active))
+            return;
+
+        Exit();
+    }
+
+    private TopLevelSurface? ActiveRootSurface()
+        => _app.WindowManager is { } wm && _app.FocusManager.ActiveRoot is { } root ? wm.SurfaceForElement(root) : null;
 
     // ───────────────────────────── key interception (keytips-design §2) ─────────────────────────────
 
@@ -155,6 +180,9 @@ public sealed class KeyTipController : IKeyTipController, IKeyTipLayoutHook
         _isActive = false;
         _parkedBuild = null;
         _parkedRetract = null;
+        _parkedExitOnGiveUp = false;
+        _revealSnapshot = null;
+        _openedSurface = null;
         _pendingChars.Clear();
         _levelGeneration++;                      // orphan any parked build/pop in flight
 
@@ -274,14 +302,65 @@ public sealed class KeyTipController : IKeyTipController, IKeyTipLayoutHook
             return;
         }
 
-        // A drill: perform the reveal now, park the next-level build for the post-layout hook (the revealed subtree /
-        // opened surface may realize over ≥1 frames — keytips-design §9).
-        entry.Reveal?.Invoke();
-        _parkedBuild = entry.BuildNext;
-        _parkedRetract = entry.Retract;
-        _parkedGiveUpRetracts = true;
+        // A drill: park the next-level build for the post-layout hook (the revealed subtree / opened surface may
+        // realize over ≥1 frames — keytips-design §9), THEN perform the reveal — a reveal that opens a window changes
+        // the active window synchronously, and OnActiveWindowChanged must already see the build parked to stay.
+        // A DrillPopup with no builder builds over whatever the reveal opens: snapshot the surface stack first.
         _parkedGeneration = ++_levelGeneration;
         _parkedRetries = 0;
+        _parkedGiveUpRetracts = true;
+        _parkedExitOnGiveUp = entry.ExitWhenNothingOpens;
+        if (entry.BuildNext is { } buildNext)
+        {
+            _parkedBuild = buildNext;
+            _parkedRetract = entry.Retract;
+        }
+        else
+        {
+            _revealSnapshot = _app.WindowManager?.Surfaces.ToList();
+            _openedSurface = null;
+            _parkedBuild = BuildOverOpenedSurface; // the built level carries its own retract (closing THAT surface)
+            _parkedRetract = null;
+        }
+
+        entry.Reveal?.Invoke();
+    }
+
+    // The level over the surface the last reveal added (a popup or a window; the overlay's own surface excluded),
+    // once it exists; null until then (the parked build retries).
+    private KeyTipLevel? BuildOverOpenedSurface()
+    {
+        if (_app.WindowManager is not { } wm)
+            return null;
+
+        if (_openedSurface is null || !wm.Surfaces.Contains(_openedSurface))
+        {
+            _openedSurface = null;
+            var surfaces = wm.Surfaces;
+            for (var i = surfaces.Count - 1; i >= 0; i--)
+            {
+                var candidate = surfaces[i];
+                if (candidate.IsHitTestTransparent || (_revealSnapshot?.Contains(candidate) ?? false))
+                    continue;
+
+                _openedSurface = candidate;
+                break;
+            }
+        }
+
+        if (_openedSurface is not { } opened || KeyTipPopupLevels.BuildOver(opened.Root) is not { } level)
+            return null;
+
+        level.Retract = () => CloseSurface(wm, opened); // Esc closes the surface the reveal opened
+        return level;
+    }
+
+    private static void CloseSurface(WindowManager wm, TopLevelSurface surface)
+    {
+        if (surface.IsPopup)
+            PopupFor(wm, surface)?.IsOpen = false;
+        else
+            surface.HostWindow?.Close();
     }
 
     /// <inheritdoc/>
@@ -298,6 +377,7 @@ public sealed class KeyTipController : IKeyTipController, IKeyTipLayoutHook
 
         _parkedBuild = null;                      // cancel any parked deeper build
         _parkedRetract = null;
+        _parkedExitOnGiveUp = false;
         _pendingChars.Clear();
         _levelGeneration++;
 
@@ -319,7 +399,7 @@ public sealed class KeyTipController : IKeyTipController, IKeyTipLayoutHook
             var level = build();
             if (level is { Entries.Count: > 0 })
             {
-                level.Retract = _parkedRetract;
+                level.Retract = _parkedRetract ?? level.Retract; // a drill's own retract, else the built level's (an opened surface's close)
                 _stack.Add(level);
                 _parkedBuild = null;
                 _parkedRetract = null;
@@ -336,13 +416,23 @@ public sealed class KeyTipController : IKeyTipController, IKeyTipLayoutHook
                     _parkedRetract?.Invoke();
                 _parkedRetract = null;
                 _pendingChars.Clear();            // typed for a level that never came — dropped, not mis-matched
+
+                if (_parkedExitOnGiveUp)
+                {
+                    // The File tab whose request opened nothing (handled without a surface, or ignored): an activation.
+                    _exitViaActivation = true;
+                    Exit();
+                    return;
+                }
+
                 ShowLevel(_stack[^1]);
             }
         }
 
-        // 1b) Follow popups the keyboard opened or closed under the overlay (arrow keys in a menu).
+        // 1b) Follow popups the keyboard opened or closed under the overlay (arrow keys in a menu), and drop levels
+        // whose surface closed by other means (a Backstage's own ◂).
         if (_isActive && _parkedBuild is null)
-            SyncWithPopups();
+            SyncWithSurfaces();
 
         // 2) Re-anchor the shown level's badges to their targets' final screen cells — this is what keeps badges glued
         // to a ribbon that MOVES (a panel above it grows) or SCROLLS (a ScrollViewer slide, reflected through
@@ -425,13 +515,13 @@ public sealed class KeyTipController : IKeyTipController, IKeyTipLayoutHook
     // popped (its popup is already gone — no retract); a popup opened FROM one of the shown level's targets (its
     // placement target is that control, or sits inside it) gets a level pushed over it, so the badges follow the
     // keyboard. Any other popup (unrelated to the drill) is left alone.
-    private void SyncWithPopups()
+    private void SyncWithSurfaces()
     {
         if (_app.WindowManager is not { } wm || _stack.Count == 0)
             return;
 
         var popped = false;
-        while (_stack.Count > 1 && _stack[^1].Surface is { IsPopup: true } surface && !wm.Surfaces.Contains(surface))
+        while (_stack.Count > 1 && _stack[^1].Surface is { } surface && !wm.Surfaces.Contains(surface))
         {
             _stack.RemoveAt(_stack.Count - 1);
             popped = true;

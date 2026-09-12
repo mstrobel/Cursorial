@@ -32,51 +32,28 @@ internal sealed class RibbonKeyTipHost(Ribbon ribbon) : IKeyTipHost
 
             if (tab.IsFileTab)
             {
+                // The File tab: its reveal raises BackstageRequested; the app decides what opens — a Backstage
+                // window or menu popup (the ribbon never sees it, only that the request was handled) — or, when the
+                // request goes unhandled, the tab's own context menu. The level is built over WHATEVER opened
+                // (BuildNext null → the controller diffs the surface stack across the reveal); if nothing opens the
+                // drill behaves as an activation and exits.
                 var file = tab;
-                if (file.ContextMenu is {} contextMenu)
-                {
-                    into.AddDrill(
-                        tab,
-                        KeyTipTargetKind.DrillPopup,
-                        reveal: () =>
-                                {
-                                    var backstageArgs = new RoutedEventArgs(Ribbon.BackstageRequestedEvent, file);
-                                    file.RaiseEvent(backstageArgs);
-                                    if (backstageArgs.Handled)
-                                    {
-                                        if (UIApplication.Current is {} app)
-                                        {
-                                            app.Dispatcher.Post(() =>
-                                                                {
-                                                                    if (app.AccessKeys.KeyTipController is {} ktc)
-                                                                    {
-                                                                        ktc.TryPopLevel();
-                                                                        ktc.Exit(viaActivationOverride: true);
-                                                                    }
-                                                                });
-                                        }
-                                        return;
-                                    }
-                                    var renderOffsetRow = contextMenu.RenderOffsetRow;
-                                    contextMenu.RenderOffsetRow = -1;
-                                    contextMenu.Open(file, placement: PlacementMode.Bottom);
-                                    contextMenu.RenderOffsetRow = renderOffsetRow;
-                                },
-                        buildNext: () =>
-                                   {
-                                       if (contextMenu.IsOpen is false) return null;
-                                       var menuBuilder = new KeyTipLevelBuilder();
-                                       new ContextMenuKeyTipHost(contextMenu).BuildRootLevel(menuBuilder);
-                                       return menuBuilder.Build();
-                                   },
-                        retract: () => contextMenu.Close());
-                }
-                else
-                {
-                    into.AddActivate(
-                        tab,
-                        () => file.RaiseEvent(new RoutedEventArgs(Ribbon.BackstageRequestedEvent, file)));
-                }
+                into.AddDrill(
+                    tab, KeyTipTargetKind.DrillPopup,
+                    reveal: () =>
+                    {
+                        var backstageArgs = new RoutedEventArgs(Ribbon.BackstageRequestedEvent, file);
+                        file.RaiseEvent(backstageArgs);
+                        if (backstageArgs.Handled || file.ContextMenu is not { } contextMenu)
+                            return;
+
+                        var renderOffsetRow = contextMenu.RenderOffsetRow;
+                        contextMenu.RenderOffsetRow = -1;
+                        contextMenu.Open(file, placement: PlacementMode.Bottom);
+                        contextMenu.RenderOffsetRow = renderOffsetRow;
+                    },
+                    buildNext: null,
+                    exitWhenNothingOpens: true);
             }
             else
             {

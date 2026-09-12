@@ -771,6 +771,37 @@ public sealed class AccessKeyManager
             accessKeyTarget.OnAccessKey(new AccessKeyEventArgs(key, isMultiMatch, target));
     }
 
+    /// <summary>
+    /// Every registered target that is eligible right now and lives in the active scope (the live scope-stack top,
+    /// else the active window root), in document order (a DFS of the scope's visual tree). The KeyTip overlay
+    /// badges these at its root level alongside the bar surfaces (keytips-design's compose-both: a plain control's
+    /// access key stays reachable while the overlay owns Alt), so a target inside a bar the overlay already badges
+    /// is filtered by the caller.
+    /// </summary>
+    internal List<UIElement> EligibleTargetsInActiveScope()
+    {
+        var result = new List<UIElement>();
+        var scope = _scopeStack.Count > 0 ? _scopeStack[^1] : _focus.ActiveRoot;
+        if (scope is null)
+            return result;
+
+        var matches = new List<UIElement>();
+        foreach (var targets in _registry.Values)
+        {
+            foreach (var target in targets)
+            {
+                if (IsEligible(target) && ReferenceEquals(ResolveScope(target), scope) && !matches.Contains(target))
+                    matches.Add(target);
+            }
+        }
+
+        AppendMatchesInDocumentOrder(scope, matches, result);
+        if (result.Count != matches.Count)
+            return matches; // defensive — registration order when the DFS missed targets (a target off the visual tree)
+
+        return result;
+    }
+
     private void CollectEligibleMatches(char folded)
     {
         _matchScratch.Clear();

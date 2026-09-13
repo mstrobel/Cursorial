@@ -499,7 +499,10 @@ public sealed class AccessKeyManager
             if (!_leftAltDown && !_rightAltDown)
                 ClearCueForAltHeld();
 
-            return true; // consumed — the focused element never sees it
+            // Shift+Esc leaves the ENTIRE menu hierarchy in one stroke: the cue is off (above) and the key goes on
+            // to the focused menu element — a submenu popup collapses the whole chain, a focused bar header leaves
+            // the bar — where plain Esc stops here (consumed) and needs a second press for that.
+            return (key.Modifiers & KeyModifiers.Shift) == 0; // plain Esc: consumed — the focused element never sees it
         }
 
         // ───────────────────────── post-Escape suppression: ARM ─────────────────────────

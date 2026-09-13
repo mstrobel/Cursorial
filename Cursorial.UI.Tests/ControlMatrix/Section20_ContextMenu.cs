@@ -207,6 +207,30 @@ public sealed class Section20_ContextMenu
         Assert.False(menu.IsOpen);
     }
 
+    [Fact] // C7.8b: Shift+Esc from a submenu drilled by keyboard closes the submenu AND the context menu in one stroke
+    public void C7_8b_ShiftEscape_ClosesTheWholeChain()
+    {
+        var menu = new ContextMenu();
+        var more = new MenuItem { Header = "More" };
+        more.Items.Add(new MenuItem { Header = "Deeper" });
+        menu.Items.Add(more);
+        var (host, owner, _) = RootWithMenu(menu);
+        using var _ = host;
+
+        menu.Open(owner);
+        host.RunUntilIdle();
+        more.Focus();
+        host.RunUntilIdle();
+        host.SendKey(Key.RightArrow); // open More, focus Deeper
+        host.RunUntilIdle();
+        Assert.True(more.IsSubmenuOpen);
+
+        host.SendKey(Key.Escape, KeyModifiers.Shift);
+        host.RunUntilIdle();
+        Assert.False(more.IsSubmenuOpen);
+        Assert.False(menu.IsOpen);
+    }
+
     [Fact] // C7.9: a click outside the open menu light-dismisses it
     public void C7_9_OutsideClickDismisses()
     {

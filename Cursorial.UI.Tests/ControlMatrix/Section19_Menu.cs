@@ -285,12 +285,12 @@ public sealed class Section19_Menu
     // primes the cue window and a following Alt+<char> activates the folded mnemonic. These exercise the
     // whole registration spine (OnAttachedToTree→RegisterAccessKey, the Header literal fold, the manager's
     // registry + scope resolution + Invoke), not just the IAccessKeyTarget.OnAccessKey reaction body.
-    private static KeyEvent KeyEvt(Key key, KeyModifiers modifiers = KeyModifiers.None, string? text = null)
+    private static KeyEvent KeyEvt(Key key, KeyModifiers modifiers = KeyModifiers.None, string? text = null, KeyEventKind kind = KeyEventKind.Down)
         => new()
         {
             Key = key,
             Modifiers = modifiers,
-            Kind = KeyEventKind.Down,
+            Kind = kind,
             Text = (text ?? string.Empty).AsMemory(),
             Timestamp = DateTimeOffset.UnixEpoch
         };
@@ -644,6 +644,73 @@ public sealed class Section19_Menu
         host.SendKey(Key.Escape);
         host.RunUntilIdle();
         Assert.False(file.IsSubmenuOpen);
+    }
+
+    [Fact] // C6.27b: Shift+Esc from a keyboard-opened submenu in MENU MODE leaves the whole hierarchy in one stroke —
+           // the cue, every open submenu and the bar focus all go, focus returning to the pre-menu origin (plain Esc
+           // takes two presses there: the first is the sticky cue's, the second the popup's)
+    public void C6_27b_ShiftEscape_InMenuMode_LeavesTheWholeHierarchy()
+    {
+        var file = new MenuItem { Header = "_File" };
+        var recent = new MenuItem { Header = "_Recent" };
+        recent.Items.Add(new MenuItem { Header = "One" });
+        file.Items.Add(recent);
+        using var host = Host();
+        var menu = new Menu();
+        menu.Items.Add(file);
+        var box = new TextBox();
+        host.ShowRoot(new StackPanel { Orientation = Orientation.Vertical, Children = { menu, box } });
+        host.RunUntilIdle();
+        box.Focus();
+        host.RunUntilIdle();
+
+        var dispatcher = host.Application.InputDispatcher;
+        dispatcher.ProcessEvent(KeyEvt(Key.LeftAlt, KeyModifiers.Alt));
+        dispatcher.ProcessEvent(KeyEvt(Key.LeftAlt, KeyModifiers.None, kind: KeyEventKind.Up)); // an Alt TAP: sticky cue, menu mode
+        host.RunUntilIdle();
+        Assert.True(host.Application.AccessKeys.IsCueActive);
+        Assert.True(file.IsFocused);
+        host.SendKey(Key.DownArrow);  // File open, focus on Recent
+        host.RunUntilIdle();
+        host.SendKey(Key.RightArrow); // Recent open, focus on One
+        host.RunUntilIdle();
+        Assert.True(file.IsSubmenuOpen);
+        Assert.True(recent.IsSubmenuOpen);
+
+        host.SendKey(Key.Escape, KeyModifiers.Shift);
+        host.RunUntilIdle();
+
+        Assert.False(host.Application.AccessKeys.IsCueActive);
+        Assert.False(recent.IsSubmenuOpen);
+        Assert.False(file.IsSubmenuOpen);
+        Assert.True(box.IsFocused, "focus returns to the pre-menu origin");
+    }
+
+    [Fact] // C6.27c: Shift+Esc on a focused header in menu mode (nothing open yet) drops the cue AND leaves the bar
+    public void C6_27c_ShiftEscape_OnAHeaderInMenuMode_LeavesTheBar()
+    {
+        var file = new MenuItem { Header = "_File" };
+        file.Items.Add(new MenuItem { Header = "New" });
+        using var host = Host();
+        var menu = new Menu();
+        menu.Items.Add(file);
+        var box = new TextBox();
+        host.ShowRoot(new StackPanel { Orientation = Orientation.Vertical, Children = { menu, box } });
+        host.RunUntilIdle();
+        box.Focus();
+        host.RunUntilIdle();
+
+        var dispatcher = host.Application.InputDispatcher;
+        dispatcher.ProcessEvent(KeyEvt(Key.LeftAlt, KeyModifiers.Alt));
+        dispatcher.ProcessEvent(KeyEvt(Key.LeftAlt, KeyModifiers.None, kind: KeyEventKind.Up));
+        host.RunUntilIdle();
+        Assert.True(file.IsFocused);
+
+        host.SendKey(Key.Escape, KeyModifiers.Shift);
+        host.RunUntilIdle();
+
+        Assert.False(host.Application.AccessKeys.IsCueActive);
+        Assert.True(box.IsFocused);
     }
 
     [Fact] // C6.28: a key the focused sub-item leaves unhandled (Right on a leaf) does NOT hijack an ancestor header

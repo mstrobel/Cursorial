@@ -28,4 +28,9 @@ public interface IKeyTipController
     /// so the normal Esc handling (cue-off → <see cref="Exit"/>) proceeds. This lets Esc drill BACK a level rather
     /// than always exiting the whole overlay.</summary>
     bool TryPopLevel();
+
+    /// <summary>Shift+Esc: retract EVERY drilled level at once — each surface the drill opened (popup, menu, window)
+    /// closes, top down, exactly as repeated Esc would — leaving the overlay at its root level for the caller's
+    /// cue-off exit. No-op (nothing retracted) when inactive or already at the root.</summary>
+    void PopAllLevels();
 }

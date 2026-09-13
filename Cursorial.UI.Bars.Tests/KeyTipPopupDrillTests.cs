@@ -126,6 +126,47 @@ public sealed class KeyTipPopupDrillTests
         Assert.NotNull(controller.BadgeForTargetForTests(undo));
     }
 
+    [Fact] // Shift+Esc from a nested submenu level pops EVERY level at once — both submenus close — and exits the overlay
+    public void Menu_ShiftEscDeepInTheDrill_PopsEveryLevel_AndExits()
+    {
+        using var host = NewHost();
+        var controller = host.Application.EnableKeyTips();
+
+        var menu = new Menu();
+        var file = new MenuItem { Header = "_File" };
+        var recent = new MenuItem { Header = "_Recent" };
+        var first = new MenuItem { Header = "_One" };
+        recent.Items.Add(first);
+        file.Items.Add(recent);
+        menu.Items.Add(file);
+        var box = new TextBox();
+        host.ShowRoot(new StackPanel { Orientation = Orientation.Vertical, Children = { menu, box } });
+        host.RunUntilIdle();
+        box.Focus();
+        host.RunUntilIdle();
+
+        AltDown(host);
+        TypeKeyTip(host, 'F');
+        SettleLevel(host, controller, 2);
+        TypeKeyTip(host, 'R');
+        SettleLevel(host, controller, 3);         // File ▸ Recent ▸ [One]: three levels deep
+        Assert.True(file.IsSubmenuOpen);
+        Assert.True(recent.IsSubmenuOpen);
+
+        host.Application.InputDispatcher.ProcessEvent(Key_(Key.Escape, KeyModifiers.Shift));
+        host.RunUntilIdle();
+
+        Assert.False(controller.IsActive);        // the whole overlay is gone in one stroke…
+        Assert.False(recent.IsSubmenuOpen);       // …and every surface the drill opened closed, top down
+        Assert.False(file.IsSubmenuOpen);
+        Assert.True(box.IsFocused, "focus returns to where it was before Alt");
+        Assert.False(host.Application.AccessKeys.IsCueActive);
+
+        host.Application.InputDispatcher.ProcessEvent(Key_(Key.Character, text: "x"));
+        host.RunUntilIdle();
+        Assert.Equal("x", box.Text);              // the next letter is plain typing, not a stale access key
+    }
+
     [Fact] // Ribbon: Alt → tab → group → a dropdown control's letter OPENS its dropdown and badges the dropdown's controls.
     public void Ribbon_DropDownControl_DrillsIntoItsDropdown()
     {

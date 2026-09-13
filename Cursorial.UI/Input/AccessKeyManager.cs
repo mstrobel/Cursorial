@@ -467,12 +467,16 @@ public sealed class AccessKeyManager
     internal bool OnPreStageKeyDown(KeyEvent key)
     {
         // KeyTip Esc first-refusal (before stale-Alt inference / sticky-consume). While the overlay is up: back out
-        // ONE level (cue/sticky/Alt untouched), or — at the top level — dismiss the overlay AND its cue. This runs
-        // for physical-Alt-hold too: the real Esc wire carries the Alt bit (ND26), so the stale-Alt inference below
-        // never fires and would otherwise leave the overlay stuck until Alt is released (the audit finding).
+        // ONE level (cue/sticky/Alt untouched), or — at the top level — dismiss the overlay AND its cue. Shift+Esc
+        // backs out of EVERY level at once (each drilled surface closes, top down) and dismisses the overlay and cue
+        // in the same stroke — the "get me out of here" from any depth. This runs for physical-Alt-hold too: the
+        // real Esc wire carries the Alt bit (ND26), so the stale-Alt inference below never fires and would otherwise
+        // leave the overlay stuck until Alt is released (the audit finding).
         if (key.Key == Key.Escape && _keyTipController is { IsActive: true } keyTips)
         {
-            if (keyTips.TryPopLevel())
+            if ((key.Modifiers & KeyModifiers.Shift) != 0)
+                keyTips.PopAllLevels();
+            else if (keyTips.TryPopLevel())
                 return true;
 
             _stickyCue = false;

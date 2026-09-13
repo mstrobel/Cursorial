@@ -188,6 +188,34 @@ public sealed class KeyTipTests
         Assert.False(controller.IsActive);
     }
 
+    [Fact] // Shift+Esc exits from any depth in one stroke (plain Esc would need one press per level)
+    public void ShiftEsc_ExitsFromAnyDepth()
+    {
+        using var host = NewHost(HeadlessCapabilities.KittyTruecolor);
+        var controller = host.Application.EnableKeyTips();
+        var (ribbon, _, _) = NewRibbon();
+        host.ShowRoot(ribbon);
+        host.RunUntilIdle();
+
+        AltDown(host);
+        TypeKeyTip(host, 'I');            // drill Insert → L1
+        host.RunFrame();
+        Assert.True(controller.IsActive);
+
+        host.Application.InputDispatcher.ProcessEvent(Key_(Key.Escape, KeyModifiers.Shift));
+        host.RunFrame();
+        Assert.False(controller.IsActive);
+        Assert.False(host.Application.AccessKeys.IsCueActive);
+
+        // …and at the root it is simply the exit, same as Esc.
+        AltDown(host);
+        host.RunFrame();
+        Assert.True(controller.IsActive);
+        host.Application.InputDispatcher.ProcessEvent(Key_(Key.Escape, KeyModifiers.Shift));
+        host.RunFrame();
+        Assert.False(controller.IsActive);
+    }
+
     [Fact] // A non-matching letter bonks: the char is consumed (never leaks to a focused TextBox) and the overlay stays.
     public void Bonk_ConsumesChar_NoLeak()
     {

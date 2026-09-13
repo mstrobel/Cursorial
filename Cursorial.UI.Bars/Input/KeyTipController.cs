@@ -371,9 +371,30 @@ public sealed class KeyTipController : IKeyTipController, IKeyTipLayoutHook
         if (!_isActive || _stack.Count <= 1)
             return false;
 
-        var top = _stack[^1];
-        _stack.RemoveAt(_stack.Count - 1);
-        top.Retract?.Invoke();
+        PopLevels(1);
+        return true;
+    }
+
+    /// <inheritdoc/>
+    public void PopAllLevels()
+    {
+        // Shift+Esc (from the Alt pre-stage): retract every drilled level — the surfaces the drill opened close top
+        // down, as repeated Esc would — and leave the overlay at its root; the caller's cue-off then exits it. The
+        // root is re-shown only for the frame the exit tears down, which keeps the pop and the exit two plain steps.
+        if (!_isActive || _stack.Count <= 1)
+            return;
+
+        PopLevels(_stack.Count - 1);
+    }
+
+    private void PopLevels(int count)
+    {
+        for (var i = 0; i < count && _stack.Count > 1; i++)
+        {
+            var top = _stack[^1];
+            _stack.RemoveAt(_stack.Count - 1);
+            top.Retract?.Invoke();                // close the surface this level's reveal opened (top down)
+        }
 
         _parkedBuild = null;                      // cancel any parked deeper build
         _parkedRetract = null;
@@ -381,8 +402,7 @@ public sealed class KeyTipController : IKeyTipController, IKeyTipLayoutHook
         _pendingChars.Clear();
         _levelGeneration++;
 
-        ShowLevel(_stack[^1]);                    // re-place the parent level's badges
-        return true;
+        ShowLevel(_stack[^1]);                    // re-place the surviving level's badges
     }
 
     // ───────────────────────────── layout hook (keytips-design §9) ─────────────────────────────

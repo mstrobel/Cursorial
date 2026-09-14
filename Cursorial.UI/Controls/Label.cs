@@ -47,8 +47,11 @@ public class Label : ContentControl, IAccessKeyTarget, IRichTextCapable
         if (e.IsMultiMatch)
             return; // the manager already focused us; multi-match never invokes (ND18)
 
-        var target = Target ?? UIApplication.Current?.FocusManager.FindNext(this);
-        target?.Focus(FocusNavigationMethod.AccessKey);
+        var target = Target;
+        if (target is not { Focusable: true })
+            target = UIApplication.Current?.FocusManager.FindNext(target ?? this);
+
+        target?.Focus();
     }
 
     /// <inheritdoc/>
@@ -72,9 +75,9 @@ public class Label : ContentControl, IAccessKeyTarget, IRichTextCapable
     {
         ClearAccessKeyProxyRegistration();
 
-        if (IsAttachedToTree
-            && Target is {} target
-            && target.GetValueSource(AccessKeyManager.AccessKeyProxyProperty).Kind is ValueSourceKind.Default)
+        if (IsAttachedToTree && 
+            Target is {} target &&
+            target.GetValueSource(AccessKeyManager.AccessKeyProxyProperty).Kind is ValueSourceKind.Default)
         {
             AccessKeyManager.SetAccessKeyProxy(target, this);
             AccessKeyManager.SetAccessKeyProxyFor(this, target);

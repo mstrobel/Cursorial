@@ -753,18 +753,7 @@ public sealed class KeyTipController : IKeyTipController, IKeyTipLayoutHook
     }
 
     private static AccessTextPresenter? FindAccessTextPresenter(UIElement root)
-    {
-        if (root is AccessTextPresenter presenter)
-            return presenter;
-
-        for (var i = 0; i < root.VisualChildrenCount; i++)
-        {
-            if (FindAccessTextPresenter(root.GetVisualChild(i)) is { } found)
-                return found;
-        }
-
-        return null;
-    }
+        => AccessTextPresenter.FindPresenter(root);
 
     // ───────────────────────────── discovery / activation / focus ─────────────────────────────
 

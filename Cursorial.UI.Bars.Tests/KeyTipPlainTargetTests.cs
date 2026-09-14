@@ -39,13 +39,7 @@ public sealed class KeyTipPlainTargetTests
         return ribbon;
     }
 
-    private static AccessTextPresenter? FindPresenter(UIElement root)
-    {
-        if (root is AccessTextPresenter p) return p;
-        for (var i = 0; i < root.VisualChildrenCount; i++)
-            if (FindPresenter(root.GetVisualChild(i)) is { } found) return found;
-        return null;
-    }
+    private static AccessTextPresenter FindPresenter(UIElement element) => AccessTextPresenter.FindPresenter(element)!;
 
     [Fact] // A page check box and button get their mnemonic badges beside the ribbon's tab badges; the badge toggles / clicks.
     public void PlainTargets_JoinTheRootLevel_AndActivate()

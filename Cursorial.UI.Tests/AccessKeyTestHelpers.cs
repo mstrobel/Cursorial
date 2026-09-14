@@ -149,20 +149,6 @@ internal static class AccessKeyTestHelpers
         return Assert.IsType<BrushedStyle>(cs);
     }
 
-    private static AccessTextPresenter? FindPresenter(UIElement? cueOwner)
-    {
-        if (cueOwner is AccessTextPresenter presenter)
-            return presenter;
-
-        if (cueOwner?.VisualChildrenList is {} children)
-        {
-            foreach (var child in children)
-            {
-                if (FindPresenter(child) is {} found)
-                    return found;
-            }
-        }
-
-        return null;
-    }
+    internal static AccessTextPresenter? FindPresenter(UIElement? cueOwner)
+        => AccessTextPresenter.FindPresenter(cueOwner);
 }

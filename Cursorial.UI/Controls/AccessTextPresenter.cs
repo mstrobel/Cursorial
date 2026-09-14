@@ -264,4 +264,32 @@ public sealed class AccessTextPresenter : UIElement, ITrimmedTextSource, IRichTe
 
         return ft.ToPlainText();
     }
+
+    public static AccessTextPresenter? FindPresenter(UIElement? cueOwner) => FindPresenter(cueOwner, null);
+
+    private static AccessTextPresenter? FindPresenter(UIElement? owner, UIElement? current)
+    {
+        if (owner is null)
+            return null;
+
+        current ??= owner;
+
+        if (current is AccessTextPresenter presenter)
+            return presenter;
+
+        if (current.TemplatedParent is {} templatedParent &&
+            !ReferenceEquals(owner, templatedParent) &&
+            !ReferenceEquals(owner, current))
+        {
+            return null;
+        }
+
+        for (var i = 0; i < current.VisualChildrenCount; i++)
+        {
+            if (FindPresenter(owner, current.GetVisualChild(i)) is {} found)
+                return found;
+        }
+
+        return null;
+    }
 }

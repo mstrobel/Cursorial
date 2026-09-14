@@ -394,19 +394,35 @@ public sealed class CellBuffer : ICellSurface
 
         int index = row * _columns + column;
         var previous = _cells[index];
+        var kind = width > 1 ? CellKind.WideLeft : CellKind.Single;
 
         // Apply the active blending mode against the cell being overwritten. SourceOver / empty
         // stack is a no-op (the mode just returns source), but every other mode tints / darkens /
         // lightens based on the existing color at this position.
         var blended = BlendStyle(style, previous.Style);
-        
+
+        var currentlyWide = previous.Kind == CellKind.WideLeft && width != 2 &&
+                            column + 1 < _columns && _cells[index + 1].Kind == CellKind.WideContinuation;
+
+        var currentlyWideContinuation = previous.Kind == CellKind.WideContinuation &&
+                                  column > 0 && _cells[index - 1].Kind == CellKind.WideLeft;
+
         if (grapheme.IsWhiteSpace() &&
-            !(previous.Grapheme.IsWhiteSpace() && previous.Grapheme != DurableEmptyGrapheme) &&
-            style.Background.IsOpaque is false)
+            (currentlyWideContinuation || !(previous.Grapheme.IsWhiteSpace() && previous.Grapheme != DurableEmptyGrapheme)))
         {
-            var foregroundUnderneath = Color.Composite(style.Background, previous.Style.Foreground, CurrentBlendingMode);
-            grapheme = previous.Grapheme;
-            blended = blended with { Foreground = foregroundUnderneath };
+            if (style.Background.IsOpaque is false)
+            {
+                var foregroundUnderneath = Color.Composite(style.Background, previous.Style.Foreground, CurrentBlendingMode);
+                grapheme = previous.Grapheme;
+                blended = blended with { Foreground = foregroundUnderneath };
+            }
+            else if (currentlyWideContinuation)
+            {
+                grapheme = previous.Grapheme;
+            }
+
+            if (currentlyWide || currentlyWideContinuation)
+                kind = previous.Kind;
         }
 
         // Pair hygiene on overwrite — the same rule the indexer setter applies, and for the same
@@ -416,14 +432,12 @@ public sealed class CellBuffer : ICellSurface
         // value.Kind, this path reads it off `width`: 2 stores a WideLeft, 1 a Single, and Set never
         // stores a bare continuation — so the indexer's "value.Kind != WideContinuation" is
         // unconditionally true here and only the WideLeft half of the rule survives as `width != 2`.
-        if (previous.Kind == CellKind.WideContinuation &&
-            column > 0 && _cells[index - 1].Kind == CellKind.WideLeft)
+        if (currentlyWideContinuation && kind != CellKind.WideContinuation)
         {
             OrphanLeftHalfToBlankSingle(index - 1);
         }
 
-        if (previous.Kind == CellKind.WideLeft && width != 2 &&
-            column + 1 < _columns && _cells[index + 1].Kind == CellKind.WideContinuation)
+        if (currentlyWide && kind != CellKind.WideLeft)
         {
             // `previous` IS the wide-left, read before this write clobbers it — the only place the
             // orphaned continuation's style still exists.
@@ -436,7 +450,7 @@ public sealed class CellBuffer : ICellSurface
             return 2;
         }
 
-        _cells[index] = new Cell(Cache(grapheme), CellKind.Single, blended);
+        _cells[index] = new Cell(Cache(grapheme), kind, blended);
         return 1;
     }
 

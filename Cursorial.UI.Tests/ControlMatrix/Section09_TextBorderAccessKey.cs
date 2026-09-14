@@ -404,22 +404,7 @@ public sealed class Section09_TextBorderAccessKey
     //     AccessKeyManager stamps on the scope/window root. No test-added style — the framework default
     //     alone must render the mnemonic underscore. ───
 
-    private static AccessTextPresenter FindPresenter(UIElement element)
-    {
-        if (element is AccessTextPresenter presenter)
-            return presenter;
-
-        if (element.VisualChildrenList is { } children)
-        {
-            foreach (var child in children)
-            {
-                if (FindPresenter(child) is { } found)
-                    return found;
-            }
-        }
-
-        return null!;
-    }
+    private static AccessTextPresenter FindPresenter(UIElement element) => AccessTextPresenter.FindPresenter(element)!;
 
     [Fact] // C181 — PERMANENT (AlwaysVisible) mode: a non-capable keyboard underlines from the first frame.
     public void C181_AccessKeyCue_PermanentUnderscore_OnLegacyTerminal()

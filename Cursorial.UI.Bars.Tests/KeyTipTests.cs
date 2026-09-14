@@ -940,13 +940,7 @@ public sealed class KeyTipTests
         return presenter.TranslateToScreen(cell, 0);
     }
 
-    private static AccessTextPresenter? FindPresenter(UIElement root)
-    {
-        if (root is AccessTextPresenter p) return p;
-        for (var i = 0; i < root.VisualChildrenCount; i++)
-            if (FindPresenter(root.GetVisualChild(i)) is { } found) return found;
-        return null;
-    }
+    private static AccessTextPresenter? FindPresenter(UIElement? owner) => AccessTextPresenter.FindPresenter(owner);
 
     [Fact]
     public void InlineBadge_SitsOverTheMnemonicCluster_InTheLabelsCase()

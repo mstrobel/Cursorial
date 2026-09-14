@@ -1010,8 +1010,10 @@ public static class CursorialBarsTheme
             var name = new ContentPresenter
                        {
                            HorizontalAlignment = HorizontalAlignment.Center,
-                           ShowTrimmedContentInToolTip = true
+                           ShowTrimmedContentInToolTip = true,
+                           RecognizesAccessKey = true
                        };
+
             ctx.RegisterName("PART_GroupName", name);
             name.SetValue(TextElement.TextTrimmingProperty, TextTrimming.CharacterEllipsis);
             name.SetBinding(ContentPresenter.ContentProperty, TemplateBinding.From(HeaderedItemsControl.HeaderProperty));
